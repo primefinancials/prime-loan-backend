@@ -16,6 +16,8 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
         [ "bvn", "dateOfBirth", "password", "phone", "nin", "email", "name", "surname" ]
     );
 
+    console.log({ customerKey, customerSecret })
+
     const accessToken = await generateBearerToken(customerKey, customerSecret);
 
     const apiUrl = `https://api-apps.vfdbank.systems/vtech-wallet/api/v1/wallet2/client/create`;
@@ -53,8 +55,8 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
 
     res.status(400).json({ status: "error", message: response.data.message });
   } catch (error: any) {
-    console.error("Error creating client account:", error.message || error);
-    res.status(500).json({ status: "error", message: error.message });
+    console.error("Error creating client account:", error);
+    res.status(error.response.status || error.status || 500).json({ status: "error", message: error.response.data.message || error.message });
   }
 };
 
