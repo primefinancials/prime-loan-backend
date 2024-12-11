@@ -12,32 +12,34 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateBearerToken = void 0;
+exports.httpClient = void 0;
 const axios_1 = __importDefault(require("axios"));
 const config_1 = require("../config");
-const generateBearerToken = (consumerKey, consumerSecret) => __awaiter(void 0, void 0, void 0, function* () {
-    if (!consumerKey || !consumerSecret) {
-        throw new Error("Consumer Key or Consumer Secret is missing.");
-    }
-    const requestBody = {
-        consumerKey,
-        consumerSecret,
-        validityTime: "-1",
+const generateBearerToken_1 = require("./generateBearerToken");
+const httpClient = (endpoint_1, ...args_1) => __awaiter(void 0, [endpoint_1, ...args_1], void 0, function* (endpoint, method = "POST", body) {
+    const url = `${config_1.baseUrl}${endpoint}`;
+    const accessToken = yield (0, generateBearerToken_1.generateBearerToken)(config_1.customerKey, config_1.customerSecret);
+    const headers = {
+        "Content-Type": "application/json",
+        "AccessToken": accessToken || "",
     };
-    console.log({ authUrl: config_1.authUrl });
+    const options = {
+        url,
+        method,
+        headers,
+        data: body,
+    };
+    console.log({ body });
     try {
-        const response = yield axios_1.default.post(config_1.authUrl, requestBody, {
-            headers: { "Content-Type": "application/json" },
-        });
-        console.log({ auth: "passed" });
-        if (response.status !== 200) {
-            throw new Error(`Failed to generate access token: ${response.data.message}`);
+        const response = yield (0, axios_1.default)(options);
+        if (![200, 202].includes(response.status)) {
+            throw new Error(`Client creation failed: ${response.data.message}`);
         }
-        return response.data.data.access_token;
+        console.log({ httpClient: "passed" });
+        return response;
     }
     catch (error) {
-        console.error("Error generating token:", error.response.data.message || error.message || error);
-        throw new Error("Failed to generate bearer token.");
+        throw new Error(error.response.data.message || error.message || "API error");
     }
 });
-exports.generateBearerToken = generateBearerToken;
+exports.httpClient = httpClient;
