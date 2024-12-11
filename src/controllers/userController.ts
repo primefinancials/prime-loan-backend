@@ -176,7 +176,7 @@ export const walletAlerts = async (req: Request, res: Response) => {
       "originator_bank",
       "originator_narration",
       "timestamp",
-      "transaction_channel",
+      // "transaction_channel",
       "session_id",
     ]);
     

@@ -142,7 +142,7 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             "originator_bank",
             "originator_narration",
             "timestamp",
-            "transaction_channel",
+            // "transaction_channel",
             "session_id",
         ]);
         // Retrieve authenticated user
