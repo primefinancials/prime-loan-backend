@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.transfer = exports.bankListing = exports.accountEnquiry = exports.createClientAccount = void 0;
+exports.walletAlerts = exports.transfer = exports.bankListing = exports.accountEnquiry = exports.createClientAccount = void 0;
 const supabaseClient_1 = require("../utils/supabaseClient");
 const validateParams_1 = require("../utils/validateParams");
 const convertDate_1 = require("../utils/convertDate");
@@ -127,3 +127,56 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
     }
 });
 exports.transfer = transfer;
+// Function to handle wallet alerts
+const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const body = req.body;
+        console.log({ body });
+        // Validate required parameters
+        (0, validateParams_1.validateRequiredParams)(body, [
+            "reference",
+            "amount",
+            "account_number",
+            "originator_account_number",
+            "originator_account_name",
+            "originator_bank",
+            "originator_narration",
+            "timestamp",
+            "transaction_channel",
+            "session_id",
+        ]);
+        // Retrieve authenticated user
+        const { data: { user }, error: authError, } = yield supabaseClient_1.supabase.auth.getUser();
+        console.log({ user });
+        if (authError || !user) {
+            throw new Error("Authentication failed or user not found.");
+        }
+        // Insert transaction into database
+        const { data, error: insertError } = yield supabaseClient_1.supabase
+            .from("transactions")
+            .insert([
+            {
+                name: `Transfer from ${body.originator_account_name}`,
+                category: "credit",
+                type: "transfer",
+                user: user.id,
+                details: body.originator_narration,
+                transaction_number: body.reference,
+                amount: body.amount,
+                outstanding: 0.0,
+                session_id: body.session_id,
+                status: "success",
+            },
+        ]);
+        console.log({ data });
+        if (insertError) {
+            throw new Error(`Failed to insert transaction: ${insertError.message}`);
+        }
+        res.status(200).json({ status: 200, message: "Success", data });
+    }
+    catch (error) {
+        console.error("Error handling wallet alerts:", error);
+        res.status(400).json({ status: 400, message: error.message });
+    }
+});
+exports.walletAlerts = walletAlerts;
