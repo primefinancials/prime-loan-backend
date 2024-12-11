@@ -8,6 +8,6 @@ router.get("/loan-transaction-status", loanTransactionStatus);
 router.get("/loan-repayment-schedule", loanRepaymentSchedule);
 router.get("/loan-portfolio", loanPortfolio);
 router.post("/repay-loan", repayLoan);
-router.post("/reject-loan", rejectLoan);
+router.post("/reject-loan", rejectLoan); 
 
 export default router;
