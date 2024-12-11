@@ -10,4 +10,5 @@ router.get("/account-enquiry", userController_1.accountEnquiry);
 router.post("/create-client", userController_1.createClientAccount);
 router.get("/bank-listing", userController_1.bankListing);
 router.post("/transfer", userController_1.transfer);
+router.post("/wallet-alert", userController_1.walletAlerts);
 exports.default = router;
