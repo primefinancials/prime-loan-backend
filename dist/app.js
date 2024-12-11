@@ -6,8 +6,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const userRoutes_1 = __importDefault(require("./routes/userRoutes"));
-// import transactionRoutes from "./routes/transactionRoutes";
-// import budgetRoutes from "./routes/loanRoutes";
+const kycRoutes_1 = __importDefault(require("./routes/kycRoutes"));
+const paybillsRoutes_1 = __importDefault(require("./routes/paybillsRoutes"));
+const loanRoutes_1 = __importDefault(require("./routes/loanRoutes"));
 const errorHandler_1 = require("./middlewares/errorHandler");
 const app = (0, express_1.default)();
 // Middlewares
@@ -16,8 +17,9 @@ app.use(express_1.default.json());
 app.use(express_1.default.urlencoded({ extended: true }));
 // Routes
 app.use("/api/users", userRoutes_1.default);
-// app.use("/api/transactions", transactionRoutes);
-// app.use("/api/budgets", budgetRoutes);
+app.use("/api/kyc", kycRoutes_1.default);
+app.use("/api/paybills", paybillsRoutes_1.default);
+app.use("/api/loans", loanRoutes_1.default);
 // Global Error Handler
 app.use(errorHandler_1.errorHandler);
 exports.default = app;

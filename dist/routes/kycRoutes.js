@@ -4,10 +4,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const userController_1 = require("../controllers/userController");
+const kycController_1 = require("../controllers/kycController");
 const router = express_1.default.Router();
-router.get("/account-enquiry", userController_1.accountEnquiry);
-router.post("/create-client", userController_1.createClientAccount);
-router.get("/bank-listing", userController_1.bankListing);
-router.post("/transfer", userController_1.transfer);
+router.post("/liveness", kycController_1.livenessCheck);
+router.get("/bvn-lookup", kycController_1.bvnLookup);
+router.post("/nin-verification", kycController_1.ninVerification);
 exports.default = router;
