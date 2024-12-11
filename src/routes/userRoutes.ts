@@ -1,9 +1,11 @@
 import express from "express";
-import { getUsers, createClientAccount } from "../controllers/userController";
+import { accountEnquiry, createClientAccount, bankListing, transfer } from "../controllers/userController";
 
 const router = express.Router();
 
-router.get("/", getUsers);
-router.post("/", createClientAccount);
+router.get("/account-enquiry", accountEnquiry);
+router.post("/create-client", createClientAccount);
+router.get("/bank-listing", bankListing);
+router.post("/transfer", transfer);
 
 export default router;

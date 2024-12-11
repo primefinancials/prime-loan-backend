@@ -1,10 +1,8 @@
 import { supabase } from "../utils/supabaseClient";
 import { Request, Response, NextFunction } from "express";
-import axios from "axios";
-import { generateBearerToken } from "../utils/generateBearerToken";
 import { validateRequiredParams } from "../utils/validateParams";
 import { convertDate } from "../utils/convertDate";
-import { customerKey, customerSecret } from "../config";
+import { httpClient } from "../utils/httpClient";
 
 export const createClientAccount = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -12,37 +10,20 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
 
     // Validate required parameters
     validateRequiredParams(
-        { bvn, dateOfBirth: dob, password, surname, email, name, phone, nin }, 
-        [ "bvn", "dateOfBirth", "password", "phone", "nin", "email", "name", "surname" ]
+        { bvn, dob, password, surname, email, name, phone, nin }, 
+        [ "bvn", "dob", "password", "phone", "nin", "email", "name", "surname" ]
     );
 
-    console.log({ customerKey, customerSecret })
+    const apiUrl = `/wallet2/client/create?bvn=${bvn}&dateOfBirth=${convertDate(dob)}`;
 
-    const accessToken = await generateBearerToken(customerKey, customerSecret);
-
-    const apiUrl = `https://api-apps.vfdbank.systems/vtech-wallet/api/v1/wallet2/client/create`;
-
-    const response = await axios.post(
-      `${apiUrl}?bvn=${bvn}&dateOfBirth=${convertDate(dob)}`,
-      { },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          AccessToken: accessToken,
-        },
-      }
-    );
-
-    if (![200, 202].includes(response.status)) {
-      throw new Error(`Client creation failed: ${response.data.message}`);
-    }
+    const response = await httpClient(apiUrl, "POST", { });
 
     if(response.data) {
         const { data: { user }, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
-            data: { first_name: name, surname, phone, bvn, nin, dob: convertDate(dob), accountNo: response.data.data.accountNo },
+            data: { first_name: name, surname, phone, bvn, nin, dateOfBirth: convertDate(dob), accountNo: response.data.data.accountNo },
           },
         });
 
@@ -50,23 +31,130 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
             throw new Error(`Error storing to supabase: ${error.message}`);
         } 
 
-        res.status(200).json({ status: "success", data: { ...response.data.data, user } });
+        res.status(response.status).json({ status: "success", data: { ...response.data.data, user } });
     }
 
     res.status(400).json({ status: "error", message: response.data.message });
   } catch (error: any) {
-    console.error("Error creating client account:", error);
-    res.status(error.response.status || error.status || 500).json({ status: "error", message: error.response.data.message || error.message });
+    console.log({ error });
+    res.status(error.status || 500).json({ status: "error", message: (error.response.data && error.response?.data?.message) || error?.message });
   }
 };
 
-export const getUsers = async (req: Request, res: Response) => {
-  try {
-    const { data, error } = await supabase.from("users").select("*");
-    if (error) throw error;
-
-    res.status(200).json({ status: "success", data });
-  } catch (error: any) {
-    res.status(500).json({ status: "error", message: error.message });
-  }
+export const accountEnquiry = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { accountNo, bank, transferType } = req.query;
+  
+      // Validate required parameters
+      validateRequiredParams(
+          { accountNo, bank, transferType }, 
+          [ "accountNo", "bank", "transferType" ]
+      );
+  
+      const response = await httpClient(`/wallet2/transfer/recipient?accountNo=${accountNo}&bank=${bank}&transfer_type=${transferType}`, "GET");
+  
+      res.status(400).json({ status: "error", message: response.data.message });
+    } catch (error: any) {
+      console.log("Error getting account enquiry:", error);
+      res.status(error.status || 500).json({ status: "error", message: error.message });
+    }
 };
+
+export const bankListing = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const response = await httpClient(`/wallet2/bank`, "GET");
+  
+      res.status(response.status).json({ status: "success", message: response.data.data });
+    } catch (error: any) {
+      console.log("Error creating client account:", error);
+      res.status(error.status || 500).json({ status: "error", message: error.message });
+    }
+};
+
+export const transfer = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { 
+        fromAccount,
+        fromClientId,
+        fromClient,
+        fromSavingsId,
+        fromBvn,
+        toClient,
+        toSession,
+        toBvn,
+        toKyc,
+        toAccount,
+        toBank,
+        signature,
+        amount,
+        remark,
+        reference,
+        userId
+      } = req.body;
+  
+      // Validate required parameters
+      validateRequiredParams(
+          { ...req.body }, 
+          [ 
+            "fromAccount", "fromClientId", "fromClient", "fromSavingsId", "fromBvn", "toClientId", "toClient",
+            "toBvn", "toAccount", "toBank", "signature", "amount", "reference", "userId", "toKyc"
+          ]
+      );
+  
+      const apiUrl = `/wallet2/client/create`;
+  
+      const response = await httpClient(apiUrl, "POST", {
+        fromAccount,
+        uniqueSenderAccountId: "",
+        fromClientId,
+        fromClient,
+        fromSavingsId,
+        fromBvn,
+        toClient,
+        toSession,
+        toBvn,
+        toKyc,
+        toAccount,
+        toBank,
+        signature,
+        amount,
+        remark,
+        transferType: "inter",
+        reference
+      });
+  
+      if(response.data) {
+        const { data: transaction, error } = await supabase
+            .from('transactions')
+            .insert([
+            { 
+                name: "Withdrawal-" + reference, 
+                category: "credit",
+                type: "loan",
+                user: userId,
+                details: remark,
+                transaction_number: response.data.data.txnId || "no-txnId",
+                amount,
+                outstanding: 0.0,
+                session_id: response.data.data.sessionId || "no-sessionId",
+                status: "success"
+            },
+            ])
+            .select()
+        ;
+  
+        if (error) {
+            throw new Error(`Error storing to supabase: ${error.message}`);
+        } 
+  
+        res.status(response.status).json({ status: "success", data: { ...response.data.data, transaction } });
+      }
+  
+      res.status(400).json({ status: "error", message: response.data.message });
+    } catch (error: any) {
+      console.log("Error creating client account:", error);
+      res.status(error.status || 500).json({ status: "error", message: error.message });
+    }
+};
+
+
