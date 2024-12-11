@@ -18,6 +18,8 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
 
     const response = await httpClient(apiUrl, "POST", { });
 
+    console.log({ response })
+
     if(response.data) {
         const { data: { user }, error } = await supabase.auth.signUp({
           email,
@@ -37,7 +39,7 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
     res.status(400).json({ status: "error", message: response.data.message });
   } catch (error: any) {
     console.log({ error });
-    res.status(error.status || 500).json({ status: "error", message: (error.response.data && error.response?.data?.message) || error?.message });
+    res.status(error.status || 500).json({ status: "error", message: error.message });
   }
 };
 
