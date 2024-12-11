@@ -159,4 +159,69 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
     }
 };
 
+// Function to handle wallet alerts
+export const walletAlerts = async (req: Request, res: Response) => {
+  try {
+    const body = req.body;
+
+    console.log({ body })
+
+    // Validate required parameters
+    validateRequiredParams(body, [
+      "reference",
+      "amount",
+      "account_number",
+      "originator_account_number",
+      "originator_account_name",
+      "originator_bank",
+      "originator_narration",
+      "timestamp",
+      "transaction_channel",
+      "session_id",
+    ]);
+    
+    // Retrieve authenticated user
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    console.log({ user });
+
+    if (authError || !user) {
+      throw new Error("Authentication failed or user not found.");
+    }
+
+    // Insert transaction into database
+    const { data, error: insertError } = await supabase
+      .from("transactions")
+      .insert([
+        {
+          name: `Transfer from ${body.originator_account_name}`,
+          category: "credit",
+          type: "transfer",
+          user: user.id,
+          details: body.originator_narration,
+          transaction_number: body.reference,
+          amount: body.amount,
+          outstanding: 0.0,
+          session_id: body.session_id,
+          status: "success",
+        },
+      ]);
+
+      console.log({ data })
+
+    if (insertError) {
+      throw new Error(`Failed to insert transaction: ${insertError.message}`);
+    }
+
+    res.status(200).json({ status: 200, message: "Success", data });
+  } catch (error: any) {
+    console.error("Error handling wallet alerts:", error);
+    res.status(400).json({ status: 400, message: error.message });
+  }
+};
+
+
 
