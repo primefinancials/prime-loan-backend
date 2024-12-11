@@ -15,13 +15,13 @@ const validateParams_1 = require("../utils/validateParams");
 const convertDate_1 = require("../utils/convertDate");
 const httpClient_1 = require("../utils/httpClient");
 const createClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b;
     try {
         const { email, name, surname, password, phone, bvn, nin, dob } = req.body;
         // Validate required parameters
         (0, validateParams_1.validateRequiredParams)({ bvn, dob, password, surname, email, name, phone, nin }, ["bvn", "dob", "password", "phone", "nin", "email", "name", "surname"]);
         const apiUrl = `/wallet2/client/create?bvn=${bvn}&dateOfBirth=${(0, convertDate_1.convertDate)(dob)}`;
         const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", {});
+        console.log({ response });
         if (response.data) {
             const { data: { user }, error } = yield supabaseClient_1.supabase.auth.signUp({
                 email,
@@ -39,7 +39,7 @@ const createClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0
     }
     catch (error) {
         console.log({ error });
-        res.status(error.status || 500).json({ status: "error", message: (error.response.data && ((_b = (_a = error.response) === null || _a === void 0 ? void 0 : _a.data) === null || _b === void 0 ? void 0 : _b.message)) || (error === null || error === void 0 ? void 0 : error.message) });
+        res.status(error.status || 500).json({ status: "error", message: error.message });
     }
 });
 exports.createClientAccount = createClientAccount;

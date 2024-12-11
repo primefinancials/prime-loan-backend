@@ -32,6 +32,7 @@ const httpClient = (endpoint_1, ...args_1) => __awaiter(void 0, [endpoint_1, ...
     console.log({ body });
     try {
         const response = yield (0, axios_1.default)(options);
+        console.log({ response });
         if (![200, 202].includes(response.status)) {
             throw new Error(`Client creation failed: ${response.data.message}`);
         }

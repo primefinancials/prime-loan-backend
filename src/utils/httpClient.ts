@@ -23,6 +23,8 @@ export const httpClient = async (endpoint: string, method: string = "POST", body
   try {
     const response = await axios(options);
 
+    console.log({ response })
+
     if (![200, 202].includes(response.status)) {
         throw new Error(`Client creation failed: ${response.data.message}`);
     }
