@@ -151,9 +151,14 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             throw new Error(`Failed to get users: ${error.message}`);
         }
         console.log({ users });
+        users.map((user) => {
+            var _a;
+            console.log({ userPin: (_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.accountNo });
+        });
+        console.log({ myPin: body.account_number });
         // find the google identity 
         if (users.length) {
-            const user = users.find(identity => { var _a; return ((_a = identity.user_metadata) === null || _a === void 0 ? void 0 : _a.accountNo) === body.account_number; });
+            const user = users.find(identity => { var _a; return String((_a = identity.user_metadata) === null || _a === void 0 ? void 0 : _a.accountNo) === String(body.account_number); });
             console.log({ user });
             if (!user || !user.id) {
                 throw new Error("User not found.");
