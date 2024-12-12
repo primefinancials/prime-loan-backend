@@ -146,33 +146,38 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             "session_id",
         ]);
         // Retrieve authenticated user
-        const { data: { user }, error: authError, } = yield supabaseClient_1.supabase.auth.getUser();
-        console.log({ user });
-        if (authError || !user) {
-            throw new Error("Authentication failed or user not found.");
+        // retrieve all identites linked to a user
+        const { data: identities } = yield supabaseClient_1.supabase.auth.getUserIdentities();
+        // find the google identity 
+        if (identities) {
+            const user = identities.identities.find(identity => { var _a; return ((_a = identity.identity_data) === null || _a === void 0 ? void 0 : _a.accountNo) === body.account_number; });
+            console.log({ user });
+            if (!user || !user.user_id) {
+                throw new Error("User not found.");
+            }
+            // Insert transaction into database
+            const { data, error: insertError } = yield supabaseClient_1.supabase
+                .from("transactions")
+                .insert([
+                {
+                    name: `Transfer from ${body.originator_account_name}`,
+                    category: "credit",
+                    type: "transfer",
+                    user: user.user_id,
+                    details: body.originator_narration,
+                    transaction_number: body.reference,
+                    amount: body.amount,
+                    outstanding: 0.0,
+                    session_id: body.session_id,
+                    status: "success",
+                },
+            ]);
+            console.log({ data });
+            if (insertError) {
+                throw new Error(`Failed to insert transaction: ${insertError.message}`);
+            }
+            res.status(200).json({ status: 200, message: "Success", data });
         }
-        // Insert transaction into database
-        const { data, error: insertError } = yield supabaseClient_1.supabase
-            .from("transactions")
-            .insert([
-            {
-                name: `Transfer from ${body.originator_account_name}`,
-                category: "credit",
-                type: "transfer",
-                user: user.id,
-                details: body.originator_narration,
-                transaction_number: body.reference,
-                amount: body.amount,
-                outstanding: 0.0,
-                session_id: body.session_id,
-                status: "success",
-            },
-        ]);
-        console.log({ data });
-        if (insertError) {
-            throw new Error(`Failed to insert transaction: ${insertError.message}`);
-        }
-        res.status(200).json({ status: 200, message: "Success", data });
     }
     catch (error) {
         console.error("Error handling wallet alerts:", error);

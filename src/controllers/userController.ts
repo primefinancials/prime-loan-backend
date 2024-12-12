@@ -180,43 +180,49 @@ export const walletAlerts = async (req: Request, res: Response) => {
       "session_id",
     ]);
     
-    // Retrieve authenticated user
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
+    
+      // Retrieve authenticated user
+      // retrieve all identites linked to a user
+      const { data: identities } = await supabase.auth.getUserIdentities()
 
-    console.log({ user });
+      // find the google identity 
+    if(identities) {
+      const user = identities.identities.find(
+        identity => identity.identity_data?.accountNo === body.account_number
+      )
 
-    if (authError || !user) {
-      throw new Error("Authentication failed or user not found.");
+      console.log({ user });
+
+      if (!user || !user.user_id) {
+        throw new Error("User not found.");
+      }
+
+      // Insert transaction into database
+      const { data, error: insertError } = await supabase
+        .from("transactions")
+        .insert([
+          {
+            name: `Transfer from ${body.originator_account_name}`,
+            category: "credit",
+            type: "transfer",
+            user: user.user_id,
+            details: body.originator_narration,
+            transaction_number: body.reference,
+            amount: body.amount,
+            outstanding: 0.0,
+            session_id: body.session_id,
+            status: "success",
+          },
+        ]);
+
+        console.log({ data })
+
+      if (insertError) {
+        throw new Error(`Failed to insert transaction: ${insertError.message}`);
+      }
+
+      res.status(200).json({ status: 200, message: "Success", data });
     }
-
-    // Insert transaction into database
-    const { data, error: insertError } = await supabase
-      .from("transactions")
-      .insert([
-        {
-          name: `Transfer from ${body.originator_account_name}`,
-          category: "credit",
-          type: "transfer",
-          user: user.id,
-          details: body.originator_narration,
-          transaction_number: body.reference,
-          amount: body.amount,
-          outstanding: 0.0,
-          session_id: body.session_id,
-          status: "success",
-        },
-      ]);
-
-      console.log({ data })
-
-    if (insertError) {
-      throw new Error(`Failed to insert transaction: ${insertError.message}`);
-    }
-
-    res.status(200).json({ status: 200, message: "Success", data });
   } catch (error: any) {
     console.error("Error handling wallet alerts:", error);
     res.status(400).json({ status: 400, message: error.message });
