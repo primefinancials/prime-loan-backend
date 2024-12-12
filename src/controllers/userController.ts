@@ -182,19 +182,23 @@ export const walletAlerts = async (req: Request, res: Response) => {
     
     
     // retrieve all identites linked to a user
-    const { data: identities } = await supabase.auth.getUserIdentities();
+    const { data: { users }, error } = await supabase.auth.admin.listUsers();
 
-    console.log({ identities })
+    if (error) {
+      throw new Error(`Failed to get users: ${error.message}`);
+    }
+
+    console.log({ users })
 
       // find the google identity 
-    if(identities) {
-      const user = identities.identities.find(
-        identity => identity.identity_data?.accountNo === body.account_number
+    if(users.length) {
+      const user = users.find(
+        identity => identity.user_metadata?.accountNo === body.account_number
       )
 
       console.log({ user });
 
-      if (!user || !user.user_id) {
+      if (!user || !user.id) {
         throw new Error("User not found.");
       }
 
@@ -206,7 +210,7 @@ export const walletAlerts = async (req: Request, res: Response) => {
             name: `Transfer from ${body.originator_account_name}`,
             category: "credit",
             type: "transfer",
-            user: user.user_id,
+            user: user.id,
             details: body.originator_narration,
             transaction_number: body.reference,
             amount: body.amount,
@@ -222,8 +226,10 @@ export const walletAlerts = async (req: Request, res: Response) => {
         throw new Error(`Failed to insert transaction: ${insertError.message}`);
       }
 
-      res.status(200).json({ status: 200, message: "Success", data });
+      res.status(200).json({ status: "Success", data });
     }
+
+    res.status(404).json({ status: "Failed", message: "User not found" });
   } catch (error: any) {
     console.error("Error handling wallet alerts:", error);
     res.status(400).json({ status: 400, message: error.message });
