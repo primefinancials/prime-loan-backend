@@ -232,7 +232,7 @@ export const walletAlerts = async (req: Request, res: Response) => {
         throw new Error(`Failed to insert transaction: ${insertError.message}`);
       }
 
-      res.status(200).json({ status: "Success", data });
+      return res.status(200).json({ status: "Success", data });
     }
 
     res.status(404).json({ status: "Failed", message: "User not found" });

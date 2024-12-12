@@ -184,7 +184,7 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             if (insertError) {
                 throw new Error(`Failed to insert transaction: ${insertError.message}`);
             }
-            res.status(200).json({ status: "Success", data });
+            return res.status(200).json({ status: "Success", data });
         }
         res.status(404).json({ status: "Failed", message: "User not found" });
     }
