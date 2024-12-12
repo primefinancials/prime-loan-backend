@@ -173,7 +173,7 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
                     type: "transfer",
                     user: user.id,
                     details: body.originator_narration,
-                    transaction_number: body.reference,
+                    transaction_number: String(body.reference),
                     amount: Number(body.amount).toFixed(0),
                     outstanding: 0.0,
                     session_id: body.session_id,
