@@ -146,13 +146,16 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             "session_id",
         ]);
         // retrieve all identites linked to a user
-        const { data: identities } = yield supabaseClient_1.supabase.auth.getUserIdentities();
-        console.log({ identities });
+        const { data: { users }, error } = yield supabaseClient_1.supabase.auth.admin.listUsers();
+        if (error) {
+            throw new Error(`Failed to get users: ${error.message}`);
+        }
+        console.log({ users });
         // find the google identity 
-        if (identities) {
-            const user = identities.identities.find(identity => { var _a; return ((_a = identity.identity_data) === null || _a === void 0 ? void 0 : _a.accountNo) === body.account_number; });
+        if (users.length) {
+            const user = users.find(identity => { var _a; return ((_a = identity.user_metadata) === null || _a === void 0 ? void 0 : _a.accountNo) === body.account_number; });
             console.log({ user });
-            if (!user || !user.user_id) {
+            if (!user || !user.id) {
                 throw new Error("User not found.");
             }
             // Insert transaction into database
@@ -163,7 +166,7 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
                     name: `Transfer from ${body.originator_account_name}`,
                     category: "credit",
                     type: "transfer",
-                    user: user.user_id,
+                    user: user.id,
                     details: body.originator_narration,
                     transaction_number: body.reference,
                     amount: body.amount,
@@ -176,8 +179,9 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             if (insertError) {
                 throw new Error(`Failed to insert transaction: ${insertError.message}`);
             }
-            res.status(200).json({ status: 200, message: "Success", data });
+            res.status(200).json({ status: "Success", data });
         }
+        res.status(404).json({ status: "Failed", message: "User not found" });
     }
     catch (error) {
         console.error("Error handling wallet alerts:", error);
