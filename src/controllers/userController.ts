@@ -190,10 +190,16 @@ export const walletAlerts = async (req: Request, res: Response) => {
 
     console.log({ users })
 
+    users.map((user) =>{
+      console.log({ userPin: user.user_metadata?.accountNo })
+    })
+
+    console.log({ myPin: body.account_number })
+
       // find the google identity 
     if(users.length) {
       const user = users.find(
-        identity => identity.user_metadata?.accountNo === body.account_number
+        identity => String(identity.user_metadata?.accountNo) === String(body.account_number)
       )
 
       console.log({ user });
