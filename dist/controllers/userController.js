@@ -174,7 +174,7 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
                     user: user.id,
                     details: body.originator_narration,
                     transaction_number: body.reference,
-                    amount: body.amount,
+                    amount: Number(body.amount).toFixed(0),
                     outstanding: 0.0,
                     session_id: body.session_id,
                     status: "success",
