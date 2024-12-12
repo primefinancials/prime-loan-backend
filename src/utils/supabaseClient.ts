@@ -3,4 +3,9 @@ import { SUPABASE_URL, SUPABASE_KEY } from "../config";
 
 console.log({ SUPABASE_URL, SUPABASE_KEY })
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  });
