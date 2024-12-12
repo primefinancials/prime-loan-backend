@@ -145,9 +145,9 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             // "transaction_channel",
             "session_id",
         ]);
-        // Retrieve authenticated user
         // retrieve all identites linked to a user
         const { data: identities } = yield supabaseClient_1.supabase.auth.getUserIdentities();
+        console.log({ identities });
         // find the google identity 
         if (identities) {
             const user = identities.identities.find(identity => { var _a; return ((_a = identity.identity_data) === null || _a === void 0 ? void 0 : _a.accountNo) === body.account_number; });

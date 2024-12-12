@@ -181,9 +181,10 @@ export const walletAlerts = async (req: Request, res: Response) => {
     ]);
     
     
-      // Retrieve authenticated user
-      // retrieve all identites linked to a user
-      const { data: identities } = await supabase.auth.getUserIdentities()
+    // retrieve all identites linked to a user
+    const { data: identities } = await supabase.auth.getUserIdentities();
+
+    console.log({ identities })
 
       // find the google identity 
     if(identities) {
