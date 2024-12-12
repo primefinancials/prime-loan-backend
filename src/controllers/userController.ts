@@ -208,6 +208,15 @@ export const walletAlerts = async (req: Request, res: Response) => {
         throw new Error("User not found.");
       }
 
+      const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
+        user.id,
+        { user_metadata: { wallet: Number(user?.user_metadata.wallet || 0) + Number(body.amount).toFixed(0), ...user.user_metadata  }}
+      )
+
+      if (newError) {
+        throw new Error(`Failed to update user wallet: ${newError.message}`);
+      }
+
       // Insert transaction into database
       const { data, error: insertError } = await supabase
         .from("transactions")
