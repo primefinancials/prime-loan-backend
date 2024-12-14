@@ -10,5 +10,4 @@ router.get("/bank-listing", bankListing);
 router.post("/transfer", transfer);
 router.post("/wallet-alert", walletAlerts);
 
-
 export default router;

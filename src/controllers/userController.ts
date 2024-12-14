@@ -50,8 +50,8 @@ export const accountEnquiry = async (req: Request, res: Response, next: NextFunc
 
     // Validate required parameters
     validateRequiredParams(
-        { accountNumber }, 
-        [ "accountNumber" ]
+      { accountNumber }, 
+      [ "accountNumber" ]
     );
 
     const response = await httpClient(`/wallet2/account/enquiry?accountNumber=${accountNumber}`, "GET");
