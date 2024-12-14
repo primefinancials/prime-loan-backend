@@ -56,7 +56,7 @@ export const accountEnquiry = async (req: Request, res: Response, next: NextFunc
 
     const response = await httpClient(`/wallet2/account/enquiry?accountNumber=${accountNumber}`, "GET");
 
-    res.status(400).json({ status: "error", message: response.data.message });
+    res.status(response.status).json({ status: "success", data: response.data.data });
   } catch (error: any) {
     console.log("Error getting account enquiry:", error);
     res.status(error.status || 500).json({ status: "error", message: error.message });
@@ -75,7 +75,7 @@ export const beneficiaryEnquiry = async (req: Request, res: Response, next: Next
   
       const response = await httpClient(`/wallet2/transfer/recipient?accountNo=${accountNo}&bank=${bank}&transfer_type=${transferType}`, "GET");
   
-      res.status(400).json({ status: "error", message: response.data.message });
+      res.status(response.status).json({ status: "success", data: response.data.data });
     } catch (error: any) {
       console.log("Error getting account enquiry:", error);
       res.status(error.status || 500).json({ status: "error", message: error.message });
