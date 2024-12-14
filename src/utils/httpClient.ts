@@ -2,7 +2,7 @@ import axios, { AxiosRequestConfig } from "axios";
 import { customerKey, customerSecret, baseUrl } from "../config";
 import { generateBearerToken } from "./generateBearerToken";
 
-export const httpClient = async (endpoint: string, method: string = "POST", body?: object) => {
+export const httpClient = async (endpoint: string, method: string = "GET", body?: object) => {
   const url = `${baseUrl}${endpoint}`;
   const accessToken = await generateBearerToken(customerKey, customerSecret);
 
