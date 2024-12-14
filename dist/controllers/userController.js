@@ -50,7 +50,7 @@ const accountEnquiry = (req, res, next) => __awaiter(void 0, void 0, void 0, fun
         // Validate required parameters
         (0, validateParams_1.validateRequiredParams)({ accountNumber }, ["accountNumber"]);
         const response = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${accountNumber}`, "GET");
-        res.status(400).json({ status: "error", message: response.data.message });
+        res.status(response.status).json({ status: "success", data: response.data.data });
     }
     catch (error) {
         console.log("Error getting account enquiry:", error);
@@ -64,7 +64,7 @@ const beneficiaryEnquiry = (req, res, next) => __awaiter(void 0, void 0, void 0,
         // Validate required parameters
         (0, validateParams_1.validateRequiredParams)({ accountNo, bank, transferType }, ["accountNo", "bank", "transferType"]);
         const response = yield (0, httpClient_1.httpClient)(`/wallet2/transfer/recipient?accountNo=${accountNo}&bank=${bank}&transfer_type=${transferType}`, "GET");
-        res.status(400).json({ status: "error", message: response.data.message });
+        res.status(response.status).json({ status: "success", data: response.data.data });
     }
     catch (error) {
         console.log("Error getting account enquiry:", error);
