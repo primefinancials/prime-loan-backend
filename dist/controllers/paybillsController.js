@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.payBill = exports.validateCustomer = exports.getBillerItems = exports.getBillerList = exports.getBillerCategories = void 0;
+exports.transactionStatus = exports.payBill = exports.validateCustomer = exports.getBillerItems = exports.getBillerList = exports.getBillerCategories = void 0;
 const httpClient_1 = require("../utils/httpClient");
 const supabaseClient_1 = require("../utils/supabaseClient");
 const validateParams_1 = require("../utils/validateParams");
@@ -61,7 +61,7 @@ const validateCustomer = (req, res) => __awaiter(void 0, void 0, void 0, functio
 exports.validateCustomer = validateCustomer;
 const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { userId, name, category, details, customerId, amount, reference, division, paymentItem, productId, billerId, } = req.body;
+        const { userId, name, category, details, customerId, amount, reference, division, paymentItem, productId, billerId, phoneNumber } = req.body;
         // Validate required parameters
         (0, validateParams_1.validateRequiredParams)(Object.assign({}, req.body), [
             "userId",
@@ -74,6 +74,7 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             "paymentItem",
             "productId",
             "billerId",
+            "phoneNumber"
         ]);
         // Call the payment API
         const payResponse = yield (0, httpClient_1.httpClient)("/billspaymentstore/pay", "POST", req.body);
@@ -94,6 +95,7 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                     outstanding: 0.0,
                     session_id: reference,
                     status: transactionStatus,
+                    phoneNumber,
                 },
             ])
                 .select();
@@ -116,3 +118,15 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     }
 });
 exports.payBill = payBill;
+const transactionStatus = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { transactionId } = req.query;
+        (0, validateParams_1.validateRequiredParams)({ transactionId }, ["transactionId"]);
+        const response = yield (0, httpClient_1.httpClient)(`/billspaymentstore/transactionStatus?transactionId=${transactionId}`, "GET");
+        res.status(response.status || 200).json({ status: "success", data: response.data.data });
+    }
+    catch (error) {
+        res.status(error.status || 500).json({ status: "error", message: error.message });
+    }
+});
+exports.transactionStatus = transactionStatus;

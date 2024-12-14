@@ -78,6 +78,7 @@ export const payBill = async (req: Request, res: Response) => {
       paymentItem,
       productId,
       billerId,
+      phoneNumber
     } = req.body;
 
     // Validate required parameters
@@ -94,6 +95,7 @@ export const payBill = async (req: Request, res: Response) => {
         "paymentItem",
         "productId",
         "billerId",
+        "phoneNumber"
       ]
     );
 
@@ -118,6 +120,7 @@ export const payBill = async (req: Request, res: Response) => {
             outstanding: 0.0,
             session_id: reference,
             status: transactionStatus,
+            phoneNumber,
           },
         ])
         .select();
@@ -141,5 +144,22 @@ export const payBill = async (req: Request, res: Response) => {
       status: "error",
       message: error.message || "An error occurred",
     });
+  }
+};
+
+export const transactionStatus = async (req: Request, res: Response) => {
+  try {
+    const { transactionId } = req.query;
+    
+    validateRequiredParams(
+      { transactionId }, 
+      [ "transactionId" ]
+    );
+
+    const response = await httpClient(`/billspaymentstore/transactionStatus?transactionId=${transactionId}`, "GET");
+    
+    res.status(response.status || 200).json({ status: "success", data: response.data.data });
+  } catch (error: any) {
+    res.status(error.status || 500).json({ status: "error", message: error.message });
   }
 };

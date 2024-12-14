@@ -13,23 +13,77 @@ exports.loanPortfolio = exports.loanRepaymentSchedule = exports.loanTransactionS
 const supabaseClient_1 = require("../utils/supabaseClient");
 const validateParams_1 = require("../utils/validateParams");
 const httpClient_1 = require("../utils/httpClient");
+const generateRef_1 = require("../utils/generateRef");
 const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
+        const { transactionId, accountNo, amount, duration, userId } = req.body;
         // Validate required parameters
-        (0, validateParams_1.validateRequiredParams)(Object.assign({}, req.body), ["transactionId", "accountNo", "amount", "duration"]);
-        const response = yield (0, httpClient_1.httpClient)("/credit/loan/create-and-disburse", "POST", req.body);
-        if (response.data) {
-            const { transactionId } = req.body;
-            const { data: loan, error } = yield supabaseClient_1.supabase
-                .from('loans')
-                .update([{ status: "accepted" }])
-                .eq("transactionId", transactionId)
-                .select();
-            if (error) {
-                throw new Error(`Error storing to supabase: ${error.message}`);
+        (0, validateParams_1.validateRequiredParams)(Object.assign({}, req.body), ["transactionId", "accountNo", "amount", "duration", "userId"]);
+        const { data: { user } } = yield supabaseClient_1.supabase.auth.admin.getUserById(userId);
+        console.log({ user });
+        const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${accountNo}`, "GET");
+        console.log({ account });
+        const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
+        console.log({ useraccount });
+        if (account.data && useraccount.data) {
+            const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
+            const { accountNo: uan, accountBalance: uab, accountId: uai, client: uc, clientId: uci, savingsProductName: uspn } = account.data.data;
+            const reference = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
+            const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", {
+                fromAccount: accountNo,
+                uniqueSenderAccountId: accountId,
+                fromClientId: clientId,
+                fromClient: client,
+                fromSavingsId: savingsProductName,
+                // fromBvn: "",
+                toClientId: uci,
+                toClient: uc,
+                toSavingsId: uspn,
+                // toSession,
+                // toBvn,
+                toAccount: uan,
+                toBank: "999999",
+                signature: "", //adminisrator
+                amount,
+                remark: "Loan Disbursement",
+                transferType: "intra",
+                reference
+            });
+            console.log({ response });
+            if (response.data) {
+                const { transactionId } = req.body;
+                const { data: loan, error } = yield supabaseClient_1.supabase
+                    .from('loans')
+                    .update([{ status: "accepted" }])
+                    .eq("transactionId", transactionId)
+                    .select();
+                if (error) {
+                    throw new Error(`Error storing to supabase: ${error.message}`);
+                }
+                const { data: transaction, error: transactionError } = yield supabaseClient_1.supabase
+                    .from('transactions')
+                    .insert([
+                    {
+                        name: "Withdrawal-" + reference,
+                        category: "credit",
+                        type: "loan",
+                        user: userId,
+                        details: "Loan Disbursement",
+                        transaction_number: response.data.data.txnId || "no-txnId",
+                        amount,
+                        outstanding: 0.0,
+                        session_id: response.data.data.sessionId || "no-sessionId",
+                        status: "success"
+                    },
+                ])
+                    .select();
+                if (transactionError) {
+                    throw new Error(`Error storing tansaction to supabase: ${transactionError.message}`);
+                }
             }
+            res.status(response.status).json({ status: "success", data: response.data.data });
         }
-        res.status(response.status).json({ status: "success", data: response.data.data });
+        res.status(400).json({ status: "success", message: 'Unable to get users information' });
     }
     catch (error) {
         console.log("Error creating disbursing loan:", error);
@@ -45,7 +99,7 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
             "fromAccount", "fromClientId", "fromClient", "fromSavingsId", "fromBvn", "toClientId", "toClient",
             "toSavingsId", "toBvn", "toAccount", "toBank", "signature", "amount", "reference", "userId", "outstanding"
         ]);
-        const apiUrl = `/wallet2/client/create`;
+        const apiUrl = `/wallet2/transfer`;
         const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", {
             fromAccount,
             uniqueSenderAccountId: "",
@@ -89,7 +143,7 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
                     outstanding: outstanding - amount,
                     session_id: response.data.data.sessionId || "no-sessionId",
                     status: "success"
-                },
+                }
             ])
                 .select();
             if (transactionError) {
