@@ -94,8 +94,7 @@ export const payBill = async (req: Request, res: Response) => {
         "division",
         "paymentItem",
         "productId",
-        "billerId",
-        "phoneNumber"
+        "billerId"
       ]
     );
 
@@ -120,7 +119,7 @@ export const payBill = async (req: Request, res: Response) => {
             outstanding: 0.0,
             session_id: reference,
             status: transactionStatus,
-            phoneNumber,
+            ...(phoneNumber && { phoneNumber }),
           },
         ])
         .select();
