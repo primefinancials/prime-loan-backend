@@ -73,8 +73,7 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             "division",
             "paymentItem",
             "productId",
-            "billerId",
-            "phoneNumber"
+            "billerId"
         ]);
         // Call the payment API
         const payResponse = yield (0, httpClient_1.httpClient)("/billspaymentstore/pay", "POST", req.body);
@@ -84,19 +83,8 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             const { data, error } = yield supabaseClient_1.supabase
                 .from("transactions")
                 .insert([
-                {
-                    name,
-                    category,
-                    type: "paybills",
-                    user: userId,
-                    details,
-                    transaction_number: customerId,
-                    amount,
-                    outstanding: 0.0,
-                    session_id: reference,
-                    status: transactionStatus,
-                    phoneNumber,
-                },
+                Object.assign({ name,
+                    category, type: "paybills", user: userId, details, transaction_number: customerId, amount, outstanding: 0.0, session_id: reference, status: transactionStatus }, (phoneNumber && { phoneNumber })),
             ])
                 .select();
             if (error) {
