@@ -199,7 +199,7 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             if (!user || !user.id) {
                 throw new Error("User not found.");
             }
-            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign({ wallet: ((_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) ? Number((_b = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _b === void 0 ? void 0 : _b.wallet) : 0 + Number(body.amount) }, user.user_metadata) });
+            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign({ wallet: (((_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) ? Number((_b = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _b === void 0 ? void 0 : _b.wallet) : 0) + Number(body.amount) }, user.user_metadata) });
             console.log({ newUser });
             if (newError) {
                 throw new Error(`Failed to update user wallet: ${newError.message}`);
