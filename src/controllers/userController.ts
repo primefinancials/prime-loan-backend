@@ -142,7 +142,7 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
       reference
     });
 
-    if(response.data) {
+    if(response.data && response.data.status === "00") {
       const { data: transaction, error } = await supabase
         .from('transactions')
         .insert([

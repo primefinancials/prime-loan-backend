@@ -111,7 +111,7 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
             transferType: "inter",
             reference
         });
-        if (response.data) {
+        if (response.data && response.data.status === "00") {
             const { data: transaction, error } = yield supabaseClient_1.supabase
                 .from('transactions')
                 .insert([
