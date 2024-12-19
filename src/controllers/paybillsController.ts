@@ -130,7 +130,7 @@ export const payBill = async (req: Request, res: Response) => {
     if (payResponse.data) {
       const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
         user.id,
-        { user_metadata: { wallet: Number(user?.user_metadata?.wallet) - Number(amount), ...user.user_metadata  }}
+        { user_metadata: { ...user.user_metadata, wallet: Number(user?.user_metadata?.wallet) - Number(amount)  }}
       );
 
       console.log({ newUser, newError })

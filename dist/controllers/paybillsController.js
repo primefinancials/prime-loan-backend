@@ -96,7 +96,7 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         // Call the payment API
         const payResponse = yield (0, httpClient_1.httpClient)("/billspaymentstore/pay", "POST", req.body);
         if (payResponse.data) {
-            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign({ wallet: Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount) }, user.user_metadata) });
+            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount) }) });
             console.log({ newUser, newError });
             const transactionStatus = payResponse.data.status === "00" ? "success" : "failed";
             // Insert transaction record into Supabase
