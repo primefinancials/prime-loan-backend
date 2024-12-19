@@ -260,7 +260,7 @@ export const walletAlerts = async (req: Request, res: Response) => {
 
       const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
         user.id,
-        { user_metadata: { wallet: user.user_metadata?.wallet? Number(user?.user_metadata?.wallet) : 0 + Number(body.amount), ...user.user_metadata  }}
+        { user_metadata: { wallet: (user.user_metadata?.wallet? Number(user?.user_metadata?.wallet) : 0) + Number(body.amount), ...user.user_metadata  }}
       );
 
       console.log({ newUser })
