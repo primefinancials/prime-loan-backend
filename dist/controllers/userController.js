@@ -130,7 +130,7 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
             reference
         });
         if (response.data && response.data.status === "00") {
-            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign({ wallet: Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount) }, user.user_metadata) });
+            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount) }) });
             console.log({ newUser });
             const { data: transaction, error } = yield supabaseClient_1.supabase
                 .from('transactions')
@@ -199,7 +199,7 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             if (!user || !user.id) {
                 throw new Error("User not found.");
             }
-            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign({ wallet: (((_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) ? Number((_b = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _b === void 0 ? void 0 : _b.wallet) : 0) + Number(body.amount) }, user.user_metadata) });
+            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: (((_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) ? Number((_b = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _b === void 0 ? void 0 : _b.wallet) : 0) + Number(body.amount) }) });
             console.log({ newUser });
             if (newError) {
                 throw new Error(`Failed to update user wallet: ${newError.message}`);

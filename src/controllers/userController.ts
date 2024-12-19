@@ -171,7 +171,7 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
     if(response.data && response.data.status === "00") {
       const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
         user.id,
-        { user_metadata: { wallet: Number(user?.user_metadata?.wallet) - Number(amount), ...user.user_metadata  }}
+        { user_metadata: { ...user.user_metadata, wallet: Number(user?.user_metadata?.wallet) - Number(amount)  }}
       );
 
       console.log({ newUser })
@@ -260,7 +260,7 @@ export const walletAlerts = async (req: Request, res: Response) => {
 
       const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
         user.id,
-        { user_metadata: { wallet: (user.user_metadata?.wallet? Number(user?.user_metadata?.wallet) : 0) + Number(body.amount), ...user.user_metadata  }}
+        { user_metadata: { ...user.user_metadata, wallet: (user.user_metadata?.wallet? Number(user?.user_metadata?.wallet) : 0) + Number(body.amount)  }}
       );
 
       console.log({ newUser })
