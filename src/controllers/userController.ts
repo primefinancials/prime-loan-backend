@@ -119,6 +119,32 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
       ]
     );
 
+    const { data: { users }, error } = await supabase.auth.admin.listUsers();
+
+    console.log({ users });
+
+    if (error) {
+      throw new Error(`Failed to get users: ${error.message}`);
+    }
+
+    users.map((user) =>{
+      console.log({ userPin: user.user_metadata?.accountNo })
+    })
+
+    const user = users.find(
+      identity => String(identity.id) === String(userId)
+    );
+
+    console.log({ user });
+
+    if (!user || !user.id) {
+      throw new Error("User not found.");
+    }
+
+    if (!Number(user.user_metadata.wallet) >= amount) {
+      throw new Error("Insufficient Funds.");
+    }
+
     const apiUrl = `/wallet2/transfer`;
 
     const response = await httpClient(apiUrl, "POST", {
@@ -143,6 +169,13 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
     });
 
     if(response.data && response.data.status === "00") {
+      const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
+        user.id,
+        { user_metadata: { wallet: Number(user?.user_metadata?.wallet) - Number(amount), ...user.user_metadata  }}
+      );
+
+      console.log({ newUser })
+
       const { data: transaction, error } = await supabase
         .from('transactions')
         .insert([
@@ -227,8 +260,10 @@ export const walletAlerts = async (req: Request, res: Response) => {
 
       const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
         user.id,
-        { user_metadata: { wallet: Number(user.user_metadata?.wallet? user?.user_metadata?.wallet : 0) + Number(body.amount).toFixed(0), ...user.user_metadata  }}
-      )
+        { user_metadata: { wallet: user.user_metadata?.wallet? Number(user?.user_metadata?.wallet) : 0 + Number(body.amount), ...user.user_metadata  }}
+      );
+
+      console.log({ newUser })
 
       if (newError) {
         throw new Error(`Failed to update user wallet: ${newError.message}`);
