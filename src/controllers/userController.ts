@@ -48,13 +48,7 @@ export const accountEnquiry = async (req: Request, res: Response, next: NextFunc
   try {
     const { accountNumber } = req.query;
 
-    // Validate required parameters
-    validateRequiredParams(
-      { accountNumber }, 
-      [ "accountNumber" ]
-    );
-
-    const response = await httpClient(`/wallet2/account/enquiry?accountNumber=${accountNumber}`, "GET");
+    const response = await httpClient(`/wallet2/account/enquiry${accountNumber? `?accountNumber=${accountNumber}` : "?"}`, "GET");
 
     res.status(response.status).json({ status: "success", data: response.data.data });
   } catch (error: any) {
@@ -121,7 +115,7 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
       { ...req.body }, 
       [ 
         "fromAccount", "fromClientId", "fromClient", "fromSavingsId", "fromBvn", "toClientId", "toClient", 
-        "toBvn", "toAccount", "toBank", "amount", "reference", "toSavingsId", "userId", "toKyc"
+        "toBvn", "toAccount", "toBank", "amount", "reference", "toSavingsId", "userId"
       ]
     );
 
@@ -144,7 +138,7 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
       signature: sha512.hex(`${fromAccount}${toAccount}`),
       amount,
       remark,
-      transferType: "Inter",
+      transferType: "inter",
       reference
     });
 

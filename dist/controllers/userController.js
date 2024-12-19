@@ -47,9 +47,7 @@ exports.createClientAccount = createClientAccount;
 const accountEnquiry = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { accountNumber } = req.query;
-        // Validate required parameters
-        (0, validateParams_1.validateRequiredParams)({ accountNumber }, ["accountNumber"]);
-        const response = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${accountNumber}`, "GET");
+        const response = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry${accountNumber ? `?accountNumber=${accountNumber}` : "?"}`, "GET");
         res.status(response.status).json({ status: "success", data: response.data.data });
     }
     catch (error) {
@@ -90,7 +88,7 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
         // Validate required parameters
         (0, validateParams_1.validateRequiredParams)(Object.assign({}, req.body), [
             "fromAccount", "fromClientId", "fromClient", "fromSavingsId", "fromBvn", "toClientId", "toClient",
-            "toBvn", "toAccount", "toBank", "amount", "reference", "toSavingsId", "userId", "toKyc"
+            "toBvn", "toAccount", "toBank", "amount", "reference", "toSavingsId", "userId"
         ]);
         const apiUrl = `/wallet2/transfer`;
         const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", {
@@ -110,7 +108,7 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
             signature: js_sha512_1.sha512.hex(`${fromAccount}${toAccount}`),
             amount,
             remark,
-            transferType: "Inter",
+            transferType: "inter",
             reference
         });
         if (response.data) {
