@@ -98,10 +98,43 @@ export const payBill = async (req: Request, res: Response) => {
       ]
     );
 
+    const { data: { users }, error } = await supabase.auth.admin.listUsers();
+
+    console.log({ users });
+
+    if (error) {
+      throw new Error(`Failed to get users: ${error.message}`);
+    }
+
+    users.map((user) =>{
+      console.log({ userPin: user.user_metadata?.accountNo })
+    })
+
+    const user = users.find(
+      identity => String(identity.id) === String(userId)
+    );
+
+    console.log({ user });
+
+    if (!user || !user.id) {
+      throw new Error("User not found.");
+    }
+
+    if (!Number(user.user_metadata.wallet) >= amount) {
+      throw new Error("Insufficient Funds.");
+    }
+
     // Call the payment API
     const payResponse = await httpClient("/billspaymentstore/pay", "POST", req.body);
 
     if (payResponse.data) {
+      const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
+        user.id,
+        { user_metadata: { wallet: Number(user?.user_metadata?.wallet) - Number(amount), ...user.user_metadata  }}
+      );
+
+      console.log({ newUser, newError })
+
       const transactionStatus = payResponse.data.status === "00" ? "success" : "failed";
 
       // Insert transaction record into Supabase

@@ -60,6 +60,7 @@ const validateCustomer = (req, res) => __awaiter(void 0, void 0, void 0, functio
 });
 exports.validateCustomer = validateCustomer;
 const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     try {
         const { userId, name, category, details, customerId, amount, reference, division, paymentItem, productId, billerId, phoneNumber } = req.body;
         // Validate required parameters
@@ -75,9 +76,28 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             "productId",
             "billerId"
         ]);
+        const { data: { users }, error } = yield supabaseClient_1.supabase.auth.admin.listUsers();
+        console.log({ users });
+        if (error) {
+            throw new Error(`Failed to get users: ${error.message}`);
+        }
+        users.map((user) => {
+            var _a;
+            console.log({ userPin: (_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.accountNo });
+        });
+        const user = users.find(identity => String(identity.id) === String(userId));
+        console.log({ user });
+        if (!user || !user.id) {
+            throw new Error("User not found.");
+        }
+        if (!Number(user.user_metadata.wallet) >= amount) {
+            throw new Error("Insufficient Funds.");
+        }
         // Call the payment API
         const payResponse = yield (0, httpClient_1.httpClient)("/billspaymentstore/pay", "POST", req.body);
         if (payResponse.data) {
+            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign({ wallet: Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount) }, user.user_metadata) });
+            console.log({ newUser, newError });
             const transactionStatus = payResponse.data.status === "00" ? "success" : "failed";
             // Insert transaction record into Supabase
             const { data, error } = yield supabaseClient_1.supabase
