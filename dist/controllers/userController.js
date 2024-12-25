@@ -91,19 +91,13 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
             "fromAccount", "fromClientId", "fromClient", "fromSavingsId", "fromBvn", "toClientId", "toClient",
             "toBvn", "toAccount", "toBank", "amount", "reference", "toSavingsId", "userId"
         ]);
-        const { data: { users }, error } = yield supabaseClient_1.supabase.auth.admin.listUsers();
-        console.log({ users });
-        if (error) {
-            throw new Error(`Failed to get users: ${error.message}`);
-        }
-        users.map((user) => {
-            var _a;
-            console.log({ userPin: (_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.accountNo });
-        });
-        const user = users.find(identity => String(identity.id) === String(userId));
+        const { data: { user } } = yield supabaseClient_1.supabase.auth.admin.getUserById(userId);
         console.log({ user });
         if (!user || !user.id) {
-            throw new Error("User not found.");
+            return res.status(404).json({
+                status: "User not found.",
+                data: null
+            });
         }
         if (!Number(user.user_metadata.wallet) >= amount) {
             throw new Error("Insufficient Funds.");
@@ -131,7 +125,6 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
         });
         if (response.data && response.data.status === "00") {
             const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount) }) });
-            console.log({ newUser });
             const { data: transaction, error } = yield supabaseClient_1.supabase
                 .from('transactions')
                 .insert([
