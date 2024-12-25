@@ -119,26 +119,15 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
       ]
     );
 
-    const { data: { users }, error } = await supabase.auth.admin.listUsers();
-
-    console.log({ users });
-
-    if (error) {
-      throw new Error(`Failed to get users: ${error.message}`);
-    }
-
-    users.map((user) =>{
-      console.log({ userPin: user.user_metadata?.accountNo })
-    })
-
-    const user = users.find(
-      identity => String(identity.id) === String(userId)
-    );
-
+    const { data: { user } } = await supabase.auth.admin.getUserById(userId);
+    
     console.log({ user });
 
     if (!user || !user.id) {
-      throw new Error("User not found.");
+      return res.status(404).json({
+        status: "User not found.",
+        data: null
+      });
     }
 
     if (!Number(user.user_metadata.wallet) >= amount) {
@@ -173,8 +162,6 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
         user.id,
         { user_metadata: { ...user.user_metadata, wallet: Number(user?.user_metadata?.wallet) - Number(amount)  }}
       );
-
-      console.log({ newUser })
 
       const { data: transaction, error } = await supabase
         .from('transactions')

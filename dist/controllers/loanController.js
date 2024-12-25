@@ -14,20 +14,21 @@ const supabaseClient_1 = require("../utils/supabaseClient");
 const validateParams_1 = require("../utils/validateParams");
 const httpClient_1 = require("../utils/httpClient");
 const generateRef_1 = require("../utils/generateRef");
+const js_sha512_1 = require("js-sha512");
 const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { transactionId, accountNo, amount, duration, userId } = req.body;
+        const { transactionId, amount, duration, userId } = req.body;
         // Validate required parameters
-        (0, validateParams_1.validateRequiredParams)(Object.assign({}, req.body), ["transactionId", "accountNo", "amount", "duration", "userId"]);
+        (0, validateParams_1.validateRequiredParams)(Object.assign({}, req.body), ["transactionId", "amount", "duration", "userId"]);
         const { data: { user } } = yield supabaseClient_1.supabase.auth.admin.getUserById(userId);
         console.log({ user });
-        const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${accountNo}`, "GET");
+        const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
         console.log({ account });
         const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
         console.log({ useraccount });
         if (account.data && useraccount.data) {
-            const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
-            const { accountNo: uan, accountBalance: uab, accountId: uai, client: uc, clientId: uci, savingsProductName: uspn } = account.data.data;
+            const { accountNo, accountBalance, accountId, client, bvn, clientId, savingsProductName } = account.data.data;
+            const { accountNo: uan, accountBalance: uab, accountId: uai, bn, toBvn, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
             const reference = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
             const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", {
                 fromAccount: accountNo,
@@ -35,15 +36,15 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
                 fromClientId: clientId,
                 fromClient: client,
                 fromSavingsId: savingsProductName,
-                // fromBvn: "",
+                fromBvn: bvn,
                 toClientId: uci,
                 toClient: uc,
                 toSavingsId: uspn,
-                // toSession,
-                // toBvn,
+                toSession: uai,
+                toBvn,
                 toAccount: uan,
                 toBank: "999999",
-                signature: "", //adminisrator
+                signature: js_sha512_1.sha512.hex(`${accountNo}${uan}`),
                 amount,
                 remark: "Loan Disbursement",
                 transferType: "intra",

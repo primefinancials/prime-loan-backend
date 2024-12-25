@@ -3,29 +3,30 @@ import { Request, Response, NextFunction } from "express";
 import { validateRequiredParams } from "../utils/validateParams";
 import { httpClient } from "../utils/httpClient";
 import { generateRandomString } from "../utils/generateRef";
+import { sha512 } from "js-sha512";
 
 export const createAndDisburseLoan = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { transactionId, accountNo, amount, duration, userId } = req.body;
+    const { transactionId, amount, duration, userId } = req.body;
     // Validate required parameters
     validateRequiredParams(
         { ...req.body }, 
-        [ "transactionId", "accountNo", "amount", "duration", "userId" ]
+        [ "transactionId", "amount", "duration", "userId" ]
     );
 
     const { data: { user } } = await supabase.auth.admin.getUserById(userId);
 
     console.log({ user })
     
-    const account = await httpClient(`/wallet2/account/enquiry?accountNumber=${accountNo}`, "GET");
+    const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
     console.log({ account })
 
     const useraccount = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
     console.log({ useraccount })
     
     if(account.data && useraccount.data) {
-      const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
-      const { accountNo: uan, accountBalance: uab, accountId: uai, client: uc, clientId: uci, savingsProductName: uspn } = account.data.data;
+      const { accountNo, accountBalance, accountId, client, bvn, clientId, savingsProductName } = account.data.data;
+      const { accountNo: uan, accountBalance: uab, accountId: uai, bn, toBvn, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
       const reference =`Prime-Finance-${generateRandomString(9)}`;
 
       const response = await httpClient("/wallet2/transfer", "POST", {
@@ -34,22 +35,22 @@ export const createAndDisburseLoan = async (req: Request, res: Response, next: N
         fromClientId: clientId,
         fromClient: client,
         fromSavingsId: savingsProductName,
-        // fromBvn: "",
+        fromBvn: bvn,
         toClientId: uci,
         toClient: uc,
         toSavingsId: uspn,
-        // toSession,
-        // toBvn,
+        toSession: uai,
+        toBvn,
         toAccount: uan,
         toBank: "999999",
-        signature: "", //adminisrator
+        signature: sha512.hex(`${accountNo}${uan}`),
         amount,
         remark: "Loan Disbursement",
         transferType: "intra",
         reference
       });
 
-      console.log({ response })
+      console.log({ response });
 
       if(response.data) {
         const { transactionId } = req.body

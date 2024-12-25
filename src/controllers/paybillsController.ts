@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { httpClient } from "../utils/httpClient";
 import { supabase } from "../utils/supabaseClient";
 import { validateRequiredParams } from "../utils/validateParams";
+import { sha512 } from "js-sha512";
 
 export const getBillerCategories = async (_req: Request, res: Response) => {
   try {
@@ -94,80 +95,117 @@ export const payBill = async (req: Request, res: Response) => {
         "division",
         "paymentItem",
         "productId",
-        "billerId"
+        "billerId",
       ]
     );
-
-    const { data: { users }, error } = await supabase.auth.admin.listUsers();
-
-    console.log({ users });
-
-    if (error) {
-      throw new Error(`Failed to get users: ${error.message}`);
-    }
-
-    users.map((user) =>{
-      console.log({ userPin: user.user_metadata?.accountNo })
-    })
-
-    const user = users.find(
-      identity => String(identity.id) === String(userId)
-    );
-
+    
+    const { data: { user } } = await supabase.auth.admin.getUserById(userId);
+    
     console.log({ user });
 
     if (!user || !user.id) {
-      throw new Error("User not found.");
+      return res.status(404).json({
+        status: "User not found.",
+        data: null
+      });
     }
 
     if (!Number(user.user_metadata.wallet) >= amount) {
-      throw new Error("Insufficient Funds.");
+      return res.status(409).json({
+        status: "Insufficient Funds.",
+        data: null
+      });
     }
+        
+    const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
+    console.log({ account })
 
-    // Call the payment API
-    const payResponse = await httpClient("/billspaymentstore/pay", "POST", req.body);
+    const useraccount = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
+    console.log({ useraccount })
+    
+    if(account.data && useraccount.data) {
+      const { accountNo, accountBalance, accountId, client, clientId, bvn, savingsProductName } = useraccount.data.data;
+      const { accountNo: uan, accountBalance: uab, accountId: uai, client: uc, bvn: toBvn, clientId: uci, savingsProductName: uspn } = account.data.data;
 
-    if (payResponse.data) {
-      const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
-        user.id,
-        { user_metadata: { ...user.user_metadata, wallet: Number(user?.user_metadata?.wallet) - Number(amount)  }}
-      );
+      const response = await httpClient("/wallet2/transfer", "POST", {
+        fromAccount: accountNo,
+        uniqueSenderAccountId: accountId,
+        fromClientId: clientId,
+        fromClient: client,
+        fromSavingsId: savingsProductName,
+        fromBvn: bvn,
+        toClientId: uci,
+        toClient: uc,
+        toSavingsId: uspn,
+        toSession: uai,
+        toBvn,
+        toAccount: uan,
+        toBank: "999999",
+        signature: sha512.hex(`${accountNo}${uan}`),
+        amount,
+        remark: "Paybills",
+        transferType: "intra",
+        reference
+      });
 
-      console.log({ newUser, newError })
+      console.log({ response });
 
-      const transactionStatus = payResponse.data.status === "00" ? "success" : "failed";
+      if(response.data && response.data.status === "00") {
+        // Call the payment API
+        const payResponse = await httpClient("/billspaymentstore/pay", "POST", req.body);
 
-      // Insert transaction record into Supabase
-      const { data, error } = await supabase
-        .from("transactions")
-        .insert([
-          {
-            name,
-            category,
-            type: "paybills",
-            user: userId,
-            details,
-            transaction_number: customerId,
-            amount,
-            outstanding: 0.0,
-            session_id: reference,
-            status: transactionStatus,
-            ...(phoneNumber && { phoneNumber }),
-          },
-        ])
-        .select();
+        if (payResponse.data) {
+          const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
+            user.id,
+            { user_metadata: { ...user.user_metadata, wallet: Number(user?.user_metadata?.wallet) - Number(amount)  }}
+          );
 
-      if (error) {
-        throw new Error(`Failed to log transaction: ${error.message}`);
-      }
+          const transactionStatus = payResponse.data.status === "00" ? "success" : "failed";
 
-      // Respond with cleaned-up data
-      res.status(payResponse.status || 200).json({
-        status: payResponse.data.message,
-        data: {
-          ...payResponse.data.data, // Only include essential data
-          transaction: data[0], // Transaction data from Supabase
+          // Insert transaction record into Supabase
+          const { data, error } = await supabase
+            .from("transactions")
+            .insert([
+              {
+                name,
+                category,
+                type: "paybills",
+                user: userId,
+                details,
+                transaction_number: customerId,
+                amount,
+                outstanding: 0.0,
+                session_id: reference,
+                status: transactionStatus,
+                message: payResponse.data.status,
+                ...(phoneNumber && { phoneNumber }),
+              },
+            ])
+            .select();
+
+          if (error) {
+            throw new Error(`Failed to log transaction: ${error.message}`);
+          }
+
+          // Respond with cleaned-up data
+          res.status(payResponse.status || 200).json({
+            status: payResponse.data.message,
+            data: {
+              ...payResponse.data.data, // Only include essential data
+              transaction: data[0], // Transaction data from Supabase
+            }
+          });
         }
+      } else {
+        res.status(400).json({
+          status: "error",
+          message: "Service unavailable, try again later!",
+        });
+      }
+    } else {
+      res.status(404).json({
+        status: "error",
+        message: "Login, and try again",
       });
     }
   } catch (error: any) {
