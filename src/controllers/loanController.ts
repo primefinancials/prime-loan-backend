@@ -2,18 +2,55 @@ import { supabase } from "../utils/supabaseClient";
 import { Request, Response, NextFunction } from "express";
 import { validateRequiredParams } from "../utils/validateParams";
 import { httpClient } from "../utils/httpClient";
+import { sha512 } from "js-sha512";
 
 export const createAndDisburseLoan = async (req: Request, res: Response, next: NextFunction) => {
   try {
+    const { transactionId, amount, duration, userId, reference } = req.body;
+
     // Validate required parameters
     validateRequiredParams(
-        { ...req.body }, 
-        [ "transactionId", "accountNo", "amount", "duration" ]
+        { transactionId, amount, duration, userId, reference }, 
+        [ "transactionId", "amount", "duration", "userId", "reference" ]
     );
 
-    const response = await httpClient("/credit/loan/create-and-disburse", "POST", req.body);
+    const { data: { user } } = await supabase.auth.admin.getUserById(userId);
 
-    if(response.data) {
+    console.log({ user })
+    
+    const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
+    console.log({ account })
+
+    const useraccount = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
+    console.log({ useraccount })
+    
+    if(account.data && useraccount.data) {
+      const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
+      const { accountNo: uan, accountBalance: uab, accountId: uai, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
+      
+
+      const response = await httpClient("/wallet2/transfer", "POST", {
+        fromAccount: accountNo,
+        uniqueSenderAccountId: accountId,
+        fromClientId: clientId,
+        fromClient: client,
+        fromSavingsId: savingsProductName,
+        toClientId: uci,
+        toClient: uc,
+        toSavingsId: uspn,
+        toSession: uai,
+        toAccount: uan,
+        toBank: "999999",
+        signature: sha512.hex(`${accountNo}${uan}`),
+        amount,
+        remark: "Loan Disbursement",
+        transferType: "intra",
+        reference
+      });
+
+      console.log({ response });
+
+      if(response.data) {
         const { transactionId } = req.body
         const { data: loan, error } = await supabase
             .from('loans')
@@ -25,9 +62,12 @@ export const createAndDisburseLoan = async (req: Request, res: Response, next: N
         if (error) {
             throw new Error(`Error storing to supabase: ${error.message}`);
         } 
+
+        res.status(response.status).json({ status: "success", data: response.data.data });
+      }
     }
 
-    res.status(response.status).json({ status: "success", data: response.data.data });
+    res.status(409).json({ status: "failed", message: "Service currently unavailable, try again later" });
   } catch (error: any) {
     console.log("Error creating disbursing loan:", error);
     res.status(error.status || 500).json({ status: "error", message: error.message });
