@@ -124,27 +124,31 @@ export const payBill = async (req: Request, res: Response) => {
     console.log({ useraccount, data: useraccount.data.data })
     
     if(account.data && useraccount.data) {
-      const { accountNo, accountBalance, accountId, client, clientId, bvn, savingsProductName } = useraccount.data.data;
-      const { accountNo: uan, accountBalance: uab, accountId: uai, client: uc, clientId: uci, savingsProductName: uspn } = account.data.data;
+      const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
+      const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
 
-      const response = await httpClient("/wallet2/transfer", "POST", {
-        fromAccount: accountNo,
-        uniqueSenderAccountId: accountId,
-        fromClientId: clientId,
-        fromClient: client,
-        fromSavingsId: savingsProductName,
-        toClientId: uci,
-        toClient: uc,
-        toSavingsId: uspn,
-        toSession: uai,
-        toAccount: uan,
+      const body = {
+        fromAccount: userAccountNumber,
+        uniqueSenderAccountId: userAccountId,
+        fromClientId: userClientId,
+        fromClient: userClient,
+        fromSavingsId: userAccountId,
+        // fromBvn: "Rolandpay-birght 221552585559",
+        toClientId: clientId,
+        toClient: client,
+        toSavingsId: accountId,
+        toSession: accountId,
+        // toBvn: "11111111111",
+        toAccount: accountNo,
         toBank: "999999",
-        signature: sha512.hex(`${accountNo}${uan}`),
+        signature: sha512.hex(`${userAccountNumber}${accountNo}`),
         amount,
         remark: "Paybills",
         transferType: "intra",
         reference
-      });
+      }
+      
+      const response = await httpClient("/wallet2/transfer", "POST", body);
 
       console.log({ response });
 
