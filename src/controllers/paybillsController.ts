@@ -118,14 +118,14 @@ export const payBill = async (req: Request, res: Response) => {
     }
         
     const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
-    console.log({ account })
+    console.log({ account, data: account.data.data })
 
     const useraccount = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
-    console.log({ useraccount })
+    console.log({ useraccount, data: useraccount.data.data })
     
     if(account.data && useraccount.data) {
       const { accountNo, accountBalance, accountId, client, clientId, bvn, savingsProductName } = useraccount.data.data;
-      const { accountNo: uan, accountBalance: uab, accountId: uai, client: uc, bvn: toBvn, clientId: uci, savingsProductName: uspn } = account.data.data;
+      const { accountNo: uan, accountBalance: uab, accountId: uai, client: uc, clientId: uci, savingsProductName: uspn } = account.data.data;
 
       const response = await httpClient("/wallet2/transfer", "POST", {
         fromAccount: accountNo,
@@ -133,12 +133,10 @@ export const payBill = async (req: Request, res: Response) => {
         fromClientId: clientId,
         fromClient: client,
         fromSavingsId: savingsProductName,
-        fromBvn: bvn,
         toClientId: uci,
         toClient: uc,
         toSavingsId: uspn,
         toSession: uai,
-        toBvn,
         toAccount: uan,
         toBank: "999999",
         signature: sha512.hex(`${accountNo}${uan}`),

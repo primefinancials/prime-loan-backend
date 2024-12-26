@@ -92,24 +92,22 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             });
         }
         const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
-        console.log({ account });
+        console.log({ account, data: account.data.data });
         const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
-        console.log({ useraccount });
+        console.log({ useraccount, data: useraccount.data.data });
         if (account.data && useraccount.data) {
             const { accountNo, accountBalance, accountId, client, clientId, bvn, savingsProductName } = useraccount.data.data;
-            const { accountNo: uan, accountBalance: uab, accountId: uai, client: uc, bvn: toBvn, clientId: uci, savingsProductName: uspn } = account.data.data;
+            const { accountNo: uan, accountBalance: uab, accountId: uai, client: uc, clientId: uci, savingsProductName: uspn } = account.data.data;
             const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", {
                 fromAccount: accountNo,
                 uniqueSenderAccountId: accountId,
                 fromClientId: clientId,
                 fromClient: client,
                 fromSavingsId: savingsProductName,
-                fromBvn: bvn,
                 toClientId: uci,
                 toClient: uc,
                 toSavingsId: uspn,
                 toSession: uai,
-                toBvn,
                 toAccount: uan,
                 toBank: "999999",
                 signature: js_sha512_1.sha512.hex(`${accountNo}${uan}`),

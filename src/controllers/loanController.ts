@@ -25,8 +25,8 @@ export const createAndDisburseLoan = async (req: Request, res: Response, next: N
     console.log({ useraccount })
     
     if(account.data && useraccount.data) {
-      const { accountNo, accountBalance, accountId, client, bvn, clientId, savingsProductName } = account.data.data;
-      const { accountNo: uan, accountBalance: uab, accountId: uai, bn, toBvn, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
+      const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
+      const { accountNo: uan, accountBalance: uab, accountId: uai, bn, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
       const reference =`Prime-Finance-${generateRandomString(9)}`;
 
       const response = await httpClient("/wallet2/transfer", "POST", {
@@ -35,12 +35,10 @@ export const createAndDisburseLoan = async (req: Request, res: Response, next: N
         fromClientId: clientId,
         fromClient: client,
         fromSavingsId: savingsProductName,
-        fromBvn: bvn,
         toClientId: uci,
         toClient: uc,
         toSavingsId: uspn,
         toSession: uai,
-        toBvn,
         toAccount: uan,
         toBank: "999999",
         signature: sha512.hex(`${accountNo}${uan}`),

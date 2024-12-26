@@ -27,8 +27,8 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
         const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
         console.log({ useraccount });
         if (account.data && useraccount.data) {
-            const { accountNo, accountBalance, accountId, client, bvn, clientId, savingsProductName } = account.data.data;
-            const { accountNo: uan, accountBalance: uab, accountId: uai, bn, toBvn, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
+            const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
+            const { accountNo: uan, accountBalance: uab, accountId: uai, bn, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
             const reference = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
             const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", {
                 fromAccount: accountNo,
@@ -36,12 +36,10 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
                 fromClientId: clientId,
                 fromClient: client,
                 fromSavingsId: savingsProductName,
-                fromBvn: bvn,
                 toClientId: uci,
                 toClient: uc,
                 toSavingsId: uspn,
                 toSession: uai,
-                toBvn,
                 toAccount: uan,
                 toBank: "999999",
                 signature: js_sha512_1.sha512.hex(`${accountNo}${uan}`),
