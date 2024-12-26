@@ -3,6 +3,7 @@ import { httpClient } from "../utils/httpClient";
 import { supabase } from "../utils/supabaseClient";
 import { validateRequiredParams } from "../utils/validateParams";
 import { sha512 } from "js-sha512";
+import { generateRandomString } from "../utils/generateRef";
 
 export const getBillerCategories = async (_req: Request, res: Response) => {
   try {
@@ -110,12 +111,12 @@ export const payBill = async (req: Request, res: Response) => {
       });
     }
 
-    if (!Number(user.user_metadata.wallet) >= amount) {
-      return res.status(409).json({
-        status: "Insufficient Funds.",
-        data: null
-      });
-    }
+    // if (Number(user.user_metadata.wallet) < Number(amount)) {
+    //   return res.status(409).json({
+    //     status: "Insufficient Funds.",
+    //     data: null
+    //   });
+    // }
         
     const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
     console.log({ account, data: account.data.data })
@@ -126,6 +127,7 @@ export const payBill = async (req: Request, res: Response) => {
     if(account.data && useraccount.data) {
       const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
       const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
+      const ref =`Prime-Finance-${generateRandomString(9)}`;
 
       const body = {
         fromAccount: userAccountNumber,
@@ -145,7 +147,7 @@ export const payBill = async (req: Request, res: Response) => {
         amount,
         remark: "Paybills",
         transferType: "intra",
-        reference
+        reference: ref
       }
       
       const response = await httpClient("/wallet2/transfer", "POST", body);

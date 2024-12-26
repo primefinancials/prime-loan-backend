@@ -130,8 +130,11 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
       });
     }
 
-    if (!Number(user.user_metadata.wallet) >= amount) {
-      throw new Error("Insufficient Funds.");
+    if (Number(user.user_metadata.wallet) < Number(amount)) {
+      return res.status(409).json({
+        status: "Insufficient Funds.",
+        data: null
+      });
     }
 
     const apiUrl = `/wallet2/transfer`;

@@ -14,6 +14,7 @@ const httpClient_1 = require("../utils/httpClient");
 const supabaseClient_1 = require("../utils/supabaseClient");
 const validateParams_1 = require("../utils/validateParams");
 const js_sha512_1 = require("js-sha512");
+const generateRef_1 = require("../utils/generateRef");
 const getBillerCategories = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const response = yield (0, httpClient_1.httpClient)("/billspaymentstore/billercategory", "GET");
@@ -85,12 +86,12 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 data: null
             });
         }
-        if (!Number(user.user_metadata.wallet) >= amount) {
-            return res.status(409).json({
-                status: "Insufficient Funds.",
-                data: null
-            });
-        }
+        // if (Number(user.user_metadata.wallet) < Number(amount)) {
+        //   return res.status(409).json({
+        //     status: "Insufficient Funds.",
+        //     data: null
+        //   });
+        // }
         const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
         console.log({ account, data: account.data.data });
         const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
@@ -98,6 +99,7 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
         if (account.data && useraccount.data) {
             const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
             const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
+            const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
             const body = {
                 fromAccount: userAccountNumber,
                 uniqueSenderAccountId: userAccountId,
@@ -116,7 +118,7 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 amount,
                 remark: "Paybills",
                 transferType: "intra",
-                reference
+                reference: ref
             };
             const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", body);
             console.log({ response });

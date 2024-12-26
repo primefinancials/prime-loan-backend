@@ -99,8 +99,11 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
                 data: null
             });
         }
-        if (!Number(user.user_metadata.wallet) >= amount) {
-            throw new Error("Insufficient Funds.");
+        if (Number(user.user_metadata.wallet) < Number(amount)) {
+            return res.status(409).json({
+                status: "Insufficient Funds.",
+                data: null
+            });
         }
         const apiUrl = `/wallet2/transfer`;
         const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", {
