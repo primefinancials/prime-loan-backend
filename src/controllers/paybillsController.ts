@@ -111,12 +111,12 @@ export const payBill = async (req: Request, res: Response) => {
       });
     }
 
-    // if (Number(user.user_metadata.wallet) < Number(amount)) {
-    //   return res.status(409).json({
-    //     status: "Insufficient Funds.",
-    //     data: null
-    //   });
-    // }
+    if (Number(user.user_metadata.wallet) < Number(amount)) {
+      return res.status(409).json({
+        status: "Insufficient Funds.",
+        data: null
+      });
+    }
         
     const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
     console.log({ account, data: account.data.data })

@@ -86,12 +86,12 @@ const payBill = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
                 data: null
             });
         }
-        // if (Number(user.user_metadata.wallet) < Number(amount)) {
-        //   return res.status(409).json({
-        //     status: "Insufficient Funds.",
-        //     data: null
-        //   });
-        // }
+        if (Number(user.user_metadata.wallet) < Number(amount)) {
+            return res.status(409).json({
+                status: "Insufficient Funds.",
+                data: null
+            });
+        }
         const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
         console.log({ account, data: account.data.data });
         const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
