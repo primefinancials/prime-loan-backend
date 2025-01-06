@@ -99,6 +99,7 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
       toSession,
       toBvn,
       toKyc,
+      bank,
       toAccount,
       toBank,
       toSavingsId,
@@ -115,7 +116,7 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
       { ...req.body }, 
       [ 
         "fromAccount", "fromClientId", "fromClient", "fromSavingsId", "fromBvn", "toClientId", "toClient", 
-        "toBvn", "toAccount", "toBank", "amount", "reference", "toSavingsId", "userId"
+        "toBvn", "toAccount", "toBank", "amount", "reference", "toSavingsId", "userId", "bank"
       ]
     );
 
@@ -172,11 +173,14 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
           { 
             name: "Withdrawal-" + reference, 
             category: "credit",
-            type: "loan",
+            type: "transfer",
             user: userId,
             details: remark,
             transaction_number: response.data.data.txnId || "no-txnId",
             amount,
+            bank,
+            reciever: toClient,
+            account_number: toAccount, 
             outstanding: 0.0,
             session_id: response.data.data.sessionId || "no-sessionId",
             status: "success"
