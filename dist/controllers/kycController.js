@@ -15,14 +15,12 @@ const httpClient_1 = require("../utils/httpClient");
 const livenessCheck = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { base64Image } = req.body;
-        // Validate required parameters
-        (0, validateParams_1.validateRequiredParams)({ base64Image }, ["base64Image"]);
         const response = yield (0, httpClient_1.httpClient)("/wallet2/checkliveness", "POST", { base64Image });
         res.status(response.status).json({ status: "success", data: response.data.data });
     }
     catch (error) {
         console.log("Error checking liveness:", error);
-        res.status(error.status || 500).json({ status: "error", message: error.message });
+        next(error);
     }
 });
 exports.livenessCheck = livenessCheck;
@@ -36,21 +34,19 @@ const bvnLookup = (req, res, next) => __awaiter(void 0, void 0, void 0, function
     }
     catch (error) {
         console.log("Error checking bvn:", error);
-        res.status(error.status || 500).json({ status: "error", message: error.message });
+        next(error);
     }
 });
 exports.bvnLookup = bvnLookup;
 const ninVerification = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { idNumber } = req.body;
-        // Validate required parameters
-        (0, validateParams_1.validateRequiredParams)({ idNumber }, ["idNumber"]);
         const response = yield (0, httpClient_1.httpClient)("/kyc/verify/nin", "POST", { idNumber });
         res.status(response.status).json({ status: "success", data: response.data.data });
     }
     catch (error) {
         console.log("Error verifying nin:", error);
-        res.status(error.status || 500).json({ status: "error", message: error.message });
+        next(error);
     }
 });
 exports.ninVerification = ninVerification;

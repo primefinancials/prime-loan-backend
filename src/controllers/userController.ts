@@ -1,50 +1,274 @@
-import { supabase } from "../utils/supabaseClient";
 import { Request, Response, NextFunction } from "express";
 import { validateRequiredParams } from "../utils/validateParams";
 import { convertDate } from "../utils/convertDate";
 import { httpClient } from "../utils/httpClient";
 import { sha512 } from "js-sha512";
+import { UserService, TransactionService } from "../services";
+import { ConflictError, UnauthorizedError, NotFoundError } from "../exceptions";
+import { encryptPassword } from "../utils";
+import { getCurrentTimestamp } from "../utils/convertDate";
+import { decodePassword } from "../utils";
+import JWT from "jsonwebtoken";
+import {
+  ACCESS_TOKEN_EXPIRES_IN,
+  COOKIE_VALIDITY,
+  REFRESH_TOKEN_EXPIRES,
+} from "../constants";
+import {
+  ACCESS_TOKEN_SECRET,
+  REFRESH_TOKEN_SECRET
+} from "../config";
+import { ProtectedRequest, User } from "../interfaces";
+
+function isUser(object: any, value: string): object is User {
+  return value in object;
+}
+
+const { find, findByEmail, create, update } = new UserService();
+const { create: createTransaction } = new TransactionService();
 
 export const createClientAccount = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { email, name, surname, password, phone, bvn, nin, dob } = req.body;
 
-    // Validate required parameters
-    validateRequiredParams(
-      { bvn, dob, password, surname, email, name, phone, nin }, 
-      [ "bvn", "dob", "password", "phone", "nin", "email", "name", "surname" ]
-    );
+    const duplicateEmail = await findByEmail(email)
+
+    const duplicateNumber = await find({ user_metadata: { phone } }, "one")
+    
+    if (duplicateEmail)
+      throw new ConflictError(`A user already exists with the email ${email}`)
+    if (duplicateNumber)
+      throw new ConflictError(`A user already exists with the phone number ${phone}`)
+
+    req.body.password = encryptPassword(password);
 
     const apiUrl = `/wallet2/client/create?bvn=${bvn}&dateOfBirth=${convertDate(dob)}`;
 
     const response = await httpClient(apiUrl, "POST", { });
 
-    console.log({ response })
+    if(response.data && response.data.status === "00") {
+      const user: any = await create({ 
+        password: req.body.password,
+        user_metadata: { email, first_name: name, surname, phone, bvn, nin, dateOfBirth: dob }, 
+        role: "user",
+        confirmation_sent_at: getCurrentTimestamp(),
+        confirmed_at: "",
+        email,
+        email_confirmed_at: "", 
+        is_anonymous: false,
+        phone,
+        is_super_admin: false
+      });
 
-    if(response.data) {
-        const { data: { user }, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { first_name: name, surname, phone, bvn, nin, dateOfBirth: convertDate(dob), accountNo: response.data.data.accountNo },
-          },
-        });
-
-        if (error) {
-            throw new Error(`Error storing to supabase: ${error.message}`);
-        } 
-
-        res.status(response.status).json({ status: "success", data: { ...response.data.data, user } });
+      return res.status(201).json({ status: "success", data: { ...response.data.data, user } });
     }
 
-    res.status(400).json({ status: "error", message: response.data.message });
+    return res.status(response.status).json({ status: "failed", message: response.data.message });
   } catch (error: any) {
-    console.log({ error });
-    res.status(error.status || 500).json({ status: "error", message: error.message });
+    next(error)
   }
 };
 
-export const accountEnquiry = async (req: Request, res: Response, next: NextFunction) => {
+export const createAdminAccount = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, name, surname, password, phone, dob } = req.body;
+
+    const duplicateEmail = await findByEmail(email)
+
+    const duplicateNumber = await find({ user_metadata: { phone } }, "one")
+    
+    if (duplicateEmail)
+      throw new ConflictError(`A user already exists with the email ${email}`)
+    if (duplicateNumber)
+      throw new ConflictError(`A user already exists with the phone number ${phone}`)
+
+    req.body.password = encryptPassword(password);
+
+    const user: any = await create({ 
+      password: req.body.password,
+      user_metadata: { email, first_name: name, surname, phone, dateOfBirth: dob }, 
+      role: "admin",
+      confirmation_sent_at: getCurrentTimestamp(),
+      confirmed_at: "",
+      email,
+      email_confirmed_at: "", 
+      is_anonymous: false,
+      phone,
+      is_super_admin: false
+    });
+
+    return res.status(201).json({ status: "success", data: { user } });
+  } catch (error: any) {
+    next(error)
+  }
+};
+
+export const getUser = async (
+  req: ProtectedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const user = req.user;
+
+    if (!user) throw new UnauthorizedError(`Unauthorized! Please log in as user to continue`);
+
+    const foundUser: any = await find({ _id: user._id}, "one");
+
+    if (!foundUser)
+      throw new NotFoundError(`No user found`);
+
+    return res.status(200).json({status: "success", data: foundUser});
+  } catch (err: any) {
+    next(err)
+  }
+}
+
+export const updateClientAccount = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { user } = req;
+
+    if (!user) throw new UnauthorizedError(`Unauthorized! Please log in as user to continue`);
+
+    const updatedUser = update(user._id, { ...req.body })
+
+    return res.status(201).json({ status: "success", data: { user: updatedUser } });
+  } catch (error: any) {
+    next(error)
+  }
+};
+
+export const login = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const {
+      email,
+      password
+    } = req.body;
+
+    let foundUser: any;
+
+    foundUser = await findByEmail(email); 
+
+    if (!foundUser)
+      throw new UnauthorizedError(`Invalid credentials`);
+
+    const { password: encrypted } = foundUser;
+
+    // decrypt found user password
+    const decrypted = decodePassword(encrypted);
+
+    // compare decrypted password with sent password
+    if (password !== decrypted)
+      throw new UnauthorizedError(`Invalid credentials`);
+
+    const {
+      password: dbPassword, // strip out password so would'nt send back to client
+      refreshToken: dbRefreshToken, //Strip out old refreshToken so it wont keep signing old ones
+      ..._user
+    } = foundUser._doc;
+
+    const userToSign = {
+      accountType: foundUser.role,
+      id: _user._id
+    }
+
+    // create JWTs
+    const accessToken = JWT.sign(userToSign, String(ACCESS_TOKEN_SECRET), {
+      expiresIn: ACCESS_TOKEN_EXPIRES_IN,
+    });
+
+    const refreshToken = JWT.sign(userToSign, String(REFRESH_TOKEN_SECRET), {
+      expiresIn: REFRESH_TOKEN_EXPIRES,
+    });
+
+    // update current user refresh token
+    const refreshTokens = foundUser.refresh_token
+    refreshTokens.push(refreshToken)
+    foundUser.refresh_token = refreshTokens;
+    await foundUser.save();
+
+    return res
+      .cookie("jwt", refreshToken, {
+        httpOnly: true,
+        maxAge: COOKIE_VALIDITY,
+      })
+      .status(200)
+      .json({
+        status: 'success',
+        data: { ..._user, refreshToken, accessToken },
+      });
+  } catch (error: any) {
+    next(error)
+  }
+}
+
+export const logout = async (req: Request, res: Response, next: NextFunction) => {
+  try {  
+    const cookies = req.cookies;
+    if (!cookies?.jwt) return res.sendStatus(204); //no content
+
+    const refreshToken = cookies.jwt;
+
+    const foundUser: any = await find({ refresh_token: refreshToken }, "one");
+
+    if (!foundUser) {
+      res.clearCookie("jwt", {
+        httpOnly: true,
+        maxAge: COOKIE_VALIDITY,
+        /* set sameSite: "None" and secure: true if hosted on different tls/ssl secured domain from client */
+      });
+      return res.sendStatus(204);
+    }
+
+    // Delete refreshToken in db
+    foundUser.refresh_token = "";
+    const result = await foundUser.save();
+
+    return res
+      .clearCookie("jwt", { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 })
+      .sendStatus(204);
+  } catch (error: any) {
+    next(error)
+  }
+}
+
+export const changePassword = async (
+  req: ProtectedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const user = req.user;
+
+    if (!user) throw new UnauthorizedError(`Unauthorized! Please log in as user to continue`)
+
+    const foundUser: any = await find({ _id: user._id}, "one");
+
+    if (!foundUser)
+      throw new NotFoundError(`No user found`);
+
+    let userPassword = "";
+
+    if (isUser(foundUser, "password") && foundUser.password) userPassword = foundUser.password;
+
+    // Decoding password
+    const decrypted = decodePassword(userPassword);
+
+    if (oldPassword !== decrypted) throw new UnauthorizedError(`Invalid credentials`)
+
+    const encrypted = encryptPassword(newPassword);
+
+    foundUser.password = encrypted;
+    foundUser.save();
+
+    return res.status(200).json({status: "success", data: foundUser});
+  } catch (err: any) {
+    next(err)
+  }
+}
+
+export const accountEnquiry = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
     const { accountNumber } = req.query;
 
@@ -53,11 +277,11 @@ export const accountEnquiry = async (req: Request, res: Response, next: NextFunc
     res.status(response.status).json({ status: "success", data: response.data.data });
   } catch (error: any) {
     console.log("Error getting account enquiry:", error);
-    res.status(error.status || 500).json({ status: "error", message: error.message });
+    next(error);
   }
 };
 
-export const beneficiaryEnquiry = async (req: Request, res: Response, next: NextFunction) => {
+export const beneficiaryEnquiry = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
     try {
       const { accountNo, bank, transferType } = req.query;
   
@@ -72,22 +296,22 @@ export const beneficiaryEnquiry = async (req: Request, res: Response, next: Next
       res.status(response.status).json({ status: "success", data: response.data.data });
     } catch (error: any) {
       console.log("Error getting account enquiry:", error);
-      res.status(error.status || 500).json({ status: "error", message: error.message });
+      next(error);
     }
 };
 
-export const bankListing = async (req: Request, res: Response, next: NextFunction) => {
+export const bankListing = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
     try {
       const response = await httpClient(`/wallet2/bank`, "GET");
   
       res.status(response.status).json({ status: "success", data: response.data.data });
     } catch (error: any) {
-      console.log("Error creating client account:", error);
-      res.status(error.status || 500).json({ status: "error", message: error.message });
+      console.log("Error getting bank list:", error);
+      next(error);
     }
 };
 
-export const transfer = async (req: Request, res: Response, next: NextFunction) => {
+export const transfer = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
     const { 
       fromAccount,
@@ -106,25 +330,13 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
       amount,
       remark,
       reference,
-      userId
     } = req.body;
 
-    console.log({ ...req.body })
+    console.log({ ...req.body });
 
-    // Validate required parameters
-    validateRequiredParams(
-      { ...req.body }, 
-      [ 
-        "fromAccount", "fromClientId", "fromClient", "fromSavingsId", "fromBvn", "toClientId", "toClient", 
-        "toBvn", "toAccount", "toBank", "amount", "reference", "toSavingsId", "userId", "bank"
-      ]
-    );
+    const { user } = req;
 
-    const { data: { user } } = await supabase.auth.admin.getUserById(userId);
-    
-    console.log({ user });
-
-    if (!user || !user.id) {
+    if (!user || !user._id) {
       return res.status(404).json({
         status: "User not found.",
         data: null
@@ -162,44 +374,37 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
     });
 
     if(response.data && response.data.status === "00") {
-      const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
-        user.id,
-        { user_metadata: { ...user.user_metadata, wallet: Number(user?.user_metadata?.wallet) - Number(amount)  }}
+      const data = await update(
+        user._id,
+        { user_metadata: { ...user.user_metadata, wallet: String(Number(user?.user_metadata?.wallet) - Number(amount))  }}
       );
 
-      const { data: transaction, error } = await supabase
-        .from('transactions')
-        .insert([
+      const transaction = await createTransaction(
           { 
             name: "Withdrawal-" + reference, 
-            category: "credit",
+            category: "debit",
             type: "transfer",
-            user: userId,
+            user: user._id,
             details: remark,
             transaction_number: response.data.data.txnId || "no-txnId",
             amount,
             bank,
-            reciever: toClient,
+            receiver: toClient,
             account_number: toAccount, 
             outstanding: 0.0,
             session_id: response.data.data.sessionId || "no-sessionId",
             status: "success"
           },
-        ])
-        .select()
+        )
       ;
-
-      if (error) {
-          throw new Error(`Error storing to supabase: ${error.message}`);
-      } 
 
       res.status(response.status).json({ status: "success", data: { ...response.data.data, transaction } });
     }
 
-    res.status(400).json({ status: "error", message: response.data.message });
+    res.status(400).json({ status: "failed", message: response.data.message });
   } catch (error: any) {
-    console.log("Error creating client account:", error);
-    res.status(error.status || 500).json({ status: "error", message: error.message });
+    console.log("Error making withdrawal:", error);
+    next(error);
   }
 };
 
@@ -207,90 +412,44 @@ export const transfer = async (req: Request, res: Response, next: NextFunction) 
 export const walletAlerts = async (req: Request, res: Response) => {
   try {
     const body = req.body;
-
-    console.log({ body })
-
-    // Validate required parameters
-    validateRequiredParams(body, [
-      "reference",
-      "amount",
-      "account_number",
-      "originator_account_number",
-      "originator_account_name",
-      "originator_bank",
-      "originator_narration",
-      "timestamp",
-      // "transaction_channel",
-      "session_id",
-    ]);
-    
     
     // retrieve all identites linked to a user
-    const { data: { users }, error } = await supabase.auth.admin.listUsers();
+    const user = await find({ user_metadata: { accountNo: body.originator_account_name } }, "one");
 
-    if (error) {
-      throw new Error(`Failed to get users: ${error.message}`);
+    if (!user || Array.isArray(user) || !user._id) {
+      return res.status(404).json({
+        status: "User not found.",
+        data: null
+      });
     }
 
-    console.log({ users })
+    await update(
+      user._id,
+      { user_metadata: { ...user.user_metadata, wallet: String(user.user_metadata?.wallet? Number(user?.user_metadata?.wallet) : 0) + Number(body.amount)  }}
+    );
 
-    users.map((user) =>{
-      console.log({ userPin: user.user_metadata?.accountNo })
-    })
+    // Insert transaction into database
+    const data = await createTransaction(
+      {
+        name: `Transfer from ${body.originator_account_name}`,
+        category: "credit",
+        type: "transfer",
+        user: user._id,
+        details: body.originator_narration,
+        transaction_number: String(body.reference),
+        amount: Number(Number(body.amount).toFixed(0)),
+        account_number: body.originator_account_number,
+        bank: body.originator_bank,
+        receiver: body.account_number,
+        outstanding: 0.0,
+        session_id: body.session_id,
+        status: "success",
+      },
+    );
 
-    console.log({ myPin: body.account_number })
+    console.log({ data });
 
-      // find the google identity 
-    if(users.length) {
-      const user = users.find(
-        identity => String(identity.user_metadata?.accountNo) === String(body.account_number)
-      )
-
-      console.log({ user });
-
-      if (!user || !user.id) {
-        throw new Error("User not found.");
-      }
-
-      const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
-        user.id,
-        { user_metadata: { ...user.user_metadata, wallet: (user.user_metadata?.wallet? Number(user?.user_metadata?.wallet) : 0) + Number(body.amount)  }}
-      );
-
-      console.log({ newUser })
-
-      if (newError) {
-        throw new Error(`Failed to update user wallet: ${newError.message}`);
-      }
-
-      // Insert transaction into database
-      const { data, error: insertError } = await supabase
-        .from("transactions")
-        .insert([
-          {
-            name: `Transfer from ${body.originator_account_name}`,
-            category: "credit",
-            type: "transfer",
-            user: user.id,
-            details: body.originator_narration,
-            transaction_number: String(body.reference),
-            amount: Number(body.amount).toFixed(0),
-            outstanding: 0.0,
-            session_id: body.session_id,
-            status: "success",
-          },
-        ]);
-
-        console.log({ data })
-
-      if (insertError) {
-        throw new Error(`Failed to insert transaction: ${insertError.message}`);
-      }
-
-      return res.status(200).json({ status: "Success", data });
-    }
-
-    res.status(404).json({ status: "Failed", message: "User not found" });
+    return res.status(200).json({ status: "Success", data });
   } catch (error: any) {
     console.error("Error handling wallet alerts:", error);
     res.status(400).json({ status: 400, message: error.message });

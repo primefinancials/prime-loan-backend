@@ -1,22 +1,29 @@
-import { supabase } from "../utils/supabaseClient";
 import { Request, Response, NextFunction } from "express";
 import { validateRequiredParams } from "../utils/validateParams";
 import { httpClient } from "../utils/httpClient";
 import { generateRandomString } from "../utils/generateRef";
 import { sha512 } from "js-sha512";
+import { ProtectedRequest } from "../interfaces";
+import { UserService, TransactionService, LoanService } from "../services";
+import { NotFoundError } from "../exceptions";
 
-export const createAndDisburseLoan = async (req: Request, res: Response, next: NextFunction) => {
+const { find, findByEmail, create, update } = new UserService();
+const { create: createTransaction } = new TransactionService();
+const { update: updateLoan, findById: findLoanById, find: findLoan, create: createLoan } = new LoanService();
+
+export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
-    const { transactionId, amount, duration, userId } = req.body;
-    // Validate required parameters
-    validateRequiredParams(
-        { ...req.body }, 
-        [ "transactionId", "amount", "duration", "userId" ]
-    );
+    const { amount, duration, transactionId } = req.body;
 
-    const { data: { user } } = await supabase.auth.admin.getUserById(userId);
-
+    const { user } = req;
     console.log({ user })
+
+    if (!user || !user._id) {
+      return res.status(404).json({
+        status: "User not found.",
+        data: null
+      });
+    }
     
     const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
     console.log({ account })
@@ -51,152 +58,233 @@ export const createAndDisburseLoan = async (req: Request, res: Response, next: N
       console.log({ response });
 
       if(response.data) {
-        const { transactionId } = req.body
-        const { data: loan, error } = await supabase
-          .from('loans')
-          .update([{ status: "accepted" }])
-          .eq("transactionId", transactionId)
-          .select()
-        ;
+        const loan = await updateLoan("transactionId", transactionId);
 
-        if (error) {
-          throw new Error(`Error storing to supabase: ${error.message}`);
-        } 
+        const transaction = await createTransaction(
+          { 
+            name: "Loan Withdrawal-" + new Date().toDateString(), 
+            category: "credit",
+            type: "loan",
+            user: user._id,
+            details: "Loan Disbursement",
+            transaction_number: response.data.data.txnId || "no-txnId",
+            amount,
+            bank: "Prime Finance",
+            receiver: `${user.user_metadata.first_name} ${user.user_metadata.surname}`,
+            account_number: user.user_metadata.accountNo  || "",
+            outstanding: 0.0,
+            session_id: response.data.data.sessionId || "no-sessionId",
+            status: "success"
+          },
+        );
 
-        const { data: transaction, error: transactionError } = await supabase
-          .from('transactions')
-          .insert([
-            { 
-              name: "Withdrawal-" + reference, 
-              category: "credit",
-              type: "loan",
-              user: userId,
-              details: "Loan Disbursement",
-              transaction_number: response.data.data.txnId || "no-txnId",
-              amount,
-              outstanding: 0.0,
-              session_id: response.data.data.sessionId || "no-sessionId",
-              status: "success"
-            },
-          ])
-          .select()
-        ;
-  
-        if (transactionError) {
-            throw new Error(`Error storing tansaction to supabase: ${transactionError.message}`);
-        }
+        res.status(response.status).json({ status: "success", data: response.data.data });
       }
 
-      res.status(response.status).json({ status: "success", data: response.data.data });
+      return res.status(400).json({ status: "failed", message: 'Unable to approve loan' });
     }
     
-    res.status(400).json({ status: "success", message: 'Unable to get users information' });
+    return res.status(400).json({ status: "failed", message: 'Unable to get users information' });
   } catch (error: any) {
     console.log("Error creating disbursing loan:", error);
-    res.status(error.status || 500).json({ status: "error", message: error.message });
+    next(error);
   }
 };
 
-export const repayLoan = async (req: Request, res: Response, next: NextFunction) => {
+export const createClientLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { 
+      first_name,
+      last_name,
+      dob,
+      nin,
+      email,
+      bvn,
+      phone,
+      address,
+      company,
+      company_address,
+      annual_income,
+      guarantor_1_name,
+      guarantor_1_phone,
+      guarantor_2_name,
+      guarantor_2_phone,
+      amount,
+      reason,
+      base64Image, 
+      outstanding, 
+      category, type,
+      status,
+      duration, 
+      repayment_amount,
+      percentage,
+      loan_date,
+      repayment_date,
+      acknowledgment
+    } = req.body;
+
+    const { user }= req;
+
+    if (!user || !user._id) {
+      return res.status(404).json({
+        status: "User not found.",
+        data: null
+      });
+    }
+
+    const loan = await createLoan({
+      first_name,
+      last_name,
+      dob,
+      nin,
+      email,
+      bvn,
+      phone,
+      address,
+      company,
+      company_address,
+      annual_income,
+      guarantor_1_name,
+      guarantor_1_phone,
+      guarantor_2_name,
+      guarantor_2_phone,
+      amount,
+      reason,
+      base64Image, 
+      outstanding, 
+      category, type,
+      status,
+      userId: user._id,
+      duration, 
+      repayment_amount,
+      percentage,
+      loan_date,
+      repayment_date,
+      acknowledgment,
+      loan_payment_status: "not-started"
+    });
+
+    if(!loan) throw new NotFoundError("Loan id not found");
+
+    res.status(200).json({ status: "success", data: loan });
+  } catch (error: any) {
+    console.log("Error getting loan transaction status:", error);
+    next(error);
+  }
+};
+
+export const repayLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
     try {
-        const { 
-            fromAccount,
-            fromClientId,
-            fromClient,
-            fromSavingsId,
-            fromBvn,
-            toClientId,
-            toClient,
-            toSavingsId,
-            toSession,
-            toBvn,
-            toKyc,
-            toAccount,
-            toBank,
-            signature,
-            amount,
-            remark,
-            reference,
-            userId,
-            outstanding
-          } = req.body;
-      
-          // Validate required parameters
-          validateRequiredParams(
-              { ...req.body }, 
-              [ 
-                "fromAccount", "fromClientId", "fromClient", "fromSavingsId", "fromBvn", "toClientId", "toClient",
-                "toSavingsId", "toBvn", "toAccount", "toBank", "signature", "amount", "reference", "userId", "outstanding"
-              ]
-          );
-      
-          const apiUrl = `/wallet2/transfer`;
-      
-          const response = await httpClient(apiUrl, "POST", {
-            fromAccount,
-            uniqueSenderAccountId: "",
-            fromClientId,
-            fromClient,
-            fromSavingsId,
-            fromBvn,
-            toClientId,
-            toClient,
-            toSavingsId,
-            toSession,
-            toBvn,
-            toAccount,
-            toBank,
-            signature,
-            amount,
-            remark,
-            transferType: "intra",
-            reference
+      const { 
+        fromAccount,
+        fromClientId,
+        fromClient,
+        fromSavingsId,
+        fromBvn,
+        toClientId,
+        toClient,
+        toSavingsId,
+        toSession,
+        toBvn,
+        toKyc,
+        toAccount,
+        toBank,
+        signature,
+        amount,
+        remark,
+        transactionId,
+        reference,
+        outstanding
+      } = req.body;
+  
+      const apiUrl = `/wallet2/transfer`;
+  
+      const response = await httpClient(apiUrl, "POST", {
+        fromAccount,
+        uniqueSenderAccountId: "",
+        fromClientId,
+        fromClient,
+        fromSavingsId,
+        fromBvn,
+        toClientId,
+        toClient,
+        toSavingsId,
+        toSession,
+        toBvn,
+        toAccount,
+        toBank,
+        signature,
+        amount,
+        remark,
+        transferType: "intra",
+        reference
+      });
+
+      if(response.data) {
+        const foundLoan = await findLoanById(transactionId);
+
+        if (!foundLoan) {
+          return res.status(404).json({
+            status: "Loan not found.",
+            data: null
           });
+        }
 
-          if(response.data) {
-              const { data: loan, error: loanError } = await supabase
-                .from('loans')
-                .update([{ outstanding: outstanding - amount }])
-                .eq("transactionId", response.data.data.txnId || "")
-                .select()
-              ;
+        const loan = await updateLoan(foundLoan._id, { 
+          loan_payment_status: (Number(outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
+          outstanding: Number(outstanding) - Number(amount) 
+        });
 
-              if (loanError) {
-                  throw new Error(`Error storing transaction to supabase: ${loanError.message}`);
-              } 
+        const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
+        console.log({ account });
+        
+        const { accountNo } = account.data.data;
 
-              const { data: transaction, error: transactionError } = await supabase
-                  .from('transactions')
-                  .insert([
-                    { 
-                      name: "Loan Repayment" + userId, 
-                      category: "credit",
-                      type: "loan",
-                      user: userId,
-                      details: "Loan Repayment",
-                      transaction_number: response.data.data.txnId ||  "no-txnId",
-                      amount,
-                      outstanding: outstanding - amount,
-                      session_id: response.data.data.sessionId || "no-sessionId",
-                      status: "success"
-                    }
-                  ])
-                  .select()
-              ;
+        const { user } = req;
 
-              if (transactionError) {
-                  throw new Error(`Error storing transaction to supabase: ${transactionError.message}`);
-              } 
-          
-              res.status(200).json({ status: "success", data: loan });
-          }
+        if (!user || !user._id) {
+          return res.status(404).json({
+            status: "User not found.",
+            data: null
+          });
+        }
+
+        const newUser = await update(
+          user._id,
+          { user_metadata: { ...user.user_metadata, wallet: String(Number(user?.user_metadata?.wallet) - Number(amount))  }}
+        );
+
+        if(account.data && accountNo) {
+          const transaction = await createTransaction(
+            { 
+              name: "Loan Repayment" + new Date().toDateString(), 
+              category: "credit",
+              type: "loan",
+              user: user._id,
+              details: "Loan Repayment",
+              transaction_number: response.data.data.txnId ||  "no-txnId",
+              bank: "Prime Finance",
+              receiver: `Prime Finance`,
+              account_number: accountNo,
+              amount,
+              outstanding: outstanding - amount,
+              session_id: response.data.data.sessionId || "no-sessionId",
+              status: "success"
+            }
+          );
+        }
+    
+        return res.status(200).json({ status: "success", data: loan });
+      }
+
+      return res.status(400).json({ status: "failed", message: 'Unable to get users information' });
     } catch (error: any) {
       console.log("Error creating disbursing loan:", error);
-      res.status(error.status || 500).json({ status: "error", message: error.message });
+      next(error);
     }
 };
 
-export const rejectLoan = async (req: Request, res: Response, next: NextFunction) => {
+export const rejectLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
     try {
       const { transactionId }= req.body;
       // Validate required parameters
@@ -204,76 +292,52 @@ export const rejectLoan = async (req: Request, res: Response, next: NextFunction
           { transactionId }, 
           [ "transactionId" ]
       );
-      const { data: loan, error } = await supabase
-        .from('loans')
-        .update([{ status: "accepted" }])
-        .eq("transactionId", transactionId)
-        .select()
-      ;
-
-      if (error) {
-        throw new Error(`Error storing to supabase: ${error.message}`);
-      } 
+      const loan = await updateLoan("transactionId", transactionId);
   
       res.status(200).json({ status: "success", data: loan });
     } catch (error: any) {
       console.log("Error creating disbursing loan:", error);
-      res.status(error.status || 500).json({ status: "error", message: error.message });
+      next(error);
     }
 };
 
-export const loanTransactionStatus = async (req: Request, res: Response, next: NextFunction) => {
+export const loanTransactionStatus = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
     try {
-      const { identification } = req.query
+      const { transactionId }= req.body;
       // Validate required parameters
       validateRequiredParams(
-          { identification }, 
-          [ "identification" ]
+          { transactionId }, 
+          [ "transactionId" ]
       );
+      const loan = await findLoanById(transactionId);
+
+      if(!loan) throw new NotFoundError("Loan id not found");
   
-      const response = await httpClient(`/credit/loan/transactions?identification=${identification}`, "GET");
-  
-      res.status(response.status).json({ status: "success", data: response.data.data });
+      res.status(200).json({ status: "success", data: loan });
     } catch (error: any) {
       console.log("Error getting loan transaction status:", error);
-      res.status(error.status || 500).json({ status: "error", message: error.message });
+      next(error);
     }
 };
 
-export const loanRepaymentSchedule = async (req: Request, res: Response, next: NextFunction) => {
+export const loanPortfolio = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
     try {
-      const { identification } = req.query
-      // Validate required parameters
-      validateRequiredParams(
-          { identification }, 
-          [ "identification" ]
-      );
-  
-      const response = await httpClient(`/credit/loan/repayment-schedule?identification=${identification}`, "GET");
-  
-      res.status(response.status).json({ status: "success", data: response.data.data });
-    } catch (error: any) {
-      console.log("Error getting loan transaction status:", error);
-      res.status(error.status || 500).json({ status: "error", message: error.message });
-    }
-};
+      const { user }= req;
 
-export const loanPortfolio = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { startDate, endDate, page, size, filterBy, search } = req.query
-      // Validate required parameters
-      validateRequiredParams(
-          { startDate, endDate }, 
-          [ "startDate", "endDate" ]
-      );
+      if (!user || !user._id) {
+        return res.status(404).json({
+          status: "User not found.",
+          data: null
+        });
+      }
 
-      const query = `startDate=${startDate}&endDate=${endDate}${(page && `&page=${page}`)}${(size && `&size=${size}`)}${(filterBy && `&filterBy=${filterBy}`)}${(search && `&search=${search}`)}`
+      const loan = await findLoan({ userId: user._id }, "many");
+
+      if(!loan) throw new NotFoundError("Loan not found");
   
-      const response = await httpClient(`/credit/loan/portfolio?${query}`, "GET");
-  
-      res.status(response.status).json({ status: "success", data: response.data.data });
+      res.status(200).json({ status: "success", data: loan });
     } catch (error: any) {
       console.log("Error getting repayment schedule:", error);
-      res.status(error.status || 500).json({ status: "error", message: error.message });
+      next(error);
     }
 };

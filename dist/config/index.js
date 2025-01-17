@@ -1,15 +1,41 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.authUrl = exports.baseUrl = exports.customerSecret = exports.customerKey = exports.PORT = exports.SUPABASE_KEY = exports.SUPABASE_URL = void 0;
-const dotenv_1 = __importDefault(require("dotenv"));
-dotenv_1.default.config();
-exports.SUPABASE_URL = process.env.SUPABASE_URL;
-exports.SUPABASE_KEY = process.env.SUPABASE_KEY;
-exports.PORT = process.env.PORT || 3000;
+exports.EMAIL_VERIFICATION_CODE_EXPIRES_IN = exports.LOG_DIRECTORY = exports.REFRESH_TOKEN_SECRET = exports.ACCESS_TOKEN_SECRET = exports.REDIS_CREDENTIALS = exports.CRYPTOJS_KEY = exports.DB_OPTIONS = exports.DB_URL = exports.PORT = exports.authUrl = exports.baseUrl = exports.customerSecret = exports.customerKey = void 0;
+require("../config/envConfig");
+const PORT = process.env.PORT || 3000;
+exports.PORT = PORT;
 exports.customerKey = process.env.CUSTOMER_KEY;
 exports.customerSecret = process.env.CUSTOMER_SECRET;
 exports.baseUrl = process.env.BASE_URL;
 exports.authUrl = process.env.AUTH_URL;
+const CRYPTOJS_KEY = process.env.CRYPTOJS_KEY;
+exports.CRYPTOJS_KEY = CRYPTOJS_KEY;
+const ACCESS_TOKEN_SECRET = process.env.ACCESS_TOKEN_SECRET;
+exports.ACCESS_TOKEN_SECRET = ACCESS_TOKEN_SECRET;
+const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
+exports.REFRESH_TOKEN_SECRET = REFRESH_TOKEN_SECRET;
+const EMAIL_VERIFICATION_CODE_EXPIRES_IN = process.env.EMAIL_VERIFICATION_CODE_EXPIRES_IN;
+exports.EMAIL_VERIFICATION_CODE_EXPIRES_IN = EMAIL_VERIFICATION_CODE_EXPIRES_IN;
+// Define specific types for the variables
+const DB_URL = process.env.DB_URL;
+exports.DB_URL = DB_URL;
+const DB_OPTIONS = {
+    autoIndex: true,
+    minPoolSize: parseInt(process.env.DB_MIN_POOL_SIZE || '5'), // Maintain up to x socket connections
+    maxPoolSize: parseInt(process.env.DB_MAX_POOL_SIZE || '20'), // Maintain up to x socket connections
+    connectTimeoutMS: 60000, // Give up initial connection after 60 seconds
+    socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+    // @ts-ignore
+    //   useNewUrlParser: true,
+    //   useUnifiedTopology: true,
+    dbName: process.env.DATABASE_NAME,
+};
+exports.DB_OPTIONS = DB_OPTIONS;
+const LOG_DIRECTORY = process.env.LOG_DIRECTORY || '';
+exports.LOG_DIRECTORY = LOG_DIRECTORY;
+const REDIS_CREDENTIALS = {
+    host: process.env.REDIS_HOST || '',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD || '',
+};
+exports.REDIS_CREDENTIALS = REDIS_CREDENTIALS;

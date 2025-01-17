@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.convertDate = convertDate;
+exports.getCurrentTimestamp = getCurrentTimestamp;
 const monthAbbreviations = [
     "Jan",
     "Feb",
@@ -22,4 +23,8 @@ function convertDate(dateString) {
     const abbreviatedMonth = monthAbbreviations[parseInt(month, 10) - 1];
     // Return the formatted date
     return `${day}-${abbreviatedMonth}-${year}`;
+}
+function getCurrentTimestamp() {
+    const now = new Date();
+    return now.toISOString();
 }

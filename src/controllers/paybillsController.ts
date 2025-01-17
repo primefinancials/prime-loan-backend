@@ -1,21 +1,25 @@
-import { Request, Response } from "express";
+import { NextFunction, Request, Response } from "express";
 import { httpClient } from "../utils/httpClient";
-import { supabase } from "../utils/supabaseClient";
 import { validateRequiredParams } from "../utils/validateParams";
 import { sha512 } from "js-sha512";
 import { generateRandomString } from "../utils/generateRef";
+import { ProtectedRequest } from "../interfaces";
+import { UserService, TransactionService } from "../services";
 
-export const getBillerCategories = async (_req: Request, res: Response) => {
+const { update } = new UserService();
+const { create: createTransaction } = new TransactionService();
+
+export const getBillerCategories = async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const response = await httpClient("/billspaymentstore/billercategory", "GET");
 
     res.status(response.status || 200).json({ status: "success", data: response.data.data });
   } catch (error: any) {
-    res.status(error.status || 500).json({ status: "error", message: error.message });
+    next(error);
   }
 };
 
-export const getBillerList = async (req: Request, res: Response) => {
+export const getBillerList = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { categoryName } = req.query;
     
@@ -28,11 +32,11 @@ export const getBillerList = async (req: Request, res: Response) => {
     
     res.status(response.status || 200).json({ status: "success", data: response.data.data });
   } catch (error: any) {
-    res.status(error.status || 500).json({ status: "error", message: error.message });
+    next(error);
   }
 };
 
-export const getBillerItems = async (req: Request, res: Response) => {
+export const getBillerItems = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { billerId, divisionId, productId } = req.query;
     
@@ -45,11 +49,11 @@ export const getBillerItems = async (req: Request, res: Response) => {
     
     res.status(response.status || 200 ).json({ status: "success", data: response.data.data });
   } catch (error: any) {
-    res.status(error.status || 500).json({ status: "error", message: error.message });
+    next(error);
   }
 };
 
-export const validateCustomer = async (req: Request, res: Response) => {
+export const validateCustomer = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { customerId, divisionId, paymentItem, billerId } = req.query;
     
@@ -62,14 +66,13 @@ export const validateCustomer = async (req: Request, res: Response) => {
     
     res.status(response.status || 200).json({ status: "success", data: response.data.data });
   } catch (error: any) {
-    res.status(error.status || 500).json({ status: "error", message: error.message });
+    next(error);
   }
 };
 
-export const payBill = async (req: Request, res: Response) => {
+export const payBill = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
     const {
-      userId,
       name,
       category,
       details,
@@ -83,29 +86,12 @@ export const payBill = async (req: Request, res: Response) => {
       billerId,
       phoneNumber
     } = req.body;
-
-    // Validate required parameters
-    validateRequiredParams(
-      { ...req.body },
-      [
-        "userId",
-        "name",
-        "category",
-        "amount",
-        "reference",
-        "customerId",
-        "division",
-        "paymentItem",
-        "productId",
-        "billerId",
-      ]
-    );
     
-    const { data: { user } } = await supabase.auth.admin.getUserById(userId);
+    const { user } = req;
     
     console.log({ user });
 
-    if (!user || !user.id) {
+    if (!user || !user._id) {
       return res.status(404).json({
         status: "User not found.",
         data: null
@@ -160,72 +146,62 @@ export const payBill = async (req: Request, res: Response) => {
         const payResponse = await httpClient("/billspaymentstore/pay", "POST", req.body);
 
         if (payResponse.data) {
-          const { data: { user: newUser }, error: newError } = await supabase.auth.admin.updateUserById(
-            user.id,
-            { user_metadata: { ...user.user_metadata, wallet: Number(user?.user_metadata?.wallet) - Number(amount)  }}
+          const newUser = await update(
+            user._id,
+            { user_metadata: { ...user.user_metadata, wallet: String(Number(user?.user_metadata?.wallet) - Number(amount))  }}
           );
 
           const transactionStatus = payResponse.data.status === "00" ? "success" : "failed";
 
-          // Insert transaction record into Supabase
-          const { data, error } = await supabase
-            .from("transactions")
-            .insert([
-              {
-                name,
-                category,
-                type: "paybills",
-                user: userId,
-                details,
-                transaction_number: customerId,
-                amount,
-                bank,
-                reciever: customerId,
-                account_number: customerId,
-                outstanding: 0.0,
-                session_id: reference,
-                status: transactionStatus,
-                message: payResponse.data.status,
-                ...(phoneNumber && { phoneNumber }),
-              },
-            ])
-            .select();
-
-          if (error) {
-            throw new Error(`Failed to log transaction: ${error.message}`);
-          }
+          // Insert transaction record into database
+          const transaction = await createTransaction(
+            {
+              name,
+              category,
+              type: "paybills",
+              user: user._id,
+              details,
+              transaction_number: customerId,
+              amount,
+              bank,
+              reciever: customerId,
+              account_number: customerId,
+              outstanding: 0.0,
+              session_id: reference,
+              status: transactionStatus,
+              message: payResponse.data.status,
+              ...(phoneNumber && { phoneNumber }),
+            },
+          )
 
           // Respond with cleaned-up data
           res.status(payResponse.status || 200).json({
             status: payResponse.data.message,
             data: {
               ...payResponse.data.data, // Only include essential data
-              transaction: data[0], // Transaction data from Supabase
+              transaction // Transaction data from database
             }
           });
         }
       } else {
         res.status(400).json({
-          status: "error",
+          status: "failed",
           message: "Service unavailable, try again later!",
         });
       }
     } else {
       res.status(404).json({
-        status: "error",
+        status: "failed",
         message: "Login, and try again",
       });
     }
   } catch (error: any) {
     console.error({ error });
-    res.status(error.status || 500).json({
-      status: "error",
-      message: error.message || "An error occurred",
-    });
+    next(error);
   }
 };
 
-export const transactionStatus = async (req: Request, res: Response) => {
+export const transactionStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { transactionId } = req.query;
     
@@ -238,6 +214,6 @@ export const transactionStatus = async (req: Request, res: Response) => {
     
     res.status(response.status || 200).json({ status: "success", data: response.data.data });
   } catch (error: any) {
-    res.status(error.status || 500).json({ status: "error", message: error.message });
+    next(error);
   }
 };

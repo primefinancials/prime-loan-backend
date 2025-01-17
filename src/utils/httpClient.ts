@@ -1,6 +1,7 @@
 import axios, { AxiosRequestConfig } from "axios";
 import { customerKey, customerSecret, baseUrl } from "../config";
 import { generateBearerToken } from "./generateBearerToken";
+import { APIError } from "../exceptions";
 
 export const httpClient = async (endpoint: string, method: string = "GET", body?: object) => {
   const url = `${baseUrl}${endpoint}`;
@@ -33,6 +34,6 @@ export const httpClient = async (endpoint: string, method: string = "GET", body?
 
     return response;
   } catch (error: any) {
-    throw new Error(error.response.data.message || error.message || "API error");
+    throw new APIError(error.status, error.response.data.message || error.message);
   }
 };

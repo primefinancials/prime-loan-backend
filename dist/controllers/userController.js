@@ -8,42 +8,231 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __rest = (this && this.__rest) || function (s, e) {
+    var t = {};
+    for (var p in s) if (Object.prototype.hasOwnProperty.call(s, p) && e.indexOf(p) < 0)
+        t[p] = s[p];
+    if (s != null && typeof Object.getOwnPropertySymbols === "function")
+        for (var i = 0, p = Object.getOwnPropertySymbols(s); i < p.length; i++) {
+            if (e.indexOf(p[i]) < 0 && Object.prototype.propertyIsEnumerable.call(s, p[i]))
+                t[p[i]] = s[p[i]];
+        }
+    return t;
+};
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.createClientAccount = void 0;
-const supabaseClient_1 = require("../utils/supabaseClient");
+exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.changePassword = exports.logout = exports.login = exports.updateClientAccount = exports.getUser = exports.createAdminAccount = exports.createClientAccount = void 0;
 const validateParams_1 = require("../utils/validateParams");
 const convertDate_1 = require("../utils/convertDate");
 const httpClient_1 = require("../utils/httpClient");
 const js_sha512_1 = require("js-sha512");
+const services_1 = require("../services");
+const exceptions_1 = require("../exceptions");
+const utils_1 = require("../utils");
+const convertDate_2 = require("../utils/convertDate");
+const utils_2 = require("../utils");
+const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const constants_1 = require("../constants");
+const config_1 = require("../config");
+function isUser(object, value) {
+    return value in object;
+}
+const { find, findByEmail, create, update } = new services_1.UserService();
+const { create: createTransaction } = new services_1.TransactionService();
 const createClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { email, name, surname, password, phone, bvn, nin, dob } = req.body;
-        // Validate required parameters
-        (0, validateParams_1.validateRequiredParams)({ bvn, dob, password, surname, email, name, phone, nin }, ["bvn", "dob", "password", "phone", "nin", "email", "name", "surname"]);
+        const duplicateEmail = yield findByEmail(email);
+        const duplicateNumber = yield find({ user_metadata: { phone } }, "one");
+        if (duplicateEmail)
+            throw new exceptions_1.ConflictError(`A user already exists with the email ${email}`);
+        if (duplicateNumber)
+            throw new exceptions_1.ConflictError(`A user already exists with the phone number ${phone}`);
+        req.body.password = (0, utils_1.encryptPassword)(password);
         const apiUrl = `/wallet2/client/create?bvn=${bvn}&dateOfBirth=${(0, convertDate_1.convertDate)(dob)}`;
         const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", {});
-        console.log({ response });
-        if (response.data) {
-            const { data: { user }, error } = yield supabaseClient_1.supabase.auth.signUp({
+        if (response.data && response.data.status === "00") {
+            const user = yield create({
+                password: req.body.password,
+                user_metadata: { email, first_name: name, surname, phone, bvn, nin, dateOfBirth: dob },
+                role: "user",
+                confirmation_sent_at: (0, convertDate_2.getCurrentTimestamp)(),
+                confirmed_at: "",
                 email,
-                password,
-                options: {
-                    data: { first_name: name, surname, phone, bvn, nin, dateOfBirth: (0, convertDate_1.convertDate)(dob), accountNo: response.data.data.accountNo },
-                },
+                email_confirmed_at: "",
+                is_anonymous: false,
+                phone,
+                is_super_admin: false
             });
-            if (error) {
-                throw new Error(`Error storing to supabase: ${error.message}`);
-            }
-            res.status(response.status).json({ status: "success", data: Object.assign(Object.assign({}, response.data.data), { user }) });
+            return res.status(201).json({ status: "success", data: Object.assign(Object.assign({}, response.data.data), { user }) });
         }
-        res.status(400).json({ status: "error", message: response.data.message });
+        return res.status(response.status).json({ status: "failed", message: response.data.message });
     }
     catch (error) {
-        console.log({ error });
-        res.status(error.status || 500).json({ status: "error", message: error.message });
+        next(error);
     }
 });
 exports.createClientAccount = createClientAccount;
+const createAdminAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { email, name, surname, password, phone, dob } = req.body;
+        const duplicateEmail = yield findByEmail(email);
+        const duplicateNumber = yield find({ user_metadata: { phone } }, "one");
+        if (duplicateEmail)
+            throw new exceptions_1.ConflictError(`A user already exists with the email ${email}`);
+        if (duplicateNumber)
+            throw new exceptions_1.ConflictError(`A user already exists with the phone number ${phone}`);
+        req.body.password = (0, utils_1.encryptPassword)(password);
+        const user = yield create({
+            password: req.body.password,
+            user_metadata: { email, first_name: name, surname, phone, dateOfBirth: dob },
+            role: "admin",
+            confirmation_sent_at: (0, convertDate_2.getCurrentTimestamp)(),
+            confirmed_at: "",
+            email,
+            email_confirmed_at: "",
+            is_anonymous: false,
+            phone,
+            is_super_admin: false
+        });
+        return res.status(201).json({ status: "success", data: { user } });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.createAdminAccount = createAdminAccount;
+const getUser = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const user = req.user;
+        if (!user)
+            throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as user to continue`);
+        const foundUser = yield find({ _id: user._id }, "one");
+        if (!foundUser)
+            throw new exceptions_1.NotFoundError(`No user found`);
+        return res.status(200).json({ status: "success", data: foundUser });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.getUser = getUser;
+const updateClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { user } = req;
+        if (!user)
+            throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as user to continue`);
+        const updatedUser = update(user._id, Object.assign({}, req.body));
+        return res.status(201).json({ status: "success", data: { user: updatedUser } });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.updateClientAccount = updateClientAccount;
+const login = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { email, password } = req.body;
+        let foundUser;
+        foundUser = yield findByEmail(email);
+        if (!foundUser)
+            throw new exceptions_1.UnauthorizedError(`Invalid credentials`);
+        const { password: encrypted } = foundUser;
+        // decrypt found user password
+        const decrypted = (0, utils_2.decodePassword)(encrypted);
+        // compare decrypted password with sent password
+        if (password !== decrypted)
+            throw new exceptions_1.UnauthorizedError(`Invalid credentials`);
+        const _a = foundUser._doc, { password: dbPassword, // strip out password so would'nt send back to client
+        refreshToken: dbRefreshToken } = _a, //Strip out old refreshToken so it wont keep signing old ones
+        _user = __rest(_a, ["password", "refreshToken"]);
+        const userToSign = {
+            accountType: foundUser.role,
+            id: _user._id
+        };
+        // create JWTs
+        const accessToken = jsonwebtoken_1.default.sign(userToSign, String(config_1.ACCESS_TOKEN_SECRET), {
+            expiresIn: constants_1.ACCESS_TOKEN_EXPIRES_IN,
+        });
+        const refreshToken = jsonwebtoken_1.default.sign(userToSign, String(config_1.REFRESH_TOKEN_SECRET), {
+            expiresIn: constants_1.REFRESH_TOKEN_EXPIRES,
+        });
+        // update current user refresh token
+        const refreshTokens = foundUser.refresh_token;
+        refreshTokens.push(refreshToken);
+        foundUser.refresh_token = refreshTokens;
+        yield foundUser.save();
+        return res
+            .cookie("jwt", refreshToken, {
+            httpOnly: true,
+            maxAge: constants_1.COOKIE_VALIDITY,
+        })
+            .status(200)
+            .json({
+            status: 'success',
+            data: Object.assign(Object.assign({}, _user), { refreshToken, accessToken }),
+        });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.login = login;
+const logout = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const cookies = req.cookies;
+        if (!(cookies === null || cookies === void 0 ? void 0 : cookies.jwt))
+            return res.sendStatus(204); //no content
+        const refreshToken = cookies.jwt;
+        const foundUser = yield find({ refresh_token: refreshToken }, "one");
+        if (!foundUser) {
+            res.clearCookie("jwt", {
+                httpOnly: true,
+                maxAge: constants_1.COOKIE_VALIDITY,
+                /* set sameSite: "None" and secure: true if hosted on different tls/ssl secured domain from client */
+            });
+            return res.sendStatus(204);
+        }
+        // Delete refreshToken in db
+        foundUser.refresh_token = "";
+        const result = yield foundUser.save();
+        return res
+            .clearCookie("jwt", { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 })
+            .sendStatus(204);
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.logout = logout;
+const changePassword = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { oldPassword, newPassword } = req.body;
+        const user = req.user;
+        if (!user)
+            throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as user to continue`);
+        const foundUser = yield find({ _id: user._id }, "one");
+        if (!foundUser)
+            throw new exceptions_1.NotFoundError(`No user found`);
+        let userPassword = "";
+        if (isUser(foundUser, "password") && foundUser.password)
+            userPassword = foundUser.password;
+        // Decoding password
+        const decrypted = (0, utils_2.decodePassword)(userPassword);
+        if (oldPassword !== decrypted)
+            throw new exceptions_1.UnauthorizedError(`Invalid credentials`);
+        const encrypted = (0, utils_1.encryptPassword)(newPassword);
+        foundUser.password = encrypted;
+        foundUser.save();
+        return res.status(200).json({ status: "success", data: foundUser });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.changePassword = changePassword;
 const accountEnquiry = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { accountNumber } = req.query;
@@ -52,7 +241,7 @@ const accountEnquiry = (req, res, next) => __awaiter(void 0, void 0, void 0, fun
     }
     catch (error) {
         console.log("Error getting account enquiry:", error);
-        res.status(error.status || 500).json({ status: "error", message: error.message });
+        next(error);
     }
 });
 exports.accountEnquiry = accountEnquiry;
@@ -66,7 +255,7 @@ const beneficiaryEnquiry = (req, res, next) => __awaiter(void 0, void 0, void 0,
     }
     catch (error) {
         console.log("Error getting account enquiry:", error);
-        res.status(error.status || 500).json({ status: "error", message: error.message });
+        next(error);
     }
 });
 exports.beneficiaryEnquiry = beneficiaryEnquiry;
@@ -76,24 +265,18 @@ const bankListing = (req, res, next) => __awaiter(void 0, void 0, void 0, functi
         res.status(response.status).json({ status: "success", data: response.data.data });
     }
     catch (error) {
-        console.log("Error creating client account:", error);
-        res.status(error.status || 500).json({ status: "error", message: error.message });
+        console.log("Error getting bank list:", error);
+        next(error);
     }
 });
 exports.bankListing = bankListing;
 const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
-        const { fromAccount, fromClientId, fromClient, fromSavingsId, fromBvn, toClient, toSession, toBvn, toKyc, toAccount, toBank, toSavingsId, amount, remark, reference, userId } = req.body;
+        const { fromAccount, fromClientId, fromClient, fromSavingsId, fromBvn, toClient, toSession, toBvn, toKyc, bank, toAccount, toBank, toSavingsId, amount, remark, reference, } = req.body;
         console.log(Object.assign({}, req.body));
-        // Validate required parameters
-        (0, validateParams_1.validateRequiredParams)(Object.assign({}, req.body), [
-            "fromAccount", "fromClientId", "fromClient", "fromSavingsId", "fromBvn", "toClientId", "toClient",
-            "toBvn", "toAccount", "toBank", "amount", "reference", "toSavingsId", "userId"
-        ]);
-        const { data: { user } } = yield supabaseClient_1.supabase.auth.admin.getUserById(userId);
-        console.log({ user });
-        if (!user || !user.id) {
+        const { user } = req;
+        if (!user || !user._id) {
             return res.status(404).json({
                 status: "User not found.",
                 data: null
@@ -127,34 +310,29 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
             reference
         });
         if (response.data && response.data.status === "00") {
-            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount) }) });
-            const { data: transaction, error } = yield supabaseClient_1.supabase
-                .from('transactions')
-                .insert([
-                {
-                    name: "Withdrawal-" + reference,
-                    category: "credit",
-                    type: "loan",
-                    user: userId,
-                    details: remark,
-                    transaction_number: response.data.data.txnId || "no-txnId",
-                    amount,
-                    outstanding: 0.0,
-                    session_id: response.data.data.sessionId || "no-sessionId",
-                    status: "success"
-                },
-            ])
-                .select();
-            if (error) {
-                throw new Error(`Error storing to supabase: ${error.message}`);
-            }
+            const data = yield update(user._id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)) }) });
+            const transaction = yield createTransaction({
+                name: "Withdrawal-" + reference,
+                category: "debit",
+                type: "transfer",
+                user: user._id,
+                details: remark,
+                transaction_number: response.data.data.txnId || "no-txnId",
+                amount,
+                bank,
+                receiver: toClient,
+                account_number: toAccount,
+                outstanding: 0.0,
+                session_id: response.data.data.sessionId || "no-sessionId",
+                status: "success"
+            });
             res.status(response.status).json({ status: "success", data: Object.assign(Object.assign({}, response.data.data), { transaction }) });
         }
-        res.status(400).json({ status: "error", message: response.data.message });
+        res.status(400).json({ status: "failed", message: response.data.message });
     }
     catch (error) {
-        console.log("Error creating client account:", error);
-        res.status(error.status || 500).json({ status: "error", message: error.message });
+        console.log("Error making withdrawal:", error);
+        next(error);
     }
 });
 exports.transfer = transfer;
@@ -163,67 +341,33 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
     var _a, _b;
     try {
         const body = req.body;
-        console.log({ body });
-        // Validate required parameters
-        (0, validateParams_1.validateRequiredParams)(body, [
-            "reference",
-            "amount",
-            "account_number",
-            "originator_account_number",
-            "originator_account_name",
-            "originator_bank",
-            "originator_narration",
-            "timestamp",
-            // "transaction_channel",
-            "session_id",
-        ]);
         // retrieve all identites linked to a user
-        const { data: { users }, error } = yield supabaseClient_1.supabase.auth.admin.listUsers();
-        if (error) {
-            throw new Error(`Failed to get users: ${error.message}`);
+        const user = yield find({ user_metadata: { accountNo: body.originator_account_name } }, "one");
+        if (!user || Array.isArray(user) || !user._id) {
+            return res.status(404).json({
+                status: "User not found.",
+                data: null
+            });
         }
-        console.log({ users });
-        users.map((user) => {
-            var _a;
-            console.log({ userPin: (_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.accountNo });
+        yield update(user._id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: String(((_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) ? Number((_b = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _b === void 0 ? void 0 : _b.wallet) : 0) + Number(body.amount) }) });
+        // Insert transaction into database
+        const data = yield createTransaction({
+            name: `Transfer from ${body.originator_account_name}`,
+            category: "credit",
+            type: "transfer",
+            user: user._id,
+            details: body.originator_narration,
+            transaction_number: String(body.reference),
+            amount: Number(Number(body.amount).toFixed(0)),
+            account_number: body.originator_account_number,
+            bank: body.originator_bank,
+            receiver: body.account_number,
+            outstanding: 0.0,
+            session_id: body.session_id,
+            status: "success",
         });
-        console.log({ myPin: body.account_number });
-        // find the google identity 
-        if (users.length) {
-            const user = users.find(identity => { var _a; return String((_a = identity.user_metadata) === null || _a === void 0 ? void 0 : _a.accountNo) === String(body.account_number); });
-            console.log({ user });
-            if (!user || !user.id) {
-                throw new Error("User not found.");
-            }
-            const { data: { user: newUser }, error: newError } = yield supabaseClient_1.supabase.auth.admin.updateUserById(user.id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: (((_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) ? Number((_b = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _b === void 0 ? void 0 : _b.wallet) : 0) + Number(body.amount) }) });
-            console.log({ newUser });
-            if (newError) {
-                throw new Error(`Failed to update user wallet: ${newError.message}`);
-            }
-            // Insert transaction into database
-            const { data, error: insertError } = yield supabaseClient_1.supabase
-                .from("transactions")
-                .insert([
-                {
-                    name: `Transfer from ${body.originator_account_name}`,
-                    category: "credit",
-                    type: "transfer",
-                    user: user.id,
-                    details: body.originator_narration,
-                    transaction_number: String(body.reference),
-                    amount: Number(body.amount).toFixed(0),
-                    outstanding: 0.0,
-                    session_id: body.session_id,
-                    status: "success",
-                },
-            ]);
-            console.log({ data });
-            if (insertError) {
-                throw new Error(`Failed to insert transaction: ${insertError.message}`);
-            }
-            return res.status(200).json({ status: "Success", data });
-        }
-        res.status(404).json({ status: "Failed", message: "User not found" });
+        console.log({ data });
+        return res.status(200).json({ status: "Success", data });
     }
     catch (error) {
         console.error("Error handling wallet alerts:", error);

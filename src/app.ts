@@ -1,25 +1,39 @@
-import express, { Application } from "express";
+import express, { Application, Request, Response } from "express";
 import cors from "cors";
+import morgan from "morgan";
+import helmet from "helmet";
 import userRoutes from "./routes/userRoutes";
 import kycRoutes from "./routes/kycRoutes";
 import paybillsRoutes from "./routes/paybillsRoutes";
 import loanRoutes from "./routes/loanRoutes";
-import { errorHandler } from "./middlewares/errorHandler";
+import { errHandler } from './exceptions';
+import compression from "compression";
+import cookieParser from "cookie-parser";
 
-const app: Application = express();
-
-// Middlewares
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Routes
-app.use("/api/users", userRoutes);
-app.use("/api/kyc", kycRoutes);
-app.use("/api/paybills", paybillsRoutes);
-app.use("/api/loans", loanRoutes);
-
-// Global Error Handler
-app.use(errorHandler);
-
-export default app;
+export default async (app: Application) => {
+    // Log to console using morgan if app is in development
+    if (process.env.ENV === "dev") app.use(morgan("dev"));
+    
+    // CORS
+    app.use(cors());
+    app.use(helmet());
+    // Request body parser
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: false }));
+    // Cookie parser
+    app.use(cookieParser());
+    app.use(compression());
+  
+    // Routes
+    app.use("/api/users", userRoutes);
+    app.use("/api/kyc", kycRoutes);
+    app.use("/api/paybills", paybillsRoutes);
+    app.use("/api/loans", loanRoutes);
+  
+    // Catch and handle all 404 errors
+    app.all("*", function (req: Request, res: Response): Response {
+      return res.sendStatus(404);
+    });
+  
+    app.use(errHandler);
+}

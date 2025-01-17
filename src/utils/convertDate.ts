@@ -23,3 +23,8 @@ export function convertDate(dateString: string) {
     // Return the formatted date
     return `${day}-${abbreviatedMonth}-${year}`;
 }  
+
+export function getCurrentTimestamp(): string {
+    const now = new Date();
+    return now.toISOString();
+}
