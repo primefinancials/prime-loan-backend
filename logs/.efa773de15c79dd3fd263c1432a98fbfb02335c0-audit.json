@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 28
+    },
+    "auditLog": "C:\\Users\\Kene Nnakwue\\Documents\\My Web Sites\\PrimeFinance\\prime-loan-backend\\logs\\.efa773de15c79dd3fd263c1432a98fbfb02335c0-audit.json",
+    "files": [
+        {
+            "date": 1737481816536,
+            "name": "C:\\Users\\Kene Nnakwue\\Documents\\My Web Sites\\PrimeFinance\\prime-loan-backend\\logs\\2025-01-21.log",
+            "hash": "bb7ca1974397d3a5ffb5341ded8577e33f7289e456423322329069ffbfdec506"
+        }
+    ],
+    "hashType": "sha256"
+}

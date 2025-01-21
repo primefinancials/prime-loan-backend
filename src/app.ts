@@ -1,5 +1,4 @@
 import express, { Application, Request, Response } from "express";
-import cors from "cors";
 import morgan from "morgan";
 import helmet from "helmet";
 import userRoutes from "./routes/userRoutes";
@@ -9,13 +8,14 @@ import loanRoutes from "./routes/loanRoutes";
 import { errHandler } from './exceptions';
 import compression from "compression";
 import cookieParser from "cookie-parser";
+import { crossOrigin } from "./utils";
 
 export default async (app: Application) => {
     // Log to console using morgan if app is in development
     if (process.env.ENV === "dev") app.use(morgan("dev"));
     
     // CORS
-    app.use(cors());
+    app.use(crossOrigin());
     app.use(helmet());
     // Request body parser
     app.use(express.json());
