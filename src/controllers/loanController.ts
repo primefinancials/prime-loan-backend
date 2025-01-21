@@ -302,42 +302,38 @@ export const rejectLoan = async (req: ProtectedRequest, res: Response, next: Nex
 };
 
 export const loanTransactionStatus = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
-    try {
-      const { transactionId }= req.body;
-      // Validate required parameters
-      validateRequiredParams(
-          { transactionId }, 
-          [ "transactionId" ]
-      );
-      const loan = await findLoanById(transactionId);
+  try {
+    const { transactionId }= req.body;
+    
+    const loan = await findLoanById(transactionId);
 
-      if(!loan) throw new NotFoundError("Loan id not found");
-  
-      res.status(200).json({ status: "success", data: loan });
-    } catch (error: any) {
-      console.log("Error getting loan transaction status:", error);
-      next(error);
-    }
+    if(!loan) throw new NotFoundError("Loan id not found");
+
+    res.status(200).json({ status: "success", data: loan });
+  } catch (error: any) {
+    console.log("Error getting loan transaction status:", error);
+    next(error);
+  }
 };
 
 export const loanPortfolio = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
-    try {
-      const { user }= req;
+  try {
+    const { user }= req;
 
-      if (!user || !user._id) {
-        return res.status(404).json({
-          status: "User not found.",
-          data: null
-        });
-      }
-
-      const loan = await findLoan({ userId: user._id }, "many");
-
-      if(!loan) throw new NotFoundError("Loan not found");
-  
-      res.status(200).json({ status: "success", data: loan });
-    } catch (error: any) {
-      console.log("Error getting repayment schedule:", error);
-      next(error);
+    if (!user || !user._id) {
+      return res.status(404).json({
+        status: "User not found.",
+        data: null
+      });
     }
+
+    const loan = await findLoan({ userId: user._id }, "many");
+
+    if(!loan) throw new NotFoundError("Loan not found");
+
+    res.status(200).json({ status: "success", data: loan });
+  } catch (error: any) {
+    console.log("Error getting repayment schedule:", error);
+    next(error);
+  }
 };
