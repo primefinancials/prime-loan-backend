@@ -5,7 +5,7 @@ import { generateRandomString } from "../utils/generateRef";
 import { sha512 } from "js-sha512";
 import { ProtectedRequest } from "../interfaces";
 import { UserService, TransactionService, MessageService } from "../services";
-import { NotFoundError } from "../exceptions";
+import { ConflictError, NotFoundError } from "../exceptions";
 
 const { find, findByEmail, create, update } = new UserService();
 const { create: createTransaction, findById: findTransactionId, find: findTransaction } = new TransactionService();
@@ -13,15 +13,17 @@ const { update: updateMessage, findById: findMessageId, find: findMessage, creat
 
 export const transaction = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
-    const { transactionId }= req.body;
+    const { transactionId }= req.query;
+
+    if(!transactionId) throw new ConflictError("Missing required parameter of transactionId")
     
-    const loan = await findLoanById(transactionId);
+    const transaction = await findTransactionId(String(transactionId));
 
-    if(!loan) throw new NotFoundError("Loan id not found");
+    if(!transaction) throw new NotFoundError("Transaction id not found");
 
-    res.status(200).json({ status: "success", data: loan });
+    res.status(200).json({ status: "success", data: transaction });
   } catch (error: any) {
-    console.log("Error getting loan transaction status:", error);
+    console.log("Error getting transaction:", error);
     next(error);
   }
 };
@@ -37,28 +39,30 @@ export const transactions = async (req: ProtectedRequest, res: Response, next: N
       });
     }
 
-    const loan = await findLoan({ userId: user._id }, "many");
+    const transactions = await findTransaction({ user: user._id }, "many");
 
-    if(!loan) throw new NotFoundError("Loan not found");
+    if(!transactions) throw new NotFoundError("Transaction not found");
 
-    res.status(200).json({ status: "success", data: loan });
+    res.status(200).json({ status: "success", data: transactions });
   } catch (error: any) {
-    console.log("Error getting repayment schedule:", error);
+    console.log("Error getting transactions:", error);
     next(error);
   }
 };
 
 export const message = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
     try {
-      const { transactionId }= req.body;
+      const { messageId }= req.query;
+
+      if(!messageId) throw new ConflictError("Missing required parameter of messageId")
       
-      const loan = await findLoanById(transactionId);
+      const message = await findMessageId(String(messageId));
   
-      if(!loan) throw new NotFoundError("Loan id not found");
+      if(!message) throw new NotFoundError("Message id not found");
   
-      res.status(200).json({ status: "success", data: loan });
+      res.status(200).json({ status: "success", data: message });
     } catch (error: any) {
-      console.log("Error getting loan transaction status:", error);
+      console.log("Error getting message:", error);
       next(error);
     }
 };
@@ -74,13 +78,13 @@ export const messages = async (req: ProtectedRequest, res: Response, next: NextF
         });
       }
   
-      const loan = await findLoan({ userId: user._id }, "many");
+      const messages = await findMessage({ user: user._id }, "many");
   
-      if(!loan) throw new NotFoundError("Loan not found");
+      if(!messages) throw new NotFoundError("Message not found");
   
-      res.status(200).json({ status: "success", data: loan });
+      res.status(200).json({ status: "success", data: messages });
     } catch (error: any) {
-      console.log("Error getting repayment schedule:", error);
+      console.log("Error getting message:", error);
       next(error);
     }
 };

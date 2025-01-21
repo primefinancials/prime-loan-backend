@@ -5,6 +5,7 @@ import userRoutes from "./routes/userRoutes";
 import kycRoutes from "./routes/kycRoutes";
 import paybillsRoutes from "./routes/paybillsRoutes";
 import loanRoutes from "./routes/loanRoutes";
+import dataRoutes from "./routes/dataRoutes"; 
 import { errHandler } from './exceptions';
 import compression from "compression";
 import cookieParser from "cookie-parser";
@@ -29,6 +30,7 @@ export default async (app: Application) => {
     app.use("/api/kyc", kycRoutes);
     app.use("/api/paybills", paybillsRoutes);
     app.use("/api/loans", loanRoutes);
+    app.use("/api/data", dataRoutes);
   
     // Catch and handle all 404 errors
     app.all("*", function (req: Request, res: Response): Response {
