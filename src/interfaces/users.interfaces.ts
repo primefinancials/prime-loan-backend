@@ -29,7 +29,10 @@ export interface User {
     address?: string;
     wallet?: string;
     pin?: string;
+    profile_photo?: string;
     file?: string;
+    types?: string;
+    verified_address?: "verified" | "pending" | "unverified";
   };
   is_super_admin?: boolean;
 }
@@ -58,7 +61,10 @@ export interface CREATEUSER {
     accountNo?: string;
     address?: string;
     pin?: string;
+    profile_photo?: string;
     file?: string;
+    types?: string;
+    verified_address?: "verified" | "pending" | "unverified";
   };
   is_super_admin?: boolean;
 }
@@ -83,6 +89,9 @@ export interface UPDATEUSER {
     accountNo?: string;
     address?: string;
     pin?: string;
+    profile_photo?: string;
     file?: string;
+    types?: string;
+    verified_address?: "verified" | "pending" | "unverified";
   };
 }

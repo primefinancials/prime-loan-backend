@@ -106,6 +106,16 @@ exports.transferSchema = joi_1.default.object({
     toBank: joi_1.default.string().required().messages({
         "string.empty": "To Bank is required",
     }),
+    toSavingsId: joi_1.default.string().required().messages({
+        "string.empty": "To Savings ID is required",
+    }),
+    amount: joi_1.default.string().required().messages({
+        "string.empty": "Amount is required",
+    }),
+    remark: joi_1.default.string(),
+    reference: joi_1.default.string().required().messages({
+        "string.empty": "Reference is required",
+    }),
 });
 // Joi validation schema for wallet alerts
 exports.walletAlertsSchema = joi_1.default.object({
@@ -165,16 +175,26 @@ exports.loginReqBodySchema = joi_1.default.object({
     email: joi_1.default.string().email(),
 });
 exports.updateUserSchema = joi_1.default.object({
-    first_name: joi_1.default.string(),
-    profile_photo: joi_1.default.string(),
-    surname: joi_1.default.string(),
-    address: joi_1.default.string(),
-    file: joi_1.default.string(),
-    dateOfBirth: joi_1.default.date(),
-    sub: joi_1.default.string(),
-    wallet: joi_1.default.string(),
-    pin: joi_1.default.string(),
-    role: joi_1.default.string().valid("user", "admin")
+    bvn: joi_1.default.string().optional(),
+    nin: joi_1.default.string().optional(),
+    sub: joi_1.default.string().optional(),
+    email: joi_1.default.string().email().optional(),
+    phone: joi_1.default.string().optional(),
+    surname: joi_1.default.string().optional(),
+    first_name: joi_1.default.string().optional(),
+    dateOfBirth: joi_1.default.string().optional(),
+    email_verified: joi_1.default.boolean().optional(),
+    phone_verified: joi_1.default.boolean().optional(),
+    accountNo: joi_1.default.string().optional(),
+    address: joi_1.default.string().optional(),
+    wallet: joi_1.default.string().optional(),
+    pin: joi_1.default.string().optional(),
+    profile_photo: joi_1.default.string().optional(),
+    file: joi_1.default.string().optional(),
+    types: joi_1.default.string().optional(),
+    verified_address: joi_1.default.string()
+        .valid("verified", "pending", "unverified")
+        .optional(),
 });
 exports.changePasswordSchema = joi_1.default.object({
     oldPassword: joi_1.default.string().required().messages({

@@ -104,6 +104,16 @@ export const transferSchema = Joi.object({
     toBank: Joi.string().required().messages({
       "string.empty": "To Bank is required",
     }),
+    toSavingsId: Joi.string().required().messages({
+      "string.empty": "To Savings ID is required",
+    }),
+    amount: Joi.string().required().messages({
+      "string.empty": "Amount is required",
+    }),
+    remark: Joi.string(),
+    reference: Joi.string().required().messages({
+      "string.empty": "Reference is required",
+    }),
 });
 
 // Joi validation schema for wallet alerts
@@ -166,16 +176,26 @@ export const loginReqBodySchema = Joi.object({
 });
 
 export const updateUserSchema = Joi.object({
-    first_name: Joi.string(),
-    profile_photo: Joi.string(),
-    surname: Joi.string(),
-    address: Joi.string(),
-    file: Joi.string(),
-    dateOfBirth: Joi.date(),
-    sub: Joi.string(),
-    wallet: Joi.string(),
-    pin: Joi.string(),
-    role: Joi.string().valid("user", "admin")
+  bvn: Joi.string().optional(),
+  nin: Joi.string().optional(),
+  sub: Joi.string().optional(),
+  email: Joi.string().email().optional(),
+  phone: Joi.string().optional(),
+  surname: Joi.string().optional(),
+  first_name: Joi.string().optional(),
+  dateOfBirth: Joi.string().optional(),
+  email_verified: Joi.boolean().optional(),
+  phone_verified: Joi.boolean().optional(),
+  accountNo: Joi.string().optional(),
+  address: Joi.string().optional(),
+  wallet: Joi.string().optional(),
+  pin: Joi.string().optional(),
+  profile_photo: Joi.string().optional(),
+  file: Joi.string().optional(),
+  types: Joi.string().optional(),
+  verified_address: Joi.string()
+    .valid("verified", "pending", "unverified")
+    .optional(),
 });
 
 export const changePasswordSchema = Joi.object({

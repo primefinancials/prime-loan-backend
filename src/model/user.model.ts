@@ -36,7 +36,7 @@ const userSchema = new Schema<User>(
     is_anonymous: { type: Boolean, required: true },
     last_sign_in_at: { type: String, required: false },
     phone: { type: String, required: false },
-    role: { type: String,  required: true },
+    role: { type: String, enum: ["user", "admin"], required: true },
     user_metadata: {
       bvn: { type: String, required: false },
       nin: { type: String, required: false },
@@ -53,6 +53,13 @@ const userSchema = new Schema<User>(
       address: { type: String, required: false },
       pin: { type: String, required: false },
       file: { type: String, required: false },
+      profile_photo: { type: String, required: false },
+      types: { type: String, required: false },
+      verified_address: {
+        type: String,
+        enum: ["verified", "pending", "unverified"],
+        required: false,
+      },
     },
     is_super_admin: { type: Boolean, required: false, default: null },
   },

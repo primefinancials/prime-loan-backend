@@ -229,8 +229,6 @@ exports.rejectLoan = rejectLoan;
 const loanTransactionStatus = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { transactionId } = req.body;
-        // Validate required parameters
-        (0, validateParams_1.validateRequiredParams)({ transactionId }, ["transactionId"]);
         const loan = yield findLoanById(transactionId);
         if (!loan)
             throw new exceptions_1.NotFoundError("Loan id not found");
