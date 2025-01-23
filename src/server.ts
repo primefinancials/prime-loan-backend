@@ -13,20 +13,16 @@ const startApp = async () => {
 
   const server = http.createServer(app);
 
-  server
-    .listen(PORT, (): void => {
-      console.log(`initiated User Service`);
-    })
-    .on("listening", () =>
-      console.log(`User Service listening on port ${PORT}`)
-    )
-    .on("error", (err: any) => {
-      console.log(err);
-      process.exit();
-    })
-    .on("close", () => {
-      
-    });
+  server.listen(PORT, (): void => {
+    console.log(`initiated User Service`);
+  }).on("listening", () =>
+    console.log(`User Service listening on port ${PORT}`)
+  ).on("error", (err: any) => {
+    console.log(err);
+    process.exit();
+  }).on("close", () => {
+    
+  });
 };
 
 startApp();

@@ -22,16 +22,12 @@ const startApp = () => __awaiter(void 0, void 0, void 0, function* () {
     yield (0, utils_1.connectToDB)();
     yield (0, app_1.default)(app);
     const server = http_1.default.createServer(app);
-    server
-        .listen(config_1.PORT, () => {
+    server.listen(config_1.PORT, () => {
         console.log(`initiated User Service`);
-    })
-        .on("listening", () => console.log(`User Service listening on port ${config_1.PORT}`))
-        .on("error", (err) => {
+    }).on("listening", () => console.log(`User Service listening on port ${config_1.PORT}`)).on("error", (err) => {
         console.log(err);
         process.exit();
-    })
-        .on("close", () => {
+    }).on("close", () => {
     });
 });
 startApp();
