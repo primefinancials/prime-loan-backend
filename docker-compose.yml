@@ -1,12 +1,10 @@
 version: '3.8'
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${IMAGE}
+    container_name: app
+    restart: always
     ports:
-      - "3000:3000"
-    volumes:
-      - .:/src
-      - /src/node_modules
-    command: npm run dev
+      - "3105:3105"
+    env_file:
+      - .env
