@@ -10,10 +10,9 @@ const paybillsRoutes_1 = __importDefault(require("./routes/paybillsRoutes"));
 const loanRoutes_1 = __importDefault(require("./routes/loanRoutes"));
 const dataRoutes_1 = __importDefault(require("./routes/dataRoutes"));
 const exceptions_1 = require("./exceptions");
-const cors_1 = __importDefault(require("cors"));
 const app = (0, express_1.default)();
 // CORS
-app.use((0, cors_1.default)());
+// app.use(cors());
 // app.use(helmet());
 // // Request body parser
 app.use(express_1.default.json());

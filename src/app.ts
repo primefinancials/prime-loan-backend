@@ -13,7 +13,7 @@ import cors from "cors";
 
 const app = express();
 // CORS
-app.use(cors());
+// app.use(cors());
 // app.use(helmet());
 // // Request body parser
 app.use(express.json());
