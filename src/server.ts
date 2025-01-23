@@ -1,15 +1,9 @@
-import createApp from "./app";
-import express from "express";
-// import http from "http";
+import app from "./app";
 import { connectToDB } from "./utils";
 import { PORT } from "./config";
 
 const startApp = async () => {
-  const app = express();
-
   await connectToDB();
-
-  await createApp(app);
 
   // const server = http.createServer(app);
 
