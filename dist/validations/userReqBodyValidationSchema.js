@@ -36,9 +36,8 @@ exports.createClientAccountSchema = joi_1.default.object({
         "string.length": "NIN must be exactly 11 digits",
         "string.pattern.base": "NIN must contain only digits",
     }),
-    dob: joi_1.default.date().format("DD/MM/YYYY").required().messages({
-        "date.format": "Date of Birth must be in the format dd/mm/yyyy",
-        "date.empty": "Date of Birth must be a valid date",
+    dob: joi_1.default.string().pattern(/^([0-2][0-9]|3[0-1])\/(0[1-9]|1[0-2])\/\d{4}$/).required().messages({
+        "string.pattern.base": "Date of Birth must be in the format dd/mm/yyyy",
         "any.required": "Date of Birth is required",
     })
 });
@@ -61,9 +60,8 @@ exports.createAdminAccountSchema = joi_1.default.object({
         "string.empty": "Phone number is required",
         "string.pattern.base": "Phone number must contain only digits",
     }),
-    dob: joi_1.default.date().format("DD/MM/YYYY").required().messages({
-        "date.format": "Date of Birth must be in the format dd/mm/yyyy",
-        "date.empty": "Date of Birth must be a valid date",
+    dob: joi_1.default.string().pattern(/^([0-2][0-9]|3[0-1])\/(0[1-9]|1[0-2])\/\d{4}$/).required().messages({
+        "string.pattern.base": "Date of Birth must be in the format dd/mm/yyyy",
         "any.required": "Date of Birth is required",
     })
 });
