@@ -15,8 +15,8 @@ const app = (0, express_1.default)();
 // app.use(cors());
 // app.use(helmet());
 // // Request body parser
-app.use(express_1.default.json());
-app.use(express_1.default.urlencoded({ extended: false }));
+// app.use(express.json());
+// app.use(express.urlencoded({ extended: false }));
 // // Cookie parser
 // app.use(cookieParser());
 // app.use(compression());
