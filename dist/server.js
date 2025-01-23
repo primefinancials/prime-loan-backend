@@ -15,15 +15,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const app_1 = __importDefault(require("./app"));
 const utils_1 = require("./utils");
 const config_1 = require("./config");
-const startApp = () => __awaiter(void 0, void 0, void 0, function* () {
+app_1.default.listen(config_1.PORT, () => __awaiter(void 0, void 0, void 0, function* () {
     yield (0, utils_1.connectToDB)();
-    // const server = http.createServer(app);
-    app_1.default.listen(3000, () => {
-        console.log(`initiated User Service`);
-    }).on("listening", () => console.log(`User Service listening on port ${config_1.PORT}`)).on("error", (err) => {
-        console.log(err);
-        process.exit();
-    }).on("close", () => {
-    });
+    console.log(`initiated User Service`);
+})).on("listening", () => console.log(`User Service listening on port ${config_1.PORT}`)).on("error", (err) => {
+    console.log(err);
+    process.exit();
+}).on("close", () => {
 });
-startApp();
