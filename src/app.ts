@@ -33,9 +33,9 @@ export default async (app: Application) => {
     app.use("/api/data", dataRoutes);
   
     // Catch and handle all 404 errors
-    app.all("*", function (req: Request, res: Response): Response {
-      return res.sendStatus(404);
-    });
+    // app.all("*", function (req: Request, res: Response): Response {
+    //   return res.sendStatus(404);
+    // });
   
     app.use(errHandler);
 }
