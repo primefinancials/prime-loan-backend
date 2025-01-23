@@ -44,8 +44,9 @@ exports.default = (app) => __awaiter(void 0, void 0, void 0, function* () {
     app.use("/api/loans", loanRoutes_1.default);
     app.use("/api/data", dataRoutes_1.default);
     // Catch and handle all 404 errors
-    // app.all("*", function (req: Request, res: Response): Response {
-    //   return res.sendStatus(404);
-    // });
+    app.all("*", function (req, res) {
+        console.log("Not Found");
+        return res.sendStatus(404);
+    });
     app.use(exceptions_1.errHandler);
 });
