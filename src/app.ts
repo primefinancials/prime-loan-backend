@@ -17,13 +17,13 @@ export default async (app: Application) => {
     
     // CORS
     app.use(crossOrigin());
-    app.use(helmet());
+    // app.use(helmet());
     // Request body parser
     app.use(express.json());
     app.use(express.urlencoded({ extended: false }));
     // Cookie parser
     app.use(cookieParser());
-    app.use(compression());
+    // app.use(compression());
   
     // Routes
     app.use("/api/users", userRoutes);
@@ -31,11 +31,6 @@ export default async (app: Application) => {
     app.use("/api/paybills", paybillsRoutes);
     app.use("/api/loans", loanRoutes);
     app.use("/api/data", dataRoutes);
-  
-    // Catch and handle all 404 errors
-    app.all("*", function (req: Request, res: Response): Response {
-      return res.sendStatus(404);
-    });
   
     app.use(errHandler);
 }
