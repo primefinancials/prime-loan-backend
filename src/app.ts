@@ -35,6 +35,6 @@ app.use("/api/data", dataRoutes);
 //   return res.sendStatus(404);
 // });
 
-app.use(errHandler);
+// app.use(errHandler);
 
 export default app;
