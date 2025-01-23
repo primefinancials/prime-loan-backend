@@ -13,21 +13,21 @@ import cors from "cors";
 
 const app = express();
 // CORS
-// app.use(cors());
+app.use(cors());
 // app.use(helmet());
 // // Request body parser
-// app.use(express.json());
-// app.use(express.urlencoded({ extended: false }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
 // // Cookie parser
 // app.use(cookieParser());
 // app.use(compression());
 
 // // Routes
-// app.use("/api/users", userRoutes);
-// app.use("/api/kyc", kycRoutes);
-// app.use("/api/paybills", paybillsRoutes);
-// app.use("/api/loans", loanRoutes);
-// app.use("/api/data", dataRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/kyc", kycRoutes);
+app.use("/api/paybills", paybillsRoutes);
+app.use("/api/loans", loanRoutes);
+app.use("/api/data", dataRoutes);
 
 // // Catch and handle all 404 errors
 // app.all("*", function (req: Request, res: Response): Response {
@@ -35,6 +35,6 @@ const app = express();
 //   return res.sendStatus(404);
 // });
 
-// app.use(errHandler);
+app.use(errHandler);
 
 export default app;
