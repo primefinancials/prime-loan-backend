@@ -1,10 +1,10 @@
 # Use a Node.js base image
 FROM node:16-alpine
 
-# Set the working directory
-WORKDIR /app
+# Set the working directory inside the container
+WORKDIR /src
 
-# Copy package.json and package-lock.json
+# Copy package.json and package-lock.json to the container
 COPY package*.json ./
 
 # Install dependencies
@@ -14,7 +14,10 @@ RUN npm install
 COPY . .
 
 # Build the TypeScript code
-RUN npx tsc
+RUN npm run build
 
-# Set the default command
+# Expose the port the app runs on
+EXPOSE 3000
+
+# Start the application
 CMD ["npm", "start"]
