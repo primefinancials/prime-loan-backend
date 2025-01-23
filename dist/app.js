@@ -23,13 +23,13 @@ const dataRoutes_1 = __importDefault(require("./routes/dataRoutes"));
 const exceptions_1 = require("./exceptions");
 const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
-const utils_1 = require("./utils");
+const cors_1 = __importDefault(require("cors"));
 exports.default = (app) => __awaiter(void 0, void 0, void 0, function* () {
     // Log to console using morgan if app is in development
     if (process.env.ENV === "dev")
         app.use((0, morgan_1.default)("dev"));
     // CORS
-    app.use((0, utils_1.crossOrigin)());
+    app.use((0, cors_1.default)());
     app.use((0, helmet_1.default)());
     // Request body parser
     app.use(express_1.default.json());

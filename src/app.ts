@@ -10,13 +10,14 @@ import { errHandler } from './exceptions';
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import { crossOrigin } from "./utils";
+import cors from "cors";
 
 export default async (app: Application) => {
     // Log to console using morgan if app is in development
     if (process.env.ENV === "dev") app.use(morgan("dev"));
     
     // CORS
-    app.use(crossOrigin());
+    app.use(cors());
     app.use(helmet());
     // Request body parser
     app.use(express.json());
