@@ -13,18 +13,15 @@ import { crossOrigin } from "./utils";
 import cors from "cors";
 
 export default async (app: Application) => {
-    // Log to console using morgan if app is in development
-    if (process.env.ENV === "dev") app.use(morgan("dev"));
-    
     // CORS
     app.use(cors());
-    app.use(helmet());
+    // app.use(helmet());
     // Request body parser
     app.use(express.json());
     app.use(express.urlencoded({ extended: false }));
     // Cookie parser
-    app.use(cookieParser());
-    app.use(compression());
+    // app.use(cookieParser());
+    // app.use(compression());
   
     // Routes
     app.use("/api/users", userRoutes);
