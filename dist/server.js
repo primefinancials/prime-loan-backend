@@ -18,7 +18,7 @@ const config_1 = require("./config");
 const startApp = () => __awaiter(void 0, void 0, void 0, function* () {
     yield (0, utils_1.connectToDB)();
     // const server = http.createServer(app);
-    app_1.default.listen(config_1.PORT, () => {
+    app_1.default.listen(3000, () => {
         console.log(`initiated User Service`);
     }).on("listening", () => console.log(`User Service listening on port ${config_1.PORT}`)).on("error", (err) => {
         console.log(err);

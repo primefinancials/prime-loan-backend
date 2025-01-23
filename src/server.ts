@@ -7,7 +7,7 @@ const startApp = async () => {
 
   // const server = http.createServer(app);
 
-  app.listen(PORT, (): void => {
+  app.listen(3000, (): void => {
     console.log(`initiated User Service`);
   }).on("listening", () =>
     console.log(`User Service listening on port ${PORT}`)
