@@ -1,6 +1,6 @@
 import createApp from "./app";
 import express from "express";
-import http from "http";
+// import http from "http";
 import { connectToDB } from "./utils";
 import { PORT } from "./config";
 
@@ -11,9 +11,9 @@ const startApp = async () => {
 
   await createApp(app);
 
-  const server = http.createServer(app);
+  // const server = http.createServer(app);
 
-  server.listen(PORT, (): void => {
+  app.listen(PORT, (): void => {
     console.log(`initiated User Service`);
   }).on("listening", () =>
     console.log(`User Service listening on port ${PORT}`)

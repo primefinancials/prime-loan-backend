@@ -14,15 +14,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const app_1 = __importDefault(require("./app"));
 const express_1 = __importDefault(require("express"));
-const http_1 = __importDefault(require("http"));
+// import http from "http";
 const utils_1 = require("./utils");
 const config_1 = require("./config");
 const startApp = () => __awaiter(void 0, void 0, void 0, function* () {
     const app = (0, express_1.default)();
     yield (0, utils_1.connectToDB)();
     yield (0, app_1.default)(app);
-    const server = http_1.default.createServer(app);
-    server.listen(config_1.PORT, () => {
+    // const server = http.createServer(app);
+    app.listen(config_1.PORT, () => {
         console.log(`initiated User Service`);
     }).on("listening", () => console.log(`User Service listening on port ${config_1.PORT}`)).on("error", (err) => {
         console.log(err);
