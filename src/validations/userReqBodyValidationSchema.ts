@@ -32,35 +32,37 @@ export const createClientAccountSchema = Joi.object({
     "string.length": "NIN must be exactly 11 digits",
     "string.pattern.base": "NIN must contain only digits",
   }),
-  dob: Joi.date().iso().required().messages({
-    "date.base": "Date of Birth must be a valid date",
+  dob: Joi.date().format("DD/MM/YYYY").required().messages({
+    "date.format": "Date of Birth must be in the format dd/mm/yyyy",
+    "date.empty": "Date of Birth must be a valid date",
     "any.required": "Date of Birth is required",
-  }),
+  })
 });
 
 export const createAdminAccountSchema = Joi.object({
-    email: Joi.string().email().required().messages({
-      "string.empty": "Email is required",
-      "string.email": "Invalid email format",
-    }),
-    name: Joi.string().required().messages({
-      "string.empty": "Name is required",
-    }),
-    surname: Joi.string().required().messages({
-      "string.empty": "Surname is required",
-    }),
-    password: Joi.string().min(6).required().messages({
-      "string.empty": "Password is required",
-      "string.min": "Password must be at least 6 characters long",
-    }),
-    phone: Joi.string().pattern(/^\d+$/).required().messages({
-      "string.empty": "Phone number is required",
-      "string.pattern.base": "Phone number must contain only digits",
-    }),
-    dob: Joi.date().iso().required().messages({
-      "date.base": "Date of Birth must be a valid date",
-      "any.required": "Date of Birth is required",
-    }),
+  email: Joi.string().email().required().messages({
+    "string.empty": "Email is required",
+    "string.email": "Invalid email format",
+  }),
+  name: Joi.string().required().messages({
+    "string.empty": "Name is required",
+  }),
+  surname: Joi.string().required().messages({
+    "string.empty": "Surname is required",
+  }),
+  password: Joi.string().min(6).required().messages({
+    "string.empty": "Password is required",
+    "string.min": "Password must be at least 6 characters long",
+  }),
+  phone: Joi.string().pattern(/^\d+$/).required().messages({
+    "string.empty": "Phone number is required",
+    "string.pattern.base": "Phone number must contain only digits",
+  }),
+  dob: Joi.date().format("DD/MM/YYYY").required().messages({
+    "date.format": "Date of Birth must be in the format dd/mm/yyyy",
+    "date.empty": "Date of Birth must be a valid date",
+    "any.required": "Date of Birth is required",
+  })
 });
 
 export const transferSchema = Joi.object({
