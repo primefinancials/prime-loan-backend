@@ -14,12 +14,14 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const morgan_1 = __importDefault(require("morgan"));
+const helmet_1 = __importDefault(require("helmet"));
 const userRoutes_1 = __importDefault(require("./routes/userRoutes"));
 const kycRoutes_1 = __importDefault(require("./routes/kycRoutes"));
 const paybillsRoutes_1 = __importDefault(require("./routes/paybillsRoutes"));
 const loanRoutes_1 = __importDefault(require("./routes/loanRoutes"));
 const dataRoutes_1 = __importDefault(require("./routes/dataRoutes"));
 const exceptions_1 = require("./exceptions");
+const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const utils_1 = require("./utils");
 exports.default = (app) => __awaiter(void 0, void 0, void 0, function* () {
@@ -28,13 +30,13 @@ exports.default = (app) => __awaiter(void 0, void 0, void 0, function* () {
         app.use((0, morgan_1.default)("dev"));
     // CORS
     app.use((0, utils_1.crossOrigin)());
-    // app.use(helmet());
+    app.use((0, helmet_1.default)());
     // Request body parser
     app.use(express_1.default.json());
     app.use(express_1.default.urlencoded({ extended: false }));
     // Cookie parser
     app.use((0, cookie_parser_1.default)());
-    // app.use(compression());
+    app.use((0, compression_1.default)());
     // Routes
     app.use("/api/users", userRoutes_1.default);
     app.use("/api/kyc", kycRoutes_1.default);

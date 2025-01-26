@@ -11,7 +11,7 @@ const DefaultCorsOptions = {
     /**
      * The allowed origin(s) for the request. Use '*' to allow all origins.
      */
-    origin: ['*'],
+    origin: ['*', 'http://localhost:5173'],
     /**
      * The allowed HTTP methods for the request.
      */
