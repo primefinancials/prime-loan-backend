@@ -27,7 +27,7 @@ export class LoanService {
 
   public async find(fields: object, option: 'one' | 'many'): Promise<LoanApplication | null | LoanApplication[] | void> {
     if (option === 'one') {
-      const loan = await LoanModel.findOne(fields);
+      const loan = await LoanModel.findOne(fields).exec();
 
       return loan;
     } else if (option === 'many') {

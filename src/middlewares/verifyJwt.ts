@@ -32,7 +32,11 @@ export default function (): RequestHandler {
           const user = await findById(decoded.id)
           if(!user) throw new UnauthorizedError(`User recently deleted.`)
           req.user = user
-      } else throw new UnauthorizedError()
+      } else if (decoded.accountType === 'admin') {
+        const admin = await findById(decoded.id)
+        if(!admin) throw new UnauthorizedError(`Admin recently deleted.`)
+        req.admin = admin;
+      } else throw new UnauthorizedError();
       next()
 
     } catch(err: any) {

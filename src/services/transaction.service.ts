@@ -27,7 +27,7 @@ export class TransactionService {
 
   public async find(fields: object, option: 'one' | 'many'): Promise<Transaction | null | Transaction[] | void> {
     if (option === 'one') {
-      const transaction = await TransactionModel.findOne(fields);
+      const transaction = await TransactionModel.findOne(fields).exec();
 
       return transaction;
     } else if (option === 'many') {

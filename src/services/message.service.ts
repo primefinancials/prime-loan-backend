@@ -27,7 +27,7 @@ export class MessageService {
 
   public async find(fields: object, option: 'one' | 'many'): Promise<Message | null | Message[] | void> {
     if (option === 'one') {
-      const message = await MessageModel.findOne(fields);
+      const message = await MessageModel.findOne(fields).exec();
 
       return message;
     } else if (option === 'many') {

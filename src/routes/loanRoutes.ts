@@ -5,7 +5,8 @@ import {
     createClientLoan,
     loanPortfolio, 
     rejectLoan, 
-    repayLoan 
+    repayLoan,
+    loans
 } from "../controllers/loanController";
 import {
     createAndDisburseLoanSchema,
@@ -24,5 +25,6 @@ router.post("/create-loan", validateReqBody(createClientLoanSchema), verifyJwtRe
 router.get("/loan-portfolio", verifyJwtRest(), loanPortfolio);
 router.post("/repay-loan", validateReqBody(repayLoanSchema), verifyJwtRest(), repayLoan);
 router.post("/reject-loan", validateReqBody(rejectLoanSchema), verifyJwtRest(), rejectLoan); 
+router.get("/all-loans", verifyJwtRest(), loans); 
 
 export default router;

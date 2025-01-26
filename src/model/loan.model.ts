@@ -41,6 +41,6 @@ const LoanApplicationSchema: Schema = new Schema(
 );
 
 // Create the LoanApplication model
-const LoanApplicationModel = model<LoanApplication>('LoanApplication', LoanApplicationSchema);
+const LoanApplicationModel = model<LoanApplication>('loans', LoanApplicationSchema);
 
 export default LoanApplicationModel;

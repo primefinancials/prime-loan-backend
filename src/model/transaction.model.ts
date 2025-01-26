@@ -68,7 +68,7 @@ const transactionSchema = new Schema<Transaction>(
   { timestamps: true }
 );
 
-const Transaction = model<Transaction>('Transaction', transactionSchema);
+const Transaction = model<Transaction>('transactions', transactionSchema);
 
 // Sync indexes with the database
 (async () => {

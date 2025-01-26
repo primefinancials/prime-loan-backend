@@ -50,41 +50,85 @@ export const transactions = async (req: ProtectedRequest, res: Response, next: N
   }
 };
 
-export const message = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
-    try {
-      const { messageId }= req.query;
+export const adminTransactions = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { admin }= req;
 
-      if(!messageId) throw new ConflictError("Missing required parameter of messageId")
-      
-      const message = await findMessageId(String(messageId));
-  
-      if(!message) throw new NotFoundError("Message id not found");
-  
-      res.status(200).json({ status: "success", data: message });
-    } catch (error: any) {
-      console.log("Error getting message:", error);
-      next(error);
+    if (!admin || !admin._id) {
+      return res.status(404).json({
+        status: "Admin not found.",
+        data: null
+      });
     }
+
+    const transactions = await findTransaction({ }, "many");
+
+    if(!transactions) throw new NotFoundError("Transaction not found");
+
+    res.status(200).json({ status: "success", data: transactions });
+  } catch (error: any) {
+    console.log("Error getting transactions:", error);
+    next(error);
+  }
+};
+
+export const message = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { messageId }= req.query;
+
+    if(!messageId) throw new ConflictError("Missing required parameter of messageId")
+    
+    const message = await findMessageId(String(messageId));
+
+    if(!message) throw new NotFoundError("Message id not found");
+
+    res.status(200).json({ status: "success", data: message });
+  } catch (error: any) {
+    console.log("Error getting message:", error);
+    next(error);
+  }
 };
   
 export const messages = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
-    try {
-      const { user }= req;
-  
-      if (!user || !user._id) {
-        return res.status(404).json({
-          status: "User not found.",
-          data: null
-        });
-      }
-  
-      const messages = await findMessage({ user: user._id }, "many");
-  
-      if(!messages) throw new NotFoundError("Message not found");
-  
-      res.status(200).json({ status: "success", data: messages });
-    } catch (error: any) {
-      console.log("Error getting message:", error);
-      next(error);
+  try {
+    const { user }= req;
+
+    if (!user || !user._id) {
+      return res.status(404).json({
+        status: "User not found.",
+        data: null
+      });
     }
+
+    const messages = await findMessage({ user: user._id }, "many");
+
+    if(!messages) throw new NotFoundError("Message not found");
+
+    res.status(200).json({ status: "success", data: messages });
+  } catch (error: any) {
+    console.log("Error getting message:", error);
+    next(error);
+  }
+};
+
+export const adminMessages = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { admin }= req;
+
+    if (!admin || !admin._id) {
+      return res.status(404).json({
+        status: "Admin not found.",
+        data: null
+      });
+    }
+
+    const messages = await findMessage({ }, "many");
+
+    if(!messages) throw new NotFoundError("Message not found");
+
+    res.status(200).json({ status: "success", data: messages });
+  } catch (error: any) {
+    console.log("Error getting message:", error);
+    next(error);
+  }
 };

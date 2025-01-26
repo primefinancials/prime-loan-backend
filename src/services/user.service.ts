@@ -46,7 +46,7 @@ export class UserService {
   };
 
   public async findByEmail(email: string): Promise<User | null> {
-    const foundUser = await UserModel.findOne({ email });
+    const foundUser = await UserModel.findOne({ user_metadata: { email: email } }).exec();
 
     return foundUser;
   };

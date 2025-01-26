@@ -27,7 +27,7 @@ const messageSchema = new Schema<Message>(
   { timestamps: true }
 );
 
-const MessageModel = model<Message>('Message', messageSchema);
+const MessageModel = model<Message>('messages', messageSchema);
 
 // Sync indexes with the database
 (async () => {

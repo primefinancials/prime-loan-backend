@@ -66,7 +66,7 @@ const userSchema = new Schema<User>(
   { timestamps: true }
 );
 
-const User = model<User>('User', userSchema);
+const User = model<User>('users', userSchema);
 
 // Sync indexes with the database
 (async () => {

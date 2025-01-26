@@ -194,7 +194,8 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
         remark,
         transactionId,
         reference,
-        outstanding
+        outstanding,
+        userId
       } = req.body;
   
       const apiUrl = `/wallet2/transfer`;
@@ -240,9 +241,18 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
         
         const { accountNo } = account.data.data;
 
-        const { user } = req;
+        const { admin } = req;
 
-        if (!user || !user._id) {
+        if (!admin || !admin._id) {
+          return res.status(404).json({
+            status: "Admin not found.",
+            data: null
+          });
+        }
+
+        const user = await find({ _id: userId }, "one");
+
+        if (!user || Array.isArray(user) || !user._id) {
           return res.status(404).json({
             status: "User not found.",
             data: null
@@ -328,6 +338,28 @@ export const loanPortfolio = async (req: ProtectedRequest, res: Response, next: 
     }
 
     const loan = await findLoan({ userId: user._id }, "many");
+
+    if(!loan) throw new NotFoundError("Loan not found");
+
+    res.status(200).json({ status: "success", data: loan });
+  } catch (error: any) {
+    console.log("Error getting repayment schedule:", error);
+    next(error);
+  }
+};
+
+export const loans = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { admin }= req;
+
+    if (!admin || !admin._id) {
+      return res.status(404).json({
+        status: "Admin not found.",
+        data: null
+      });
+    }
+
+    const loan = await findLoan({ }, "many");
 
     if(!loan) throw new NotFoundError("Loan not found");
 
