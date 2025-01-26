@@ -17,13 +17,13 @@ export default async (app: Application) => {
     
     // CORS
     app.use(crossOrigin());
-    // app.use(helmet());
+    app.use(helmet());
     // Request body parser
     app.use(express.json());
     app.use(express.urlencoded({ extended: false }));
     // Cookie parser
     app.use(cookieParser());
-    // app.use(compression());
+    app.use(compression());
   
     // Routes
     app.use("/api/users", userRoutes);
