@@ -32,7 +32,7 @@ const messageSchema = new mongoose_1.Schema({
         required: true,
     },
 }, { timestamps: true });
-const MessageModel = (0, mongoose_1.model)('Message', messageSchema);
+const MessageModel = (0, mongoose_1.model)('messages', messageSchema);
 // Sync indexes with the database
 (() => __awaiter(void 0, void 0, void 0, function* () {
     yield MessageModel.syncIndexes();

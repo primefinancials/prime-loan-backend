@@ -39,7 +39,7 @@ class MessageService {
     find(fields, option) {
         return __awaiter(this, void 0, void 0, function* () {
             if (option === 'one') {
-                const message = yield model_1.MessageModel.findOne(fields);
+                const message = yield model_1.MessageModel.findOne(fields).exec();
                 return message;
             }
             else if (option === 'many') {

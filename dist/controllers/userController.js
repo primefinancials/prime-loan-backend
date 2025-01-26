@@ -77,7 +77,7 @@ const createClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0
 exports.createClientAccount = createClientAccount;
 const createAdminAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { email, name, surname, password, phone, dob } = req.body;
+        const { email, name, surname, password, phone } = req.body;
         const duplicateEmail = yield findByEmail(email);
         const duplicateNumber = yield find({ user_metadata: { phone } }, "one");
         if (duplicateEmail)
@@ -87,7 +87,7 @@ const createAdminAccount = (req, res, next) => __awaiter(void 0, void 0, void 0,
         req.body.password = (0, utils_1.encryptPassword)(password);
         const user = yield create({
             password: req.body.password,
-            user_metadata: { email, first_name: name, surname, phone, dateOfBirth: dob },
+            user_metadata: { email, first_name: name, surname, phone },
             role: "admin",
             confirmation_sent_at: (0, convertDate_2.getCurrentTimestamp)(),
             confirmed_at: "",

@@ -71,7 +71,7 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
 
 export const createAdminAccount = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, name, surname, password, phone, dob } = req.body;
+    const { email, name, surname, password, phone } = req.body;
 
     const duplicateEmail = await findByEmail(email)
 
@@ -86,7 +86,7 @@ export const createAdminAccount = async (req: Request, res: Response, next: Next
 
     const user: any = await create({ 
       password: req.body.password,
-      user_metadata: { email, first_name: name, surname, phone, dateOfBirth: dob }, 
+      user_metadata: { email, first_name: name, surname, phone }, 
       role: "admin",
       confirmation_sent_at: getCurrentTimestamp(),
       confirmed_at: "",

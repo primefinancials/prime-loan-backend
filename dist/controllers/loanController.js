@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.loanPortfolio = exports.loanTransactionStatus = exports.rejectLoan = exports.repayLoan = exports.createClientLoan = exports.createAndDisburseLoan = void 0;
+exports.loans = exports.loanPortfolio = exports.loanTransactionStatus = exports.rejectLoan = exports.repayLoan = exports.createClientLoan = exports.createAndDisburseLoan = void 0;
 const validateParams_1 = require("../utils/validateParams");
 const httpClient_1 = require("../utils/httpClient");
 const generateRef_1 = require("../utils/generateRef");
@@ -140,7 +140,7 @@ exports.createClientLoan = createClientLoan;
 const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
-        const { fromAccount, fromClientId, fromClient, fromSavingsId, fromBvn, toClientId, toClient, toSavingsId, toSession, toBvn, toKyc, toAccount, toBank, signature, amount, remark, transactionId, reference, outstanding } = req.body;
+        const { fromAccount, fromClientId, fromClient, fromSavingsId, fromBvn, toClientId, toClient, toSavingsId, toSession, toBvn, toKyc, toAccount, toBank, signature, amount, remark, transactionId, reference, outstanding, userId } = req.body;
         const apiUrl = `/wallet2/transfer`;
         const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", {
             fromAccount,
@@ -177,8 +177,15 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
             const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
             console.log({ account });
             const { accountNo } = account.data.data;
-            const { user } = req;
-            if (!user || !user._id) {
+            const { admin } = req;
+            if (!admin || !admin._id) {
+                return res.status(404).json({
+                    status: "Admin not found.",
+                    data: null
+                });
+            }
+            const user = yield find({ _id: userId }, "one");
+            if (!user || Array.isArray(user) || !user._id) {
                 return res.status(404).json({
                     status: "User not found.",
                     data: null
@@ -260,3 +267,23 @@ const loanPortfolio = (req, res, next) => __awaiter(void 0, void 0, void 0, func
     }
 });
 exports.loanPortfolio = loanPortfolio;
+const loans = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { admin } = req;
+        if (!admin || !admin._id) {
+            return res.status(404).json({
+                status: "Admin not found.",
+                data: null
+            });
+        }
+        const loan = yield findLoan({}, "many");
+        if (!loan)
+            throw new exceptions_1.NotFoundError("Loan not found");
+        res.status(200).json({ status: "success", data: loan });
+    }
+    catch (error) {
+        console.log("Error getting repayment schedule:", error);
+        next(error);
+    }
+});
+exports.loans = loans;

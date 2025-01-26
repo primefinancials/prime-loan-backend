@@ -38,6 +38,12 @@ function default_1() {
                     throw new exceptions_1.UnauthorizedError(`User recently deleted.`);
                 req.user = user;
             }
+            else if (decoded.accountType === 'admin') {
+                const admin = yield findById(decoded.id);
+                if (!admin)
+                    throw new exceptions_1.UnauthorizedError(`Admin recently deleted.`);
+                req.admin = admin;
+            }
             else
                 throw new exceptions_1.UnauthorizedError();
             next();

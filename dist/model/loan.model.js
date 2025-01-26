@@ -37,5 +37,5 @@ const LoanApplicationSchema = new mongoose_1.Schema({
     loan_payment_status: { type: String, required: true },
 }, { timestamps: true });
 // Create the LoanApplication model
-const LoanApplicationModel = (0, mongoose_1.model)('LoanApplication', LoanApplicationSchema);
+const LoanApplicationModel = (0, mongoose_1.model)('loans', LoanApplicationSchema);
 exports.default = LoanApplicationModel;

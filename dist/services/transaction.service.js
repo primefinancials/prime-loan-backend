@@ -39,7 +39,7 @@ class TransactionService {
     find(fields, option) {
         return __awaiter(this, void 0, void 0, function* () {
             if (option === 'one') {
-                const transaction = yield model_1.TransactionModel.findOne(fields);
+                const transaction = yield model_1.TransactionModel.findOne(fields).exec();
                 return transaction;
             }
             else if (option === 'many') {

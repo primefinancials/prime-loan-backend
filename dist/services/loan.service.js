@@ -39,7 +39,7 @@ class LoanService {
     find(fields, option) {
         return __awaiter(this, void 0, void 0, function* () {
             if (option === 'one') {
-                const loan = yield model_1.LoanModel.findOne(fields);
+                const loan = yield model_1.LoanModel.findOne(fields).exec();
                 return loan;
             }
             else if (option === 'many') {

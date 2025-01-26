@@ -73,7 +73,7 @@ const transactionSchema = new mongoose_1.Schema({
         required: true, // Account number
     },
 }, { timestamps: true });
-const Transaction = (0, mongoose_1.model)('Transaction', transactionSchema);
+const Transaction = (0, mongoose_1.model)('transactions', transactionSchema);
 // Sync indexes with the database
 (() => __awaiter(void 0, void 0, void 0, function* () {
     yield Transaction.syncIndexes();

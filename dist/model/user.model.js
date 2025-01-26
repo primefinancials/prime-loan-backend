@@ -74,7 +74,7 @@ const userSchema = new mongoose_1.Schema({
     },
     is_super_admin: { type: Boolean, required: false, default: null },
 }, { timestamps: true });
-const User = (0, mongoose_1.model)('User', userSchema);
+const User = (0, mongoose_1.model)('users', userSchema);
 // Sync indexes with the database
 (() => __awaiter(void 0, void 0, void 0, function* () {
     yield User.syncIndexes();
