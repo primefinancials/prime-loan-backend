@@ -160,9 +160,9 @@ const login = (req, res, next) => __awaiter(void 0, void 0, void 0, function* ()
             expiresIn: constants_1.REFRESH_TOKEN_EXPIRES,
         });
         // update current user refresh token
-        const refreshTokens = foundUser.refresh_token;
+        const refreshTokens = foundUser.refresh_tokens;
         refreshTokens.push(refreshToken);
-        foundUser.refresh_token = refreshTokens;
+        foundUser.refresh_tokens = refreshTokens;
         yield foundUser.save();
         return res
             .cookie("jwt", refreshToken, {

@@ -182,9 +182,9 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     });
 
     // update current user refresh token
-    const refreshTokens = foundUser.refresh_token
+    const refreshTokens = foundUser.refresh_tokens
     refreshTokens.push(refreshToken)
-    foundUser.refresh_token = refreshTokens;
+    foundUser.refresh_tokens = refreshTokens;
     await foundUser.save();
 
     return res
