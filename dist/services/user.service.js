@@ -62,7 +62,7 @@ class UserService {
     ;
     findByEmail(email) {
         return __awaiter(this, void 0, void 0, function* () {
-            const foundUser = yield model_1.UserModel.findOne({ user_metadata: { email: email } }).exec();
+            const foundUser = yield model_1.UserModel.findOne({ email }).exec();
             return foundUser;
         });
     }

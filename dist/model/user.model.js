@@ -19,26 +19,21 @@ const userSchema = new mongoose_1.Schema({
         unique: true,
         validate: {
             validator: function (email) {
-                const self = this;
-                return new Promise((resolve, reject) => {
+                return __awaiter(this, void 0, void 0, function* () {
+                    const self = this;
+                    // Regex to validate email format
                     if (!/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(email)) {
-                        reject(new Error('Invalid email address'));
+                        throw new Error("Invalid email address");
                     }
-                    else {
-                        self.constructor.findOne({ email }, (err, existingUser) => {
-                            if (err) {
-                                reject(err);
-                            }
-                            else if (existingUser) {
-                                reject(new Error('Email already exists'));
-                            }
-                            else {
-                                resolve(true);
-                            }
-                        });
+                    // Check if email already exists
+                    const existingUser = yield self.constructor.findOne({ email });
+                    if (existingUser) {
+                        throw new Error("Email already exists");
                     }
+                    return true; // Validation passed
                 });
             },
+            message: (props) => props.reason.message || "Invalid email",
         },
     },
     password: { type: String, required: true },

@@ -10,24 +10,23 @@ const userSchema = new Schema<User>(
       required: true,
       unique: true,
       validate: {
-        validator: function (email: string) {
+        validator: async function (email: string) {
           const self = this as any;
-          return new Promise((resolve, reject) => {
-            if (!/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(email)) {
-              reject(new Error('Invalid email address'));
-            } else {
-              self.constructor.findOne({ email }, (err: any, existingUser: any) => {
-                if (err) {
-                  reject(err);
-                } else if (existingUser) {
-                  reject(new Error('Email already exists'));
-                } else {
-                  resolve(true);
-                }
-              });
-            }
-          });
+
+          // Regex to validate email format
+          if (!/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(email)) {
+            throw new Error("Invalid email address");
+          }
+
+          // Check if email already exists
+          const existingUser = await self.constructor.findOne({ email });
+          if (existingUser) {
+            throw new Error("Email already exists");
+          }
+
+          return true; // Validation passed
         },
+        message: (props: any) => props.reason.message || "Invalid email",
       },
     },
     password: { type: String, required: true },

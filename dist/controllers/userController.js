@@ -25,12 +25,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.changePassword = exports.logout = exports.login = exports.updateClientAccount = exports.getUser = exports.createAdminAccount = exports.createClientAccount = void 0;
 const validateParams_1 = require("../utils/validateParams");
+const convertDate_1 = require("../utils/convertDate");
 const httpClient_1 = require("../utils/httpClient");
 const js_sha512_1 = require("js-sha512");
 const services_1 = require("../services");
 const exceptions_1 = require("../exceptions");
 const utils_1 = require("../utils");
-const convertDate_1 = require("../utils/convertDate");
+const convertDate_2 = require("../utils/convertDate");
 const utils_2 = require("../utils");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const constants_1 = require("../constants");
@@ -50,14 +51,14 @@ const createClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0
         if (duplicateNumber)
             throw new exceptions_1.ConflictError(`A user already exists with the phone number ${phone}`);
         req.body.password = (0, utils_1.encryptPassword)(password);
-        const apiUrl = `/wallet2/client/create?bvn=${bvn}&dateOfBirth=${dob}`;
+        const apiUrl = `/wallet2/client/create?bvn=${bvn}&dateOfBirth=${(0, convertDate_1.convertDate)(dob)}`;
         const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", {});
         if (response.data && response.data.status === "00") {
             const user = yield create({
                 password: req.body.password,
                 user_metadata: { email, first_name: name, surname, phone, bvn, nin, dateOfBirth: dob },
                 role: "user",
-                confirmation_sent_at: (0, convertDate_1.getCurrentTimestamp)(),
+                confirmation_sent_at: (0, convertDate_2.getCurrentTimestamp)(),
                 confirmed_at: "",
                 email,
                 email_confirmed_at: "",
@@ -77,7 +78,7 @@ exports.createClientAccount = createClientAccount;
 const createAdminAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { email, name, surname, password, phone } = req.body;
-        const duplicateEmail = yield find({ user_metadata: { email } }, "one");
+        const duplicateEmail = yield findByEmail(email);
         const duplicateNumber = yield find({ user_metadata: { phone } }, "one");
         if (duplicateEmail)
             throw new exceptions_1.ConflictError(`A user already exists with the email ${email}`);
@@ -88,7 +89,7 @@ const createAdminAccount = (req, res, next) => __awaiter(void 0, void 0, void 0,
             password: req.body.password,
             user_metadata: { email, first_name: name, surname, phone },
             role: "admin",
-            confirmation_sent_at: (0, convertDate_1.getCurrentTimestamp)(),
+            confirmation_sent_at: (0, convertDate_2.getCurrentTimestamp)(),
             confirmed_at: "",
             email,
             email_confirmed_at: "",
