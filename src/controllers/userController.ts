@@ -42,7 +42,7 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
 
     req.body.password = encryptPassword(password);
 
-    const apiUrl = `/wallet2/client/create?bvn=${bvn}&dateOfBirth=${convertDate(dob)}`;
+    const apiUrl = `/wallet2/client/create?bvn=${bvn}&dateOfBirth=${dob}`;
 
     const response = await httpClient(apiUrl, "POST", { });
 
@@ -73,7 +73,7 @@ export const createAdminAccount = async (req: Request, res: Response, next: Next
   try {
     const { email, name, surname, password, phone } = req.body;
 
-    const duplicateEmail = await findByEmail(email)
+    const duplicateEmail = await find({ user_metadata: { email } }, "one")
 
     const duplicateNumber = await find({ user_metadata: { phone } }, "one")
     
