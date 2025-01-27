@@ -142,7 +142,7 @@ const login = (req, res, next) => __awaiter(void 0, void 0, void 0, function* ()
         const { password: encrypted } = foundUser;
         // decrypt found user password
         const decrypted = (0, utils_2.decodePassword)(encrypted);
-        console.log({ encrypted, decrypted });
+        console.log({ password, encrypted, decrypted });
         // compare decrypted password with sent password
         if (password !== decrypted)
             throw new exceptions_1.UnauthorizedError(`Invalid credentials`);

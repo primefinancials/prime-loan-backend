@@ -157,7 +157,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     // decrypt found user password
     const decrypted = decodePassword(encrypted);
 
-    console.log({ encrypted, decrypted })
+    console.log({ password, encrypted, decrypted })
 
     // compare decrypted password with sent password
     if (password !== decrypted)
