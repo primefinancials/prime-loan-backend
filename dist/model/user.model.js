@@ -25,11 +25,6 @@ const userSchema = new mongoose_1.Schema({
                     if (!/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(email)) {
                         throw new Error("Invalid email address");
                     }
-                    // Check if email already exists
-                    const existingUser = yield self.constructor.findOne({ email });
-                    if (existingUser) {
-                        throw new Error("Email already exists");
-                    }
                     return true; // Validation passed
                 });
             },

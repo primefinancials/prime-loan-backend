@@ -18,12 +18,6 @@ const userSchema = new Schema<User>(
             throw new Error("Invalid email address");
           }
 
-          // Check if email already exists
-          const existingUser = await self.constructor.findOne({ email });
-          if (existingUser) {
-            throw new Error("Email already exists");
-          }
-
           return true; // Validation passed
         },
         message: (props: any) => props.reason.message || "Invalid email",
