@@ -23,9 +23,11 @@ class UserService {
     update(uid, updateFields) {
         return __awaiter(this, void 0, void 0, function* () {
             const user = yield model_1.UserModel.findById(uid);
+            console.log({ user, uid });
             if (!user)
                 throw new exceptions_1.NotFoundError(`No user found with the id ${uid}`);
-            return yield model_1.UserModel.findByIdAndUpdate(uid, updateFields).then(user => user);
+            const updatedUser = yield model_1.UserModel.findByIdAndUpdate(uid, updateFields);
+            return updatedUser;
         });
     }
     ;
