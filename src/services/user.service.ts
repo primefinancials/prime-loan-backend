@@ -14,9 +14,13 @@ export class UserService {
 
     const user = await UserModel.findById(uid);
 
+    console.log({ user, uid })
+
     if (!user) throw new NotFoundError(`No user found with the id ${uid}`)
 
-    return await UserModel.findByIdAndUpdate(uid, updateFields).then(user => user);
+    const updatedUser = await UserModel.findByIdAndUpdate(uid, updateFields);
+
+    return updatedUser;
   };
 
   public async fetchAll(limitValue: number, offsetValue: number): Promise<User[]> {

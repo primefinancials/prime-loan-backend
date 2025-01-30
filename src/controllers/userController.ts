@@ -132,7 +132,7 @@ export const updateClientAccount = async (req: ProtectedRequest, res: Response, 
 
     const updatedUser = update(user._id, { ...req.body })
 
-    console.log({ updatedUser })
+    console.log({ updatedUser });
 
     return res.status(201).json({ status: "success", data: { user: updatedUser } });
   } catch (error: any) {
