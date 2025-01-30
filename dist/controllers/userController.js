@@ -124,7 +124,7 @@ const updateClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0
         const { user } = req;
         if (!user)
             throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as user to continue`);
-        const updatedUser = update(user._id, Object.assign({}, req.body));
+        const updatedUser = yield update(user._id, Object.assign({}, req.body));
         console.log({ updatedUser });
         return res.status(201).json({ status: "success", data: { user: updatedUser } });
     }

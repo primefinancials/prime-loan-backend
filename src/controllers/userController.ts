@@ -130,7 +130,7 @@ export const updateClientAccount = async (req: ProtectedRequest, res: Response, 
 
     if (!user) throw new UnauthorizedError(`Unauthorized! Please log in as user to continue`);
 
-    const updatedUser = update(user._id, { ...req.body })
+    const updatedUser = await update(user._id, { ...req.body })
 
     console.log({ updatedUser });
 
