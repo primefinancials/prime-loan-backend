@@ -3,14 +3,12 @@ import { NextFunction, RequestHandler, Response } from "express";
 import JWT from "jsonwebtoken";
 import { UnauthorizedError } from '../exceptions'
 import { UserService } from '../services'
-import { ACCESS_TOKEN_SECRET } from '../config'
-import { ProtectedRequest } from '../interfaces'
+import { ACCESS_TOKEN_SECRET } from '../config';
+import { ProtectedRequest } from '../interfaces';
 
 const {
   findById
 } = new UserService()
-
-
 
 export default function (): RequestHandler {
   return async (req: ProtectedRequest, res: Response, next: NextFunction): Promise<void> => {

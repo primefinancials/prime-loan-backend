@@ -49,7 +49,7 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
     if(response.data && response.data.status === "00") {
       const user: any = await create({ 
         password: req.body.password,
-        user_metadata: { email, first_name: name, surname, phone, bvn, nin, dateOfBirth: dob }, 
+        user_metadata: { email, first_name: name, surname, phone, bvn, nin, dateOfBirth: dob, accountNo: response.data.data.accountNo }, 
         role: "user",
         confirmation_sent_at: getCurrentTimestamp(),
         confirmed_at: "",
@@ -131,6 +131,8 @@ export const updateClientAccount = async (req: ProtectedRequest, res: Response, 
     if (!user) throw new UnauthorizedError(`Unauthorized! Please log in as user to continue`);
 
     const updatedUser = update(user._id, { ...req.body })
+
+    console.log({ updatedUser })
 
     return res.status(201).json({ status: "success", data: { user: updatedUser } });
   } catch (error: any) {
