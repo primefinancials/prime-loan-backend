@@ -191,7 +191,7 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
                     data: null
                 });
             }
-            const newUser = yield update(user._id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)) }) });
+            const newUser = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
             if (account.data && accountNo) {
                 const transaction = yield createTransaction({
                     name: "Loan Repayment" + new Date().toDateString(),

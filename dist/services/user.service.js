@@ -20,13 +20,12 @@ class UserService {
         });
     }
     ;
-    update(uid, updateFields) {
+    update(uid, updateFields, data) {
         return __awaiter(this, void 0, void 0, function* () {
             const user = yield model_1.UserModel.findById(uid);
-            console.log({ user, uid });
             if (!user)
                 throw new exceptions_1.NotFoundError(`No user found with the id ${uid}`);
-            const updatedUser = yield model_1.UserModel.findByIdAndUpdate(uid, updateFields);
+            const updatedUser = yield model_1.UserModel.findByIdAndUpdate(uid, { $set: { [updateFields]: data } }, { new: true }); // Ensures the updated document is returned);
             return updatedUser;
         });
     }

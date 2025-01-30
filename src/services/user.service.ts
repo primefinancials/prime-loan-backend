@@ -10,15 +10,13 @@ export class UserService {
     return newUser;
   };
 
-  public async update(uid: string, updateFields: UPDATEUSER,): Promise<User | void | null> {
+  public async update(uid: string, updateFields: string, data: any ): Promise<User | void | null> {
 
     const user = await UserModel.findById(uid);
 
-    console.log({ user, uid })
-
     if (!user) throw new NotFoundError(`No user found with the id ${uid}`)
 
-    const updatedUser = await UserModel.findByIdAndUpdate(uid, updateFields);
+    const updatedUser = await UserModel.findByIdAndUpdate(uid, { $set: { [updateFields]: data } }, { new: true }) // Ensures the updated document is returned);
 
     return updatedUser;
   };

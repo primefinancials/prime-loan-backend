@@ -171,26 +171,8 @@ exports.loginReqBodySchema = joi_1.default.object({
     email: joi_1.default.string().email(),
 });
 exports.updateUserSchema = joi_1.default.object({
-    bvn: joi_1.default.string().optional(),
-    nin: joi_1.default.string().optional(),
-    sub: joi_1.default.string().optional(),
-    email: joi_1.default.string().email().optional(),
-    phone: joi_1.default.string().optional(),
-    surname: joi_1.default.string().optional(),
-    first_name: joi_1.default.string().optional(),
-    dateOfBirth: joi_1.default.string().optional(),
-    email_verified: joi_1.default.boolean().optional(),
-    phone_verified: joi_1.default.boolean().optional(),
-    accountNo: joi_1.default.string().optional(),
-    address: joi_1.default.string().optional(),
-    wallet: joi_1.default.string().optional(),
-    pin: joi_1.default.string().optional(),
-    profile_photo: joi_1.default.string().optional(),
-    file: joi_1.default.string().optional(),
-    types: joi_1.default.string().optional(),
-    verified_address: joi_1.default.string()
-        .valid("verified", "pending", "unverified")
-        .optional(),
+    data: joi_1.default.string().required(),
+    updateField: joi_1.default.string().required(),
 });
 exports.changePasswordSchema = joi_1.default.object({
     oldPassword: joi_1.default.string().required().messages({

@@ -23,7 +23,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.changePassword = exports.logout = exports.login = exports.updateClientAccount = exports.getUser = exports.createAdminAccount = exports.createClientAccount = void 0;
+exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.changePassword = exports.logout = exports.login = exports.updateClientAccount = exports.getUsers = exports.getUser = exports.createAdminAccount = exports.createClientAccount = void 0;
 const validateParams_1 = require("../utils/validateParams");
 const convertDate_1 = require("../utils/convertDate");
 const httpClient_1 = require("../utils/httpClient");
@@ -119,14 +119,31 @@ const getUser = (req, res, next) => __awaiter(void 0, void 0, void 0, function* 
     }
 });
 exports.getUser = getUser;
+const getUsers = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const admin = req.admin;
+        if (!admin)
+            throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as an admin to continue`);
+        const foundUser = yield find({ _id: admin._id }, "one");
+        if (!foundUser)
+            throw new exceptions_1.NotFoundError(`No admin found`);
+        return res.status(200).json({ status: "success", data: foundUser });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.getUsers = getUsers;
 const updateClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { user } = req;
-        if (!user)
-            throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as user to continue`);
-        const updatedUser = yield update(user._id, Object.assign({}, req.body));
+        if (!user) {
+            throw new exceptions_1.UnauthorizedError("Unauthorized! Please log in as a user to continue");
+        }
+        const { updateField, data } = req.body; // Extract update field and data from request body
+        const updatedUser = yield update(user._id, updateField, data);
         console.log({ updatedUser });
-        return res.status(201).json({ status: "success", data: { user: updatedUser } });
+        return res.status(200).json({ status: "success", data: { user: updatedUser } });
     }
     catch (error) {
         next(error);
@@ -312,7 +329,7 @@ const transfer = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
             reference
         });
         if (response.data && response.data.status === "00") {
-            const data = yield update(user._id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)) }) });
+            const data = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
             const transaction = yield createTransaction({
                 name: "Withdrawal-" + reference,
                 category: "debit",
@@ -351,7 +368,7 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
                 data: null
             });
         }
-        yield update(user._id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: String(((_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) ? Number((_b = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _b === void 0 ? void 0 : _b.wallet) : 0) + Number(body.amount) }) });
+        yield update(user._id, "user_metadata.wallet", String((((_a = user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) ? Number((_b = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _b === void 0 ? void 0 : _b.wallet) : 0) + Number(body.amount)));
         // Insert transaction into database
         const data = yield createTransaction({
             name: `Transfer from ${body.originator_account_name}`,

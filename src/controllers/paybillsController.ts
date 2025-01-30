@@ -148,7 +148,8 @@ export const payBill = async (req: ProtectedRequest, res: Response, next: NextFu
         if (payResponse.data) {
           const newUser = await update(
             user._id,
-            { user_metadata: { ...user.user_metadata, wallet: String(Number(user?.user_metadata?.wallet) - Number(amount))  }}
+            "user_metadata.wallet",
+            String(Number(user?.user_metadata?.wallet) - Number(amount)) 
           );
 
           const transactionStatus = payResponse.data.status === "00" ? "success" : "failed";

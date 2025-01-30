@@ -261,7 +261,8 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
 
         const newUser = await update(
           user._id,
-          { user_metadata: { ...user.user_metadata, wallet: String(Number(user?.user_metadata?.wallet) - Number(amount))  }}
+          "user_metadata.wallet",
+          String(Number(user?.user_metadata?.wallet) - Number(amount))
         );
 
         if(account.data && accountNo) {

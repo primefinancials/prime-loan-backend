@@ -10,6 +10,7 @@ const validations_1 = require("../validations");
 const router = express_1.default.Router();
 router.get("/account-enquiry", (0, middlewares_1.verifyJwtRest)(), userController_1.beneficiaryEnquiry);
 router.get("/get-user", (0, middlewares_1.verifyJwtRest)(), userController_1.getUser);
+router.get("/get-users", (0, middlewares_1.verifyJwtRest)(), userController_1.getUsers);
 router.get("/my-enquiry", (0, middlewares_1.verifyJwtRest)(), userController_1.accountEnquiry);
 router.post("/create-admin", (0, middlewares_1.validateReqBody)(validations_1.createAdminAccountSchema), userController_1.createAdminAccount);
 router.post("/create-client", (0, middlewares_1.validateReqBody)(validations_1.createClientAccountSchema), userController_1.createClientAccount);

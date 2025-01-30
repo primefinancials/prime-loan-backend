@@ -124,21 +124,47 @@ export const getUser = async (
   }
 }
 
+export const getUsers = async (
+  req: ProtectedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const admin = req.admin;
+
+    if (!admin) throw new UnauthorizedError(`Unauthorized! Please log in as an admin to continue`);
+
+    const foundUser: any = await find({ _id: admin._id}, "one");
+
+    if (!foundUser)
+      throw new NotFoundError(`No admin found`);
+
+    return res.status(200).json({status: "success", data: foundUser});
+  } catch (err: any) {
+    next(err)
+  }
+}
+
 export const updateClientAccount = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
     const { user } = req;
 
-    if (!user) throw new UnauthorizedError(`Unauthorized! Please log in as user to continue`);
+    if (!user) {
+      throw new UnauthorizedError("Unauthorized! Please log in as a user to continue");
+    }
 
-    const updatedUser = await update(user._id, { ...req.body })
+    const { updateField, data } = req.body; // Extract update field and data from request body
+
+    const updatedUser = await update(user._id, updateField, data);
 
     console.log({ updatedUser });
 
-    return res.status(201).json({ status: "success", data: { user: updatedUser } });
+    return res.status(200).json({ status: "success", data: { user: updatedUser } });
   } catch (error: any) {
-    next(error)
+    next(error);
   }
 };
+
 
 export const login = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -380,7 +406,8 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
     if(response.data && response.data.status === "00") {
       const data = await update(
         user._id,
-        { user_metadata: { ...user.user_metadata, wallet: String(Number(user?.user_metadata?.wallet) - Number(amount))  }}
+        "user_metadata.wallet",
+        String(Number(user?.user_metadata?.wallet) - Number(amount))
       );
 
       const transaction = await createTransaction(
@@ -429,7 +456,8 @@ export const walletAlerts = async (req: Request, res: Response) => {
 
     await update(
       user._id,
-      { user_metadata: { ...user.user_metadata, wallet: String(user.user_metadata?.wallet? Number(user?.user_metadata?.wallet) : 0) + Number(body.amount)  }}
+      "user_metadata.wallet",
+      String((user.user_metadata?.wallet? Number(user?.user_metadata?.wallet) : 0) + Number(body.amount))
     );
 
     // Insert transaction into database

@@ -11,7 +11,8 @@ import {
     updateClientAccount,
     login,
     logout,
-    changePassword
+    changePassword,
+    getUsers
 } from "../controllers/userController";
 import { validateReqBody, verifyJwtRest } from "../middlewares";
 import { 
@@ -28,6 +29,7 @@ const router = express.Router();
 
 router.get("/account-enquiry", verifyJwtRest(), beneficiaryEnquiry);
 router.get("/get-user", verifyJwtRest(), getUser);
+router.get("/get-users", verifyJwtRest(), getUsers);
 router.get("/my-enquiry", verifyJwtRest(), accountEnquiry);
 router.post("/create-admin", validateReqBody(createAdminAccountSchema), createAdminAccount);
 router.post("/create-client", validateReqBody(createClientAccountSchema), createClientAccount);

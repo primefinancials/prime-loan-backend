@@ -172,26 +172,8 @@ export const loginReqBodySchema = Joi.object({
 });
 
 export const updateUserSchema = Joi.object({
-  bvn: Joi.string().optional(),
-  nin: Joi.string().optional(),
-  sub: Joi.string().optional(),
-  email: Joi.string().email().optional(),
-  phone: Joi.string().optional(),
-  surname: Joi.string().optional(),
-  first_name: Joi.string().optional(),
-  dateOfBirth: Joi.string().optional(),
-  email_verified: Joi.boolean().optional(),
-  phone_verified: Joi.boolean().optional(),
-  accountNo: Joi.string().optional(),
-  address: Joi.string().optional(),
-  wallet: Joi.string().optional(),
-  pin: Joi.string().optional(),
-  profile_photo: Joi.string().optional(),
-  file: Joi.string().optional(),
-  types: Joi.string().optional(),
-  verified_address: Joi.string()
-    .valid("verified", "pending", "unverified")
-    .optional(),
+  data: Joi.string().required(),
+  updateField: Joi.string().required(),
 });
 
 export const changePasswordSchema = Joi.object({

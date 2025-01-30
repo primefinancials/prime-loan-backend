@@ -115,7 +115,7 @@ const payBill = (req, res, next) => __awaiter(void 0, void 0, void 0, function* 
                 // Call the payment API
                 const payResponse = yield (0, httpClient_1.httpClient)("/billspaymentstore/pay", "POST", req.body);
                 if (payResponse.data) {
-                    const newUser = yield update(user._id, { user_metadata: Object.assign(Object.assign({}, user.user_metadata), { wallet: String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)) }) });
+                    const newUser = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
                     const transactionStatus = payResponse.data.status === "00" ? "success" : "failed";
                     // Insert transaction record into database
                     const transaction = yield createTransaction(Object.assign({ name,
