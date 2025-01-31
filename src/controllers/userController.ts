@@ -445,9 +445,9 @@ export const walletAlerts = async (req: Request, res: Response) => {
     const body = req.body;
     
     // retrieve all identites linked to a user
-    const user = await find({ user_metadata: { accountNo: body.originator_account_number } }, "one");
+    const user = await find({ user_metadata: { accountNo: body.account_number } }, "one");
 
-    console.log({ user, originator_account_number: body.originator_account_number })
+    console.log({ user, account_number: body.account_number });
 
     if (!user || Array.isArray(user) || !user._id) {
       return res.status(404).json({
