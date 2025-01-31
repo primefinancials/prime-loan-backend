@@ -165,7 +165,7 @@ export const payBill = async (req: ProtectedRequest, res: Response, next: NextFu
               transaction_number: customerId,
               amount,
               bank,
-              reciever: customerId,
+              receiver: customerId,
               account_number: customerId,
               outstanding: 0.0,
               session_id: reference,

@@ -124,9 +124,7 @@ const getUsers = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
         const admin = req.admin;
         if (!admin)
             throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as an admin to continue`);
-        const foundUser = yield find({ _id: admin._id }, "one");
-        if (!foundUser)
-            throw new exceptions_1.NotFoundError(`No admin found`);
+        const foundUser = yield find({}, "many");
         return res.status(200).json({ status: "success", data: foundUser });
     }
     catch (err) {

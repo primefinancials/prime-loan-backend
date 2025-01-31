@@ -134,10 +134,7 @@ export const getUsers = async (
 
     if (!admin) throw new UnauthorizedError(`Unauthorized! Please log in as an admin to continue`);
 
-    const foundUser: any = await find({ _id: admin._id}, "one");
-
-    if (!foundUser)
-      throw new NotFoundError(`No admin found`);
+    const foundUser: any = await find({ }, "many");
 
     return res.status(200).json({status: "success", data: foundUser});
   } catch (err: any) {
