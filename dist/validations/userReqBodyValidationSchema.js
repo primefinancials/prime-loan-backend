@@ -74,10 +74,8 @@ exports.transferSchema = joi_1.default.object({
     fromSavingsId: joi_1.default.string().required().messages({
         "string.empty": "From Savings ID is required",
     }),
-    fromBvn: joi_1.default.string().length(11).pattern(/^\d+$/).required().messages({
+    fromBvn: joi_1.default.string().required().messages({
         "string.empty": "From BVN is required",
-        "string.length": "From BVN must be exactly 11 digits",
-        "string.pattern.base": "From BVN must contain only digits",
     }),
     toClient: joi_1.default.string().required().messages({
         "string.empty": "To Client is required",
@@ -85,10 +83,8 @@ exports.transferSchema = joi_1.default.object({
     toSession: joi_1.default.string().required().messages({
         "string.empty": "To Session is required",
     }),
-    toBvn: joi_1.default.string().length(11).pattern(/^\d+$/).required().messages({
+    toBvn: joi_1.default.string().required().messages({
         "string.empty": "To BVN is required",
-        "string.length": "To BVN must be exactly 11 digits",
-        "string.pattern.base": "To BVN must contain only digits",
     }),
     toKyc: joi_1.default.string().required().messages({
         "string.empty": "To KYC is required",

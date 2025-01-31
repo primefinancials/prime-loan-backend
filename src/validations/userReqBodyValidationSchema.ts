@@ -72,10 +72,8 @@ export const transferSchema = Joi.object({
     fromSavingsId: Joi.string().required().messages({
       "string.empty": "From Savings ID is required",
     }),
-    fromBvn: Joi.string().length(11).pattern(/^\d+$/).required().messages({
+    fromBvn: Joi.string().required().messages({
       "string.empty": "From BVN is required",
-      "string.length": "From BVN must be exactly 11 digits",
-      "string.pattern.base": "From BVN must contain only digits",
     }),
     toClient: Joi.string().required().messages({
       "string.empty": "To Client is required",
@@ -83,10 +81,8 @@ export const transferSchema = Joi.object({
     toSession: Joi.string().required().messages({
       "string.empty": "To Session is required",
     }),
-    toBvn: Joi.string().length(11).pattern(/^\d+$/).required().messages({
+    toBvn: Joi.string().required().messages({
       "string.empty": "To BVN is required",
-      "string.length": "To BVN must be exactly 11 digits",
-      "string.pattern.base": "To BVN must contain only digits",
     }),
     toKyc: Joi.string().required().messages({
       "string.empty": "To KYC is required",
