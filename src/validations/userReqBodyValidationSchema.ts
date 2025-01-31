@@ -114,56 +114,16 @@ export const transferSchema = Joi.object({
 
 // Joi validation schema for wallet alerts
 export const walletAlertsSchema = Joi.object({
-  reference: Joi.string().required().messages({
-    'string.base': '"reference" should be a string',
-    'string.empty': '"reference" cannot be empty',
-    'any.required': '"reference" is required',
-  }),
-  amount: Joi.number().required().messages({
-    'number.base': '"amount" should be a number',
-    'any.required': '"amount" is required',
-  }),
-  account_number: Joi.string().required().messages({
-    'string.base': '"account_number" should be a string',
-    'string.empty': '"account_number" cannot be empty',
-    'any.required': '"account_number" is required',
-  }),
-  originator_account_number: Joi.string().required().messages({
-    'string.base': '"originator_account_number" should be a string',
-    'string.empty': '"originator_account_number" cannot be empty',
-    'any.required': '"originator_account_number" is required',
-  }),
-  originator_account_name: Joi.string().required().messages({
-    'string.base': '"originator_account_name" should be a string',
-    'string.empty': '"originator_account_name" cannot be empty',
-    'any.required': '"originator_account_name" is required',
-  }),
-  originator_bank: Joi.string().required().messages({
-    'string.base': '"originator_bank" should be a string',
-    'string.empty': '"originator_bank" cannot be empty',
-    'any.required': '"originator_bank" is required',
-  }),
-  bank: Joi.string().required().messages({
-    'string.base': '"bank" should be a string',
-    'string.empty': '"bank" cannot be empty',
-    'any.required': '"bank" is required',
-  }),
-  originator_narration: Joi.string().required().messages({
-    'string.base': '"originator_narration" should be a string',
-    'string.empty': '"originator_narration" cannot be empty',
-    'any.required': '"originator_narration" is required',
-  }),
-  timestamp: Joi.string().isoDate().required().messages({
-    'string.base': '"timestamp" should be a string',
-    'string.empty': '"timestamp" cannot be empty',
-    'string.isoDate': '"timestamp" must be a valid ISO date',
-    'any.required': '"timestamp" is required',
-  }),
-  session_id: Joi.string().required().messages({
-    'string.base': '"session_id" should be a string',
-    'string.empty': '"session_id" cannot be empty',
-    'any.required': '"session_id" is required',
-  }),
+  reference: Joi.string().required(),
+  amount: Joi.number().required(),
+  account_number: Joi.string().required(),
+  originator_account_number: Joi.string().required(),
+  originator_account_name: Joi.string().required(),
+  originator_bank: Joi.string().required(),
+  initialCreditRequest: Joi.boolean(),
+  originator_narration: Joi.string().required(),
+  timestamp: Joi.string().required(),
+  session_id: Joi.string().required(),
 });
 
 export const loginReqBodySchema = Joi.object({

@@ -43,6 +43,7 @@ const userSchema = new mongoose_1.Schema({
         nin: { type: String, required: false },
         sub: { type: String, required: false },
         email: { type: String, required: false },
+        gender: { type: String, required: false },
         phone: { type: String, required: false },
         surname: { type: String, required: false },
         wallet: { type: String, required: false },

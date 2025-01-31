@@ -54,6 +54,7 @@ export interface CREATEUSER {
     email?: string;
     phone?: string;
     surname?: string;
+    gender?: string;
     first_name?: string;
     dateOfBirth?: string;
     email_verified?: boolean;
@@ -81,6 +82,7 @@ export interface UPDATEUSER {
     email?: string;
     phone?: string;
     surname?: string;
+    gender?: string;
     first_name?: string;
     dateOfBirth?: string;
     wallet?: string;
