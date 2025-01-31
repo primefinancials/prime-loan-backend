@@ -29,7 +29,7 @@ export class UserService {
 
   public async find(fields: object, option: 'one' | 'many'): Promise<User | null | User[] | void> {
     if (option === 'one') {
-      const user = await UserModel.findOne(fields);
+      const user = await UserModel.findOne(fields).exec();
 
       return user;
     } else if (option === 'many') {

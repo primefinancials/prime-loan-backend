@@ -40,7 +40,7 @@ class UserService {
     find(fields, option) {
         return __awaiter(this, void 0, void 0, function* () {
             if (option === 'one') {
-                const user = yield model_1.UserModel.findOne(fields);
+                const user = yield model_1.UserModel.findOne(fields).exec();
                 return user;
             }
             else if (option === 'many') {

@@ -361,7 +361,7 @@ const walletAlerts = (req, res) => __awaiter(void 0, void 0, void 0, function* (
     try {
         const body = req.body;
         // retrieve all identites linked to a user
-        const user = yield find({ user_metadata: { accountNo: body.account_number } }, "one");
+        const user = yield find({ "user_metadata.accountNo": body.account_number }, "one");
         console.log({ user, account_number: body.account_number });
         if (!user || Array.isArray(user) || !user._id) {
             return res.status(404).json({
