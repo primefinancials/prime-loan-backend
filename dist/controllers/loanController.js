@@ -258,8 +258,9 @@ const loanPortfolio = (req, res, next) => __awaiter(void 0, void 0, void 0, func
         }
         const loan = yield findLoan({ userId: user._id }, "many");
         if (!loan)
-            throw new exceptions_1.NotFoundError("Loan not found");
-        res.status(200).json({ status: "success", data: loan });
+            return res.status(200).json({ status: "success", data: [] });
+        ;
+        return res.status(200).json({ status: "success", data: loan });
     }
     catch (error) {
         console.log("Error getting repayment schedule:", error);

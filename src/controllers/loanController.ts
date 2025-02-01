@@ -340,9 +340,9 @@ export const loanPortfolio = async (req: ProtectedRequest, res: Response, next: 
 
     const loan = await findLoan({ userId: user._id }, "many");
 
-    if(!loan) throw new NotFoundError("Loan not found");
+    if(!loan) return res.status(200).json({ status: "success", data: [] });;
 
-    res.status(200).json({ status: "success", data: loan });
+    return res.status(200).json({ status: "success", data: loan });
   } catch (error: any) {
     console.log("Error getting repayment schedule:", error);
     next(error);
