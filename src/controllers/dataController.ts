@@ -41,6 +41,8 @@ export const transactions = async (req: ProtectedRequest, res: Response, next: N
 
     const transactions = await findTransaction({ user: user._id }, "many");
 
+    console.log({ transactions })
+
     if(!transactions) return res.status(200).json({ status: "success", data: [] });;
 
     return res.status(200).json({ status: "success", data: transactions });
@@ -101,6 +103,8 @@ export const messages = async (req: ProtectedRequest, res: Response, next: NextF
     }
 
     const messages = await findMessage({ user: user._id }, "many");
+
+    console.log({ messages })
 
     if(!messages) return res.status(200).json({ status: "success", data: [] });;
 
