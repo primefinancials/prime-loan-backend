@@ -119,7 +119,7 @@ const payBill = (req, res, next) => __awaiter(void 0, void 0, void 0, function* 
                     const transactionStatus = payResponse.data.status === "00" ? "success" : "failed";
                     // Insert transaction record into database
                     const transaction = yield createTransaction(Object.assign({ name,
-                        category, type: "paybills", user: user._id, details, transaction_number: customerId, amount,
+                        category, type: "paybills", user: user._id, details, transaction_number: reference, amount,
                         bank, receiver: customerId, account_number: customerId, outstanding: 0.0, session_id: reference, status: transactionStatus, message: payResponse.data.status }, (phoneNumber && { phoneNumber })));
                     // Respond with cleaned-up data
                     res.status(payResponse.status || 200).json({

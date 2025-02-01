@@ -41,9 +41,9 @@ export const transactions = async (req: ProtectedRequest, res: Response, next: N
 
     const transactions = await findTransaction({ user: user._id }, "many");
 
-    if(!transactions) throw new NotFoundError("Transaction not found");
+    if(!transactions) return res.status(200).json({ status: "success", data: [] });;
 
-    res.status(200).json({ status: "success", data: transactions });
+    return res.status(200).json({ status: "success", data: transactions });
   } catch (error: any) {
     console.log("Error getting transactions:", error);
     next(error);
@@ -63,9 +63,9 @@ export const adminTransactions = async (req: ProtectedRequest, res: Response, ne
 
     const transactions = await findTransaction({ }, "many");
 
-    if(!transactions) throw new NotFoundError("Transaction not found");
+    if(!transactions) return res.status(200).json({ status: "success", data: [] });;
 
-    res.status(200).json({ status: "success", data: transactions });
+    return res.status(200).json({ status: "success", data: transactions });
   } catch (error: any) {
     console.log("Error getting transactions:", error);
     next(error);
@@ -102,9 +102,9 @@ export const messages = async (req: ProtectedRequest, res: Response, next: NextF
 
     const messages = await findMessage({ user: user._id }, "many");
 
-    if(!messages) throw new NotFoundError("Message not found");
+    if(!messages) return res.status(200).json({ status: "success", data: [] });;
 
-    res.status(200).json({ status: "success", data: messages });
+    return res.status(200).json({ status: "success", data: messages });
   } catch (error: any) {
     console.log("Error getting message:", error);
     next(error);
@@ -124,9 +124,9 @@ export const adminMessages = async (req: ProtectedRequest, res: Response, next: 
 
     const messages = await findMessage({ }, "many");
 
-    if(!messages) throw new NotFoundError("Message not found");
+    if(!messages) return res.status(200).json({ status: "success", data: [] });;
 
-    res.status(200).json({ status: "success", data: messages });
+    return res.status(200).json({ status: "success", data: messages });
   } catch (error: any) {
     console.log("Error getting message:", error);
     next(error);
