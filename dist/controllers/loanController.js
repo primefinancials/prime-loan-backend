@@ -8,6 +8,9 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.loans = exports.loanPortfolio = exports.loanTransactionStatus = exports.rejectLoan = exports.repayLoan = exports.createClientLoan = exports.createAndDisburseLoan = void 0;
 const validateParams_1 = require("../utils/validateParams");
@@ -16,9 +19,36 @@ const generateRef_1 = require("../utils/generateRef");
 const js_sha512_1 = require("js-sha512");
 const services_1 = require("../services");
 const exceptions_1 = require("../exceptions");
+const axios_1 = __importDefault(require("axios"));
+const exceptions_2 = require("../exceptions");
 const { find, findByEmail, create, update } = new services_1.UserService();
 const { create: createTransaction } = new services_1.TransactionService();
 const { update: updateLoan, findById: findLoanById, find: findLoan, create: createLoan } = new services_1.LoanService();
+const httpRequest = (bvn) => __awaiter(void 0, void 0, void 0, function* () {
+    const url = `https://api.creditchek.africa/v1/credit/creditRegistry-premium?bvn=${bvn}`;
+    const accessToken = `M9/lR4xLUzwA+k4lnVWL40j98i96FtJmmPAfAQBktaL2BfhpEHqWIrmqORGzodK1`;
+    const headers = {
+        "Content-Type": "application/json",
+        "token": accessToken,
+    };
+    const options = {
+        url,
+        method: "GET",
+        headers
+    };
+    try {
+        const response = yield (0, axios_1.default)(options);
+        console.log({ response });
+        if (![200, 202].includes(response.status)) {
+            throw new Error(`Client creation failed: ${response.data.message}`);
+        }
+        console.log({ httpClient: "passed" });
+        return response.data;
+    }
+    catch (error) {
+        throw new exceptions_2.APIError(error.status, error.response.data.message || error.message);
+    }
+});
 const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { amount, duration, transactionId } = req.body;
@@ -87,14 +117,16 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
 });
 exports.createAndDisburseLoan = createAndDisburseLoan;
 const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
     try {
         const { first_name, last_name, dob, nin, email, bvn, phone, address, company, company_address, annual_income, guarantor_1_name, guarantor_1_phone, guarantor_2_name, guarantor_2_phone, amount, reason, base64Image, outstanding, category, type, status, duration, repayment_amount, percentage, loan_date, repayment_date, acknowledgment } = req.body;
         const { user } = req;
         if (!user || !user._id) {
-            return res.status(404).json({
-                status: "User not found.",
-                data: null
-            });
+            throw new exceptions_1.NotFoundError("User not found.");
+        }
+        const credit = yield httpRequest(bvn);
+        if (credit.error) {
+            throw new exceptions_1.BadRequestError(credit.message);
         }
         const loan = yield createLoan({
             first_name,
@@ -125,7 +157,24 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
             loan_date,
             repayment_date,
             acknowledgment,
-            loan_payment_status: "not-started"
+            loan_payment_status: "not-started",
+            credit_score: {
+                loanId: credit.data._id,
+                lastReported: "",
+                creditorName: credit.data.name,
+                totalDebt: credit.data.totalBorrowed,
+                accountype: ((_a = credit.data.loanPerformance[0]) === null || _a === void 0 ? void 0 : _a.type) || "",
+                outstandingBalance: credit.data.totalOutstanding,
+                activeLoan: credit.data.totalNoOfActiveLoans,
+                loansTaken: credit.data.totalNoOfLoans,
+                income: 0,
+                repaymentHistory: credit.data.totalNoOfPerformingLoans,
+                openedDate: credit.data.totalNoOfActiveLoans,
+                lengthOfCreditHistory: credit.data.totalNoOfLoans,
+                remarks: "",
+                creditors: credit.data.creditors,
+                loan_details: credit.data.loanPerformance,
+            }
         });
         if (!loan)
             throw new exceptions_1.NotFoundError("Loan id not found");

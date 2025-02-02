@@ -3,6 +3,51 @@ export type LOANTYPE = "request" | "repay";
 export type LOANSTATUS = "pending" | "rejected" | "accepted";
 export type LOANPAYMENTSTATUS = "complete" | "in-progress" | "not-started";
 
+interface Subscriber {
+  Subscriber_ID: string;
+  Name: string;
+  Phone: string;
+  Address: string;
+}
+
+interface LoanDetails {
+  loanProvider: string;
+  accountNumber: string;
+  loanAmount: number;
+  outstandingBalance: number;
+  status: string;
+  performanceStatus: string;
+  overdueAmount: number;
+  type: string;
+  loanDuration: string;
+  repaymentFrequency: string;
+  repaymentBehavior: string;
+  paymentProfile: string;
+  dateAccountOpened: string; // ISO date format
+  lastUpdatedAt: string; // ISO date format
+  loanCount: number;
+  monthlyInstallmentAmt: number;
+}
+
+
+interface ICreditScore {
+  loanId: string;
+  lastReported: string;
+  creditorName: string;
+  totalDebt: string;
+  accountype: string;
+  outstandingBalance: number;
+  activeLoan: number;
+  loansTaken: number;
+  income: number;
+  repaymentHistory: string;
+  openedDate: string;
+  lengthOfCreditHistory: string;
+  remarks: string;
+  creditors: Subscriber[];
+  loan_details: LoanDetails[];
+};
+
 export interface LoanApplication {
   _id: string;
   first_name: string;
@@ -39,6 +84,7 @@ export interface LoanApplication {
   repayment_date: string; // Repayment date in string format
   loan_date: string; // Loan date in string format
   loan_payment_status: LOANPAYMENTSTATUS;
+  credit_score: ICreditScore
 }
 
 export interface CREATELOAN {
@@ -74,6 +120,7 @@ export interface CREATELOAN {
   repayment_date: string; // Repayment date in string format
   loan_date: string; // Loan date in string format
   loan_payment_status: LOANPAYMENTSTATUS;
+  credit_score: ICreditScore
 }
 
 export interface UPDATELOAN {

@@ -1,8 +1,8 @@
 import Joi from "joi";
 
 export const createAndDisburseLoanSchema = Joi.object({
-  amount: Joi.number().required().positive().label("Loan amount"),
-  duration: Joi.number().required().positive().integer().label("Loan duration (months)"),
+  amount: Joi.string().required().label("Loan amount"),
+  duration: Joi.string().required().label("Loan duration (months)"),
   transactionId: Joi.string().required().label("Transaction ID"),
 });
 
@@ -51,11 +51,11 @@ export const repayLoanSchema = Joi.object({
   toAccount: Joi.string().required().label("To Account"),
   toBank: Joi.string().required().label("To Bank"),
   signature: Joi.string().required().label("Signature"),
-  amount: Joi.number().positive().required().label("Amount"),
+  amount: Joi.string().required().label("Amount"),
   remark: Joi.string().required().label("Remark"),
   reference: Joi.string().required().label("Reference"),
   userId: Joi.string().required().label("User ID"),
-  outstanding: Joi.number().required().positive().label("Outstanding Amount"),
+  outstanding: Joi.string().required().label("Outstanding Amount"),
 });
 
 export const rejectLoanSchema = Joi.object({

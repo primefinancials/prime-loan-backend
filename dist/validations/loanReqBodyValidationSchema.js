@@ -6,8 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.loanTransactionStatusSchema = exports.rejectLoanSchema = exports.repayLoanSchema = exports.createClientLoanSchema = exports.createAndDisburseLoanSchema = void 0;
 const joi_1 = __importDefault(require("joi"));
 exports.createAndDisburseLoanSchema = joi_1.default.object({
-    amount: joi_1.default.number().required().positive().label("Loan amount"),
-    duration: joi_1.default.number().required().positive().integer().label("Loan duration (months)"),
+    amount: joi_1.default.string().required().label("Loan amount"),
+    duration: joi_1.default.string().required().label("Loan duration (months)"),
     transactionId: joi_1.default.string().required().label("Transaction ID"),
 });
 exports.createClientLoanSchema = joi_1.default.object({
@@ -54,11 +54,11 @@ exports.repayLoanSchema = joi_1.default.object({
     toAccount: joi_1.default.string().required().label("To Account"),
     toBank: joi_1.default.string().required().label("To Bank"),
     signature: joi_1.default.string().required().label("Signature"),
-    amount: joi_1.default.number().positive().required().label("Amount"),
+    amount: joi_1.default.string().required().label("Amount"),
     remark: joi_1.default.string().required().label("Remark"),
     reference: joi_1.default.string().required().label("Reference"),
     userId: joi_1.default.string().required().label("User ID"),
-    outstanding: joi_1.default.number().required().positive().label("Outstanding Amount"),
+    outstanding: joi_1.default.string().required().label("Outstanding Amount"),
 });
 exports.rejectLoanSchema = joi_1.default.object({
     transactionId: joi_1.default.string().required().label("Transaction ID"),

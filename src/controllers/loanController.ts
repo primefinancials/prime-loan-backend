@@ -5,11 +5,45 @@ import { generateRandomString } from "../utils/generateRef";
 import { sha512 } from "js-sha512";
 import { ProtectedRequest } from "../interfaces";
 import { UserService, TransactionService, LoanService } from "../services";
-import { NotFoundError } from "../exceptions";
+import { BadRequestError, NotFoundError } from "../exceptions";
+import axios, { AxiosRequestConfig } from "axios";
+import { APIError } from "../exceptions";
 
 const { find, findByEmail, create, update } = new UserService();
 const { create: createTransaction } = new TransactionService();
 const { update: updateLoan, findById: findLoanById, find: findLoan, create: createLoan } = new LoanService();
+
+const httpRequest = async (bvn: string) => {
+  const url = `https://api.creditchek.africa/v1/credit/creditRegistry-premium?bvn=${bvn}`;
+  const accessToken = `M9/lR4xLUzwA+k4lnVWL40j98i96FtJmmPAfAQBktaL2BfhpEHqWIrmqORGzodK1`;
+
+  const headers = {
+    "Content-Type": "application/json",
+    "token": accessToken,
+  };
+
+  const options: AxiosRequestConfig = {
+    url,
+    method: "GET",
+    headers
+  };
+
+  try {
+    const response = await axios(options);
+
+    console.log({ response })
+
+    if (![200, 202].includes(response.status)) {
+        throw new Error(`Client creation failed: ${response.data.message}`);
+    }
+
+    console.log({ httpClient: "passed" })
+
+    return response.data;
+  } catch (error: any) {
+    throw new APIError(error.status, error.response.data.message || error.message);
+  }
+};
 
 export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
@@ -126,10 +160,13 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
     const { user }= req;
 
     if (!user || !user._id) {
-      return res.status(404).json({
-        status: "User not found.",
-        data: null
-      });
+      throw new NotFoundError("User not found.");
+    }
+
+    const credit = await httpRequest(bvn);
+
+    if(credit.error) {
+      throw new BadRequestError(credit.message);
     }
 
     const loan = await createLoan({
@@ -161,7 +198,24 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       loan_date,
       repayment_date,
       acknowledgment,
-      loan_payment_status: "not-started"
+      loan_payment_status: "not-started",
+      credit_score: {
+        loanId: credit.data._id,
+        lastReported: "",
+        creditorName: credit.data.name,
+        totalDebt: credit.data.totalBorrowed,
+        accountype: credit.data.loanPerformance[0]?.type || "",
+        outstandingBalance: credit.data.totalOutstanding,
+        activeLoan: credit.data.totalNoOfActiveLoans,
+        loansTaken: credit.data.totalNoOfLoans,
+        income: 0,
+        repaymentHistory: credit.data.totalNoOfPerformingLoans,
+        openedDate: credit.data.totalNoOfActiveLoans,
+        lengthOfCreditHistory: credit.data.totalNoOfLoans,
+        remarks: "",
+        creditors: credit.data.creditors,
+        loan_details: credit.data.loanPerformance,
+      }
     });
 
     if(!loan) throw new NotFoundError("Loan id not found");
