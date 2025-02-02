@@ -8,6 +8,7 @@ import { UserService, TransactionService, LoanService } from "../services";
 import { BadRequestError, NotFoundError } from "../exceptions";
 import axios, { AxiosRequestConfig } from "axios";
 import { APIError } from "../exceptions";
+import { date } from "joi";
 
 const { find, findByEmail, create, update } = new UserService();
 const { create: createTransaction } = new TransactionService();
@@ -287,7 +288,8 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
 
         const loan = await updateLoan(foundLoan._id, { 
           loan_payment_status: (Number(outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
-          outstanding: Number(outstanding) - Number(amount) 
+          outstanding: Number(outstanding) - Number(amount),
+          repayment_history: [ ...foundLoan.repayment_history, { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
         });
 
         const account = await httpClient(`/wallet2/account/enquiry?`, "GET");

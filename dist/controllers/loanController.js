@@ -221,7 +221,8 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
             }
             const loan = yield updateLoan(foundLoan._id, {
                 loan_payment_status: (Number(outstanding) - Number(amount)) <= 0 ? "complete" : "in-progress",
-                outstanding: Number(outstanding) - Number(amount)
+                outstanding: Number(outstanding) - Number(amount),
+                repayment_history: [...foundLoan.repayment_history, { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
             });
             const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
             console.log({ account });

@@ -60,52 +60,52 @@ export const createAdminAccountSchema = Joi.object({
 });
 
 export const transferSchema = Joi.object({
-    fromAccount: Joi.string().required().messages({
-      "string.empty": "From Account is required",
-    }),
-    fromClientId: Joi.string().required().messages({
-      "string.empty": "From Client ID is required",
-    }),
-    fromClient: Joi.string().required().messages({
-      "string.empty": "From Client is required",
-    }),
-    fromSavingsId: Joi.string().required().messages({
-      "string.empty": "From Savings ID is required",
-    }),
-    fromBvn: Joi.string().required().messages({
-      "string.empty": "From BVN is required",
-    }),
-    toClient: Joi.string().required().messages({
-      "string.empty": "To Client is required",
-    }),
-    toSession: Joi.string().required().messages({
-      "string.empty": "To Session is required",
-    }),
-    toBvn: Joi.string().required().messages({
-      "string.empty": "To BVN is required",
-    }),
-    toKyc: Joi.string().required().messages({
-      "string.empty": "To KYC is required",
-    }),
-    bank: Joi.string().required().messages({
-      "string.empty": "Bank is required",
-    }),
-    toAccount: Joi.string().required().messages({
-      "string.empty": "To Account is required",
-    }),
-    toBank: Joi.string().required().messages({
-      "string.empty": "To Bank is required",
-    }),
-    toSavingsId: Joi.string().required().messages({
-      "string.empty": "To Savings ID is required",
-    }),
-    amount: Joi.string().required().messages({
-      "string.empty": "Amount is required",
-    }),
-    remark: Joi.string(),
-    reference: Joi.string().required().messages({
-      "string.empty": "Reference is required",
-    }),
+  fromAccount: Joi.string().required().messages({
+    "string.empty": "From Account is required",
+  }),
+  fromClientId: Joi.string().required().messages({
+    "string.empty": "From Client ID is required",
+  }),
+  fromClient: Joi.string().required().messages({
+    "string.empty": "From Client is required",
+  }),
+  fromSavingsId: Joi.string().required().messages({
+    "string.empty": "From Savings ID is required",
+  }),
+  fromBvn: Joi.string().required().messages({
+    "string.empty": "From BVN is required",
+  }),
+  toClient: Joi.string().required().messages({
+    "string.empty": "To Client is required",
+  }),
+  toSession: Joi.string().required().messages({
+    "string.empty": "To Session is required",
+  }),
+  toBvn: Joi.string().required().messages({
+    "string.empty": "To BVN is required",
+  }),
+  toKyc: Joi.string().required().messages({
+    "string.empty": "To KYC is required",
+  }),
+  bank: Joi.string().required().messages({
+    "string.empty": "Bank is required",
+  }),
+  toAccount: Joi.string().required().messages({
+    "string.empty": "To Account is required",
+  }),
+  toBank: Joi.string().required().messages({
+    "string.empty": "To Bank is required",
+  }),
+  toSavingsId: Joi.string().required().messages({
+    "string.empty": "To Savings ID is required",
+  }),
+  amount: Joi.string().required().messages({
+    "string.empty": "Amount is required",
+  }),
+  remark: Joi.string(),
+  reference: Joi.string().required().messages({
+    "string.empty": "Reference is required",
+  }),
 });
 
 // Joi validation schema for wallet alerts

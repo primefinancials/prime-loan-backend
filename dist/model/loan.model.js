@@ -1,6 +1,57 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = require("mongoose");
+// Subscriber Schema
+const SubscriberSchema = new mongoose_1.Schema({
+    Subscriber_ID: { type: String, required: true },
+    Name: { type: String, required: true },
+    Phone: { type: String, required: true },
+    Address: { type: String, required: true },
+});
+// Loan Details Schema
+const LoanDetailsSchema = new mongoose_1.Schema({
+    loanProvider: { type: String, required: true },
+    accountNumber: { type: String, required: true },
+    loanAmount: { type: Number, required: true },
+    outstandingBalance: { type: Number, required: true },
+    status: { type: String, required: true },
+    performanceStatus: { type: String, required: true },
+    overdueAmount: { type: Number, required: true },
+    type: { type: String, required: true },
+    loanDuration: { type: String, required: true },
+    repaymentFrequency: { type: String, required: true },
+    repaymentBehavior: { type: String, required: true },
+    paymentProfile: { type: String, required: true },
+    dateAccountOpened: { type: String, required: true },
+    lastUpdatedAt: { type: String, required: true },
+    loanCount: { type: Number, required: true },
+    monthlyInstallmentAmt: { type: Number, required: true },
+});
+// Credit Score Schema
+const CreditScoreSchema = new mongoose_1.Schema({
+    loanId: { type: String, required: true },
+    lastReported: { type: String, required: true },
+    creditorName: { type: String, required: true },
+    totalDebt: { type: String, required: true },
+    accountype: { type: String, required: true },
+    outstandingBalance: { type: Number, required: true },
+    activeLoan: { type: Number, required: true },
+    loansTaken: { type: Number, required: true },
+    income: { type: Number, required: true },
+    repaymentHistory: { type: String, required: true },
+    openedDate: { type: String, required: true },
+    lengthOfCreditHistory: { type: String, required: true },
+    remarks: { type: String, required: true },
+    creditors: [SubscriberSchema],
+    loan_details: [LoanDetailsSchema],
+});
+// Repayment History Schema
+const RepaymentHistorySchema = new mongoose_1.Schema({
+    amount: { type: Number, required: true },
+    outstanding: { type: Number, required: true },
+    date: { type: Number, required: true },
+    action: { type: String, required: true },
+});
 // Define the LoanApplication Schema
 const LoanApplicationSchema = new mongoose_1.Schema({
     first_name: { type: String, required: true },
@@ -35,6 +86,8 @@ const LoanApplicationSchema = new mongoose_1.Schema({
     repayment_date: { type: String, required: true },
     loan_date: { type: String, required: true },
     loan_payment_status: { type: String, required: true },
+    credit_score: CreditScoreSchema,
+    repayment_history: [RepaymentHistorySchema],
 }, { timestamps: true });
 // Create the LoanApplication model
 const LoanApplicationModel = (0, mongoose_1.model)('loans', LoanApplicationSchema);

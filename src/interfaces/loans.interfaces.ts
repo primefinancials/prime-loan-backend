@@ -85,6 +85,12 @@ export interface LoanApplication {
   loan_date: string; // Loan date in string format
   loan_payment_status: LOANPAYMENTSTATUS;
   credit_score: ICreditScore
+  repayment_history: {
+    amount: number;
+    outstanding: number;
+    date: string;
+    action: string;
+  }[]
 }
 
 export interface CREATELOAN {
@@ -126,6 +132,12 @@ export interface CREATELOAN {
 export interface UPDATELOAN {
   loan_payment_status: LOANPAYMENTSTATUS;
   outstanding: number;
+  repayment_history: {
+    amount: number;
+    outstanding: number;
+    date: string;
+    action: string;
+  }[]
 }
 
 
