@@ -117,7 +117,6 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
 });
 exports.createAndDisburseLoan = createAndDisburseLoan;
 const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
     try {
         const { first_name, last_name, dob, nin, email, bvn, phone, address, company, company_address, annual_income, guarantor_1_name, guarantor_1_phone, guarantor_2_name, guarantor_2_phone, amount, reason, base64Image, outstanding, category, type, status, duration, repayment_amount, percentage, loan_date, repayment_date, acknowledgment } = req.body;
         const { user } = req;
@@ -163,7 +162,7 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
                 lastReported: "",
                 creditorName: credit.data.name,
                 totalDebt: credit.data.totalBorrowed,
-                accountype: ((_a = credit.data.loanPerformance[0]) === null || _a === void 0 ? void 0 : _a.type) || "",
+                accountype: "",
                 outstandingBalance: credit.data.totalOutstanding,
                 activeLoan: credit.data.totalNoOfActiveLoans,
                 loansTaken: credit.data.totalNoOfLoans,

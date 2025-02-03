@@ -205,7 +205,7 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
         lastReported: "",
         creditorName: credit.data.name,
         totalDebt: credit.data.totalBorrowed,
-        accountype: credit.data.loanPerformance[0]?.type || "",
+        accountype: "",
         outstandingBalance: credit.data.totalOutstanding,
         activeLoan: credit.data.totalNoOfActiveLoans,
         loansTaken: credit.data.totalNoOfLoans,
