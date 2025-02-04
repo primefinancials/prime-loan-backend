@@ -40,7 +40,7 @@ const httpRequest = async (bvn: string) => {
 
     console.log({ httpClient: "passed" })
 
-    return response.data;
+    return response.data.data;
   } catch (error: any) {
     throw new APIError(error.status, error.response.data.message || error.message);
   }
@@ -165,6 +165,8 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
     }
 
     const credit = await httpRequest(bvn);
+
+    console.log({ credit });
 
     if(credit.error) {
       throw new BadRequestError(credit.message);

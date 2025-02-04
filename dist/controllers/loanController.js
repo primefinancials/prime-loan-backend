@@ -43,7 +43,7 @@ const httpRequest = (bvn) => __awaiter(void 0, void 0, void 0, function* () {
             throw new Error(`Client creation failed: ${response.data.message}`);
         }
         console.log({ httpClient: "passed" });
-        return response.data;
+        return response.data.data;
     }
     catch (error) {
         throw new exceptions_2.APIError(error.status, error.response.data.message || error.message);
@@ -124,6 +124,7 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
             throw new exceptions_1.NotFoundError("User not found.");
         }
         const credit = yield httpRequest(bvn);
+        console.log({ credit });
         if (credit.error) {
             throw new exceptions_1.BadRequestError(credit.message);
         }
