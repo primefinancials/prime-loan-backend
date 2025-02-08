@@ -239,6 +239,15 @@ export const UpdateLoanAmount = async (req: ProtectedRequest, res: Response, nex
       userId,
     } = req.body;
 
+    const { admin } = req;
+
+    if(!admin || !admin._id) {
+      return res.status(403).json({
+        status: "User Unauthorized.",
+        data: null
+      });
+    }
+
     const user = await find({ _id: userId }, "one")
 
     if (!user || Array.isArray(user) || !user._id) {

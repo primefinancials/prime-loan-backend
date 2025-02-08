@@ -14,5 +14,6 @@ router.post("/create-loan", (0, middlewares_1.validateReqBody)(validations_1.cre
 router.get("/loan-portfolio", (0, middlewares_1.verifyJwtRest)(), loanController_1.loanPortfolio);
 router.post("/repay-loan", (0, middlewares_1.validateReqBody)(validations_1.repayLoanSchema), (0, middlewares_1.verifyJwtRest)(), loanController_1.repayLoan);
 router.post("/reject-loan", (0, middlewares_1.validateReqBody)(validations_1.rejectLoanSchema), (0, middlewares_1.verifyJwtRest)(), loanController_1.rejectLoan);
+router.post("/update-amount", (0, middlewares_1.validateReqBody)(validations_1.updateLoanAmountSchema), (0, middlewares_1.verifyJwtRest)(), loanController_1.UpdateLoanAmount);
 router.get("/all-loans", (0, middlewares_1.verifyJwtRest)(), loanController_1.loans);
 exports.default = router;

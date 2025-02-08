@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.loans = exports.loanPortfolio = exports.loanTransactionStatus = exports.rejectLoan = exports.repayLoan = exports.createClientLoan = exports.createAndDisburseLoan = void 0;
+exports.loans = exports.loanPortfolio = exports.loanTransactionStatus = exports.rejectLoan = exports.repayLoan = exports.UpdateLoanAmount = exports.createClientLoan = exports.createAndDisburseLoan = void 0;
 const validateParams_1 = require("../utils/validateParams");
 const httpClient_1 = require("../utils/httpClient");
 const generateRef_1 = require("../utils/generateRef");
@@ -144,6 +144,7 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
             guarantor_1_phone,
             guarantor_2_name,
             guarantor_2_phone,
+            requested_amount: amount,
             amount,
             reason,
             base64Image,
@@ -186,63 +187,109 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
     }
 });
 exports.createClientLoan = createClientLoan;
+const UpdateLoanAmount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { amount, transactionId, userId, } = req.body;
+        const { admin } = req;
+        if (!admin || !admin._id) {
+            return res.status(403).json({
+                status: "User Unauthorized.",
+                data: null
+            });
+        }
+        const user = yield find({ _id: userId }, "one");
+        if (!user || Array.isArray(user) || !user._id) {
+            return res.status(404).json({
+                status: "User not found.",
+                data: null
+            });
+        }
+        if (Number(user.user_metadata.wallet) < Number(amount)) {
+            return res.status(409).json({
+                status: "Insufficient Funds.",
+                data: null
+            });
+        }
+        const foundLoan = yield findLoanById(transactionId);
+        if (!foundLoan) {
+            return res.status(404).json({
+                status: "Loan not found.",
+                data: null
+            });
+        }
+        const loan = yield updateLoan(foundLoan._id, {
+            amount
+        });
+        return res.status(200).json({ status: "success", data: loan });
+    }
+    catch (error) {
+        console.log("Error creating disbursing loan:", error);
+        next(error);
+    }
+});
+exports.UpdateLoanAmount = UpdateLoanAmount;
 const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
-        const { fromAccount, fromClientId, fromClient, fromSavingsId, fromBvn, toClientId, toClient, toSavingsId, toSession, toBvn, toKyc, toAccount, toBank, signature, amount, remark, transactionId, reference, outstanding, userId } = req.body;
-        const apiUrl = `/wallet2/transfer`;
-        const response = yield (0, httpClient_1.httpClient)(apiUrl, "POST", {
-            fromAccount,
-            uniqueSenderAccountId: "",
-            fromClientId,
-            fromClient,
-            fromSavingsId,
-            fromBvn,
-            toClientId,
-            toClient,
-            toSavingsId,
-            toSession,
-            toBvn,
-            toAccount,
-            toBank,
-            signature,
-            amount,
-            remark,
-            transferType: "intra",
-            reference
-        });
-        if (response.data) {
-            const foundLoan = yield findLoanById(transactionId);
-            if (!foundLoan) {
-                return res.status(404).json({
-                    status: "Loan not found.",
-                    data: null
-                });
-            }
-            const loan = yield updateLoan(foundLoan._id, {
-                loan_payment_status: (Number(outstanding) - Number(amount)) <= 0 ? "complete" : "in-progress",
-                outstanding: Number(outstanding) - Number(amount),
-                repayment_history: [...foundLoan.repayment_history, { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
+        const { amount, transactionId, outstanding, } = req.body;
+        const { user } = req;
+        console.log({ user });
+        if (!user || !user._id) {
+            return res.status(404).json({
+                status: "User not found.",
+                data: null
             });
-            const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
-            console.log({ account });
-            const { accountNo } = account.data.data;
-            const { admin } = req;
-            if (!admin || !admin._id) {
-                return res.status(404).json({
-                    status: "Admin not found.",
-                    data: null
+        }
+        if (Number(user.user_metadata.wallet) < Number(amount)) {
+            return res.status(409).json({
+                status: "Insufficient Funds.",
+                data: null
+            });
+        }
+        const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
+        console.log({ account, data: account.data.data });
+        const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
+        console.log({ useraccount, data: useraccount.data.data });
+        if (account.data && useraccount.data) {
+            const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
+            const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
+            const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
+            const body = {
+                fromAccount: userAccountNumber,
+                uniqueSenderAccountId: userAccountId,
+                fromClientId: userClientId,
+                fromClient: userClient,
+                fromSavingsId: userAccountId,
+                // fromBvn: "Rolandpay-birght 221552585559",
+                toClientId: clientId,
+                toClient: client,
+                toSavingsId: accountId,
+                toSession: accountId,
+                // toBvn: "11111111111",
+                toAccount: accountNo,
+                toBank: "999999",
+                signature: js_sha512_1.sha512.hex(`${userAccountNumber}${accountNo}`),
+                amount,
+                remark: "Loan",
+                transferType: "intra",
+                reference: ref
+            };
+            const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", body);
+            console.log({ response });
+            if (response.data && response.data.status === "00") {
+                const foundLoan = yield findLoanById(transactionId);
+                if (!foundLoan) {
+                    return res.status(404).json({
+                        status: "Loan not found.",
+                        data: null
+                    });
+                }
+                const loan = yield updateLoan(foundLoan._id, {
+                    loan_payment_status: (Number(outstanding) - Number(amount)) <= 0 ? "complete" : "in-progress",
+                    outstanding: Number(outstanding) - Number(amount),
+                    repayment_history: [...foundLoan.repayment_history, { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
                 });
-            }
-            const user = yield find({ _id: userId }, "one");
-            if (!user || Array.isArray(user) || !user._id) {
-                return res.status(404).json({
-                    status: "User not found.",
-                    data: null
-                });
-            }
-            const newUser = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
-            if (account.data && accountNo) {
+                const newUser = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
                 const transaction = yield createTransaction({
                     name: "Loan Repayment" + new Date().toDateString(),
                     category: "credit",
@@ -258,8 +305,8 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
                     session_id: response.data.data.sessionId || "no-sessionId",
                     status: "success"
                 });
+                return res.status(200).json({ status: "success", data: loan });
             }
-            return res.status(200).json({ status: "success", data: loan });
         }
         return res.status(400).json({ status: "failed", message: 'Unable to get users information' });
     }
