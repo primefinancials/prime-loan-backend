@@ -38,24 +38,15 @@ export const createClientLoanSchema = Joi.object({
 });
 
 export const repayLoanSchema = Joi.object({
-  fromAccount: Joi.string().required().label("From Account"),
-  fromClientId: Joi.string().required().label("From Client ID"),
-  fromClient: Joi.string().required().label("From Client"),
-  fromSavingsId: Joi.string().required().label("From Savings ID"),
-  fromBvn: Joi.string().length(11).required().label("From BVN"),
-  toClientId: Joi.string().required().label("To Client ID"),
-  toClient: Joi.string().required().label("To Client"),
-  toSavingsId: Joi.string().required().label("To Savings ID"),
-  toSession: Joi.string().required().label("To Session"),
-  toBvn: Joi.string().length(11).required().label("To BVN"),
-  toAccount: Joi.string().required().label("To Account"),
-  toBank: Joi.string().required().label("To Bank"),
-  signature: Joi.string().required().label("Signature"),
+  transactionId: Joi.string().required().label("Transaction ID"),
   amount: Joi.string().required().label("Amount"),
-  remark: Joi.string().required().label("Remark"),
-  reference: Joi.string().required().label("Reference"),
-  userId: Joi.string().required().label("User ID"),
   outstanding: Joi.string().required().label("Outstanding Amount"),
+});
+
+export const updateLoanAmountSchema = Joi.object({
+  transactionId: Joi.string().required().label("Transaction ID"),
+  amount: Joi.string().required().label("Amount"),
+  userId: Joi.string().required().label("User ID"),
 });
 
 export const rejectLoanSchema = Joi.object({

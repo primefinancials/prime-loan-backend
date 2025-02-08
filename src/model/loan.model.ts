@@ -83,6 +83,7 @@ const LoanApplicationSchema: Schema = new Schema(
     type: { type: String, required: true },
     status: { type: String, required: true },
     amount: { type: String, required: true },
+    requested_amount: { type: String, required: true },
     outstanding: { type: String, required: true },
     reason: { type: String, required: true },
     duration: { type: String, required: true },

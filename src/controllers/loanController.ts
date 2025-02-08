@@ -188,6 +188,7 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       guarantor_1_phone,
       guarantor_2_name,
       guarantor_2_phone,
+      requested_amount: amount,
       amount,
       reason,
       base64Image, 
@@ -230,100 +231,134 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
   }
 };
 
+export const UpdateLoanAmount = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { 
+      amount,
+      transactionId,
+      userId,
+    } = req.body;
+
+    const user = await find({ _id: userId }, "one")
+
+    if (!user || Array.isArray(user) || !user._id) {
+      return res.status(404).json({
+        status: "User not found.",
+        data: null
+      });
+    }
+
+    if (Number(user.user_metadata.wallet) < Number(amount)) {
+      return res.status(409).json({
+        status: "Insufficient Funds.",
+        data: null
+      });
+    }
+
+    const foundLoan = await findLoanById(transactionId);
+
+    if (!foundLoan) {
+      return res.status(404).json({
+        status: "Loan not found.",
+        data: null
+      });
+    }
+
+    const loan = await updateLoan(foundLoan._id, { 
+      amount
+    });
+
+    return res.status(200).json({ status: "success", data: loan });
+  } catch (error: any) {
+    console.log("Error creating disbursing loan:", error);
+    next(error);
+  }
+};
+
 export const repayLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
     try {
       const { 
-        fromAccount,
-        fromClientId,
-        fromClient,
-        fromSavingsId,
-        fromBvn,
-        toClientId,
-        toClient,
-        toSavingsId,
-        toSession,
-        toBvn,
-        toKyc,
-        toAccount,
-        toBank,
-        signature,
         amount,
-        remark,
         transactionId,
-        reference,
         outstanding,
-        userId
       } = req.body;
   
-      const apiUrl = `/wallet2/transfer`;
-  
-      const response = await httpClient(apiUrl, "POST", {
-        fromAccount,
-        uniqueSenderAccountId: "",
-        fromClientId,
-        fromClient,
-        fromSavingsId,
-        fromBvn,
-        toClientId,
-        toClient,
-        toSavingsId,
-        toSession,
-        toBvn,
-        toAccount,
-        toBank,
-        signature,
-        amount,
-        remark,
-        transferType: "intra",
-        reference
-      });
+      const { user } = req;
+    
+      console.log({ user });
 
-      if(response.data) {
-        const foundLoan = await findLoanById(transactionId);
-
-        if (!foundLoan) {
-          return res.status(404).json({
-            status: "Loan not found.",
-            data: null
-          });
-        }
-
-        const loan = await updateLoan(foundLoan._id, { 
-          loan_payment_status: (Number(outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
-          outstanding: Number(outstanding) - Number(amount),
-          repayment_history: [ ...foundLoan.repayment_history, { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
+      if (!user || !user._id) {
+        return res.status(404).json({
+          status: "User not found.",
+          data: null
         });
+      }
 
-        const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
-        console.log({ account });
+      if (Number(user.user_metadata.wallet) < Number(amount)) {
+        return res.status(409).json({
+          status: "Insufficient Funds.",
+          data: null
+        });
+      }
         
-        const { accountNo } = account.data.data;
+      const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
+      console.log({ account, data: account.data.data })
 
-        const { admin } = req;
+      const useraccount = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
+      console.log({ useraccount, data: useraccount.data.data })
+      
+      if(account.data && useraccount.data) {
+        const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
+        const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
+        const ref =`Prime-Finance-${generateRandomString(9)}`;
 
-        if (!admin || !admin._id) {
-          return res.status(404).json({
-            status: "Admin not found.",
-            data: null
-          });
+        const body = {
+          fromAccount: userAccountNumber,
+          uniqueSenderAccountId: userAccountId,
+          fromClientId: userClientId,
+          fromClient: userClient,
+          fromSavingsId: userAccountId,
+          // fromBvn: "Rolandpay-birght 221552585559",
+          toClientId: clientId,
+          toClient: client,
+          toSavingsId: accountId,
+          toSession: accountId,
+          // toBvn: "11111111111",
+          toAccount: accountNo,
+          toBank: "999999",
+          signature: sha512.hex(`${userAccountNumber}${accountNo}`),
+          amount,
+          remark: "Loan",
+          transferType: "intra",
+          reference: ref
         }
+        
+        const response = await httpClient("/wallet2/transfer", "POST", body);
 
-        const user = await find({ _id: userId }, "one");
+        console.log({ response });
 
-        if (!user || Array.isArray(user) || !user._id) {
-          return res.status(404).json({
-            status: "User not found.",
-            data: null
+        if(response.data && response.data.status === "00") {
+          const foundLoan = await findLoanById(transactionId);
+
+          if (!foundLoan) {
+            return res.status(404).json({
+              status: "Loan not found.",
+              data: null
+            });
+          }
+
+          const loan = await updateLoan(foundLoan._id, { 
+            loan_payment_status: (Number(outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
+            outstanding: Number(outstanding) - Number(amount),
+            repayment_history: [ ...foundLoan.repayment_history, { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
           });
-        }
 
-        const newUser = await update(
-          user._id,
-          "user_metadata.wallet",
-          String(Number(user?.user_metadata?.wallet) - Number(amount))
-        );
+          const newUser = await update(
+            user._id,
+            "user_metadata.wallet",
+            String(Number(user?.user_metadata?.wallet) - Number(amount))
+          );
 
-        if(account.data && accountNo) {
           const transaction = await createTransaction(
             { 
               name: "Loan Repayment" + new Date().toDateString(), 
@@ -341,9 +376,9 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
               status: "success"
             }
           );
-        }
     
-        return res.status(200).json({ status: "success", data: loan });
+          return res.status(200).json({ status: "success", data: loan });
+        }
       }
 
       return res.status(400).json({ status: "failed", message: 'Unable to get users information' });

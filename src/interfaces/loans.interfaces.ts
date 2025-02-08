@@ -76,6 +76,7 @@ export interface LoanApplication {
   type: LOANTYPE; // Loan type
   status: LOANSTATUS; // Loan status
   amount: number; // Loan amount
+  requested_amount: number; // Loan amount
   reason: string; // Reason for the loan
   duration: number; // Duration in days
   outstanding: number;
@@ -90,7 +91,7 @@ export interface LoanApplication {
     outstanding: number;
     date: string;
     action: string;
-  }[]
+  }[];
 }
 
 export interface CREATELOAN {
@@ -117,6 +118,7 @@ export interface CREATELOAN {
   category: LOANCATEGORY // Loan category
   type: LOANTYPE; // Loan type
   status: LOANSTATUS; // Loan status
+  requested_amount: number; // Loan amount
   amount: number; // Loan amount
   reason: string; // Reason for the loan
   outstanding: number;
@@ -130,9 +132,10 @@ export interface CREATELOAN {
 }
 
 export interface UPDATELOAN {
-  loan_payment_status: LOANPAYMENTSTATUS;
-  outstanding: number;
-  repayment_history: {
+  loan_payment_status?: LOANPAYMENTSTATUS;
+  outstanding?: number;
+  amount?: number;
+  repayment_history?: {
     amount: number;
     outstanding: number;
     date: string;
