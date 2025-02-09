@@ -134,6 +134,7 @@ export interface CREATELOAN {
 export interface UPDATELOAN {
   loan_payment_status?: LOANPAYMENTSTATUS;
   outstanding?: number;
+  duration?: number;
   amount?: number;
   repayment_history?: {
     amount: number;

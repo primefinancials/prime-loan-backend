@@ -9,6 +9,7 @@ exports.createAndDisburseLoanSchema = joi_1.default.object({
     amount: joi_1.default.string().required().label("Loan amount"),
     duration: joi_1.default.string().required().label("Loan duration (months)"),
     transactionId: joi_1.default.string().required().label("Transaction ID"),
+    userId: joi_1.default.string().required().label("User ID"),
 });
 exports.createClientLoanSchema = joi_1.default.object({
     first_name: joi_1.default.string().required().label("First Name"),

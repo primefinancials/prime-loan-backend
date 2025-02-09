@@ -51,15 +51,18 @@ const httpRequest = (bvn) => __awaiter(void 0, void 0, void 0, function* () {
 });
 const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { amount, duration, transactionId } = req.body;
-        const { user } = req;
-        console.log({ user });
-        if (!user || !user._id) {
+        const { amount, duration, transactionId, userId } = req.body;
+        const { admin } = req;
+        console.log({ admin });
+        if (!admin || !admin._id) {
             return res.status(404).json({
-                status: "User not found.",
+                status: "Admin not found.",
                 data: null
             });
         }
+        const user = yield find({ _id: userId }, "one");
+        if (!user)
+            throw new exceptions_1.NotFoundError(`Invalid user ID provided`);
         const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
         console.log({ account });
         const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
@@ -88,7 +91,9 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
             });
             console.log({ response });
             if (response.data) {
-                const loan = yield updateLoan("transactionId", transactionId);
+                const loan = yield updateLoan(transactionId, {
+                    duration
+                });
                 const transaction = yield createTransaction({
                     name: "Loan Withdrawal-" + new Date().toDateString(),
                     category: "credit",

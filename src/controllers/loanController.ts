@@ -48,17 +48,22 @@ const httpRequest = async (bvn: string) => {
 
 export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
-    const { amount, duration, transactionId } = req.body;
+    const { amount, duration, transactionId, userId } = req.body;
 
-    const { user } = req;
-    console.log({ user })
+    const { admin } = req;
+    console.log({ admin })
 
-    if (!user || !user._id) {
+    if (!admin || !admin._id) {
       return res.status(404).json({
-        status: "User not found.",
+        status: "Admin not found.",
         data: null
       });
     }
+
+    const user: any = await find({ _id: userId}, "one");
+
+    if (!user)
+      throw new NotFoundError(`Invalid user ID provided`);
     
     const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
     console.log({ account })
@@ -93,7 +98,9 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
       console.log({ response });
 
       if(response.data) {
-        const loan = await updateLoan("transactionId", transactionId);
+        const loan = await updateLoan(transactionId, {
+          duration
+        });
 
         const transaction = await createTransaction(
           { 
