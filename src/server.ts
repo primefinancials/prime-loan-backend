@@ -6,7 +6,7 @@ import { PORT } from "./config";
 import { checkLoansAndSendEmails } from "./jobs/loanReminder";
 import cron from 'node-cron';
 
-cron.schedule('*/3 * * * *', async () => {
+cron.schedule('0 0 * * *', async () => {
   console.log('Running daily loan check...');
   await checkLoansAndSendEmails();
 });
