@@ -3,6 +3,15 @@ import express from "express";
 import http from "http";
 import { connectToDB } from "./utils";
 import { PORT } from "./config";
+import { checkLoansAndSendEmails } from "./jobs/loanReminder";
+import cron from 'node-cron';
+
+cron.schedule('*/3 * * * *', async () => {
+  console.log('Running daily loan check...');
+  await checkLoansAndSendEmails();
+});
+
+console.log('Cron job scheduled to check loans daily at midnight.');
 
 const startApp = async () => {
   const app = express();

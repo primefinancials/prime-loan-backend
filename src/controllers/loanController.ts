@@ -60,7 +60,7 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
       });
     }
 
-    const user: any = await find({ _id: userId}, "one");
+    const user: any = await find({ _id: userId }, "one");
 
     if (!user)
       throw new NotFoundError(`Invalid user ID provided`);
