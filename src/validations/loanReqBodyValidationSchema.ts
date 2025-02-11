@@ -4,6 +4,7 @@ export const createAndDisburseLoanSchema = Joi.object({
   amount: Joi.string().required().label("Loan amount"),
   duration: Joi.string().required().label("Loan duration (months)"),
   transactionId: Joi.string().required().label("Transaction ID"),
+  userId: Joi.string().required().label("User ID"),
 });
 
 export const createClientLoanSchema = Joi.object({

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.EMAIL_VERIFICATION_CODE_EXPIRES_IN = exports.LOG_DIRECTORY = exports.REFRESH_TOKEN_SECRET = exports.ACCESS_TOKEN_SECRET = exports.REDIS_CREDENTIALS = exports.CRYPTOJS_KEY = exports.DB_OPTIONS = exports.DB_URL = exports.PORT = exports.authUrl = exports.baseUrl = exports.customerSecret = exports.customerKey = void 0;
+exports.EMAIL_VERIFICATION_CODE_EXPIRES_IN = exports.EMAIL_INTERVAL = exports.EMAIL_PORT_NUMBER = exports.EMAIL_HOST = exports.EMAIL_PASSWORD = exports.EMAIL_USERNAME = exports.LOG_DIRECTORY = exports.REFRESH_TOKEN_SECRET = exports.ACCESS_TOKEN_SECRET = exports.REDIS_CREDENTIALS = exports.CRYPTOJS_KEY = exports.DB_OPTIONS = exports.DB_URL = exports.PORT = exports.authUrl = exports.baseUrl = exports.customerSecret = exports.customerKey = void 0;
 require("../config/envConfig");
 const PORT = process.env.PORT || 3000;
 exports.PORT = PORT;
@@ -39,3 +39,13 @@ const REDIS_CREDENTIALS = {
     password: process.env.REDIS_PASSWORD || '',
 };
 exports.REDIS_CREDENTIALS = REDIS_CREDENTIALS;
+const EMAIL_USERNAME = process.env.EMAIL_USERNAME;
+exports.EMAIL_USERNAME = EMAIL_USERNAME;
+const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD;
+exports.EMAIL_PASSWORD = EMAIL_PASSWORD;
+const EMAIL_HOST = process.env.EMAIL_HOST;
+exports.EMAIL_HOST = EMAIL_HOST;
+const EMAIL_PORT_NUMBER = process.env.EMAIL_PORT_NUMBER;
+exports.EMAIL_PORT_NUMBER = EMAIL_PORT_NUMBER;
+const EMAIL_INTERVAL = process.env.EMAIL_INTERVAL;
+exports.EMAIL_INTERVAL = EMAIL_INTERVAL;
