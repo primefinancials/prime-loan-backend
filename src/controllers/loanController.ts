@@ -73,7 +73,7 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
 
       const response = await httpClient("/wallet2/transfer", "POST", {
         fromAccount: accountNo,
-        uniqueSenderAccountId: accountId,
+        uniqueSenderAccountId: "",
         fromClientId: clientId,
         fromClient: client,
         fromSavingsId: accountId,

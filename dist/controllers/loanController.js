@@ -70,7 +70,7 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
             const reference = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
             const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", {
                 fromAccount: accountNo,
-                uniqueSenderAccountId: accountId,
+                uniqueSenderAccountId: "",
                 fromClientId: clientId,
                 fromClient: client,
                 fromSavingsId: accountId,
