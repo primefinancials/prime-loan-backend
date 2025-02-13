@@ -99,26 +99,10 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
 
       if(response.data) {
         const loan = await updateLoan(transactionId, {
-          duration
+          ...(duration? { duration } : { }),
+          ...(amount? { amount } : { }),
+          status: "accepted"
         });
-
-        const transaction = await createTransaction(
-          { 
-            name: "Loan Withdrawal-" + new Date().toDateString(), 
-            category: "credit",
-            type: "loan",
-            user: user._id,
-            details: "Loan Disbursement",
-            transaction_number: response.data.data.txnId || "no-txnId",
-            amount,
-            bank: "Prime Finance",
-            receiver: `${user.user_metadata.first_name} ${user.user_metadata.surname}`,
-            account_number: user.user_metadata.accountNo  || "",
-            outstanding: 0.0,
-            session_id: response.data.data.sessionId || "no-sessionId",
-            status: "success"
-          },
-        );
 
         res.status(response.status).json({ status: "success", data: response.data.data });
       }
@@ -310,7 +294,7 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
         });
       }
 
-      if (Number(user.user_metadata.wallet) < Number(amount)) {
+      if (Number(user.user_metadata.wallet) < Number(outstanding)) {
         return res.status(409).json({
           status: "Insufficient Funds.",
           data: null
@@ -366,7 +350,7 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
           const loan = await updateLoan(foundLoan._id, { 
             loan_payment_status: (Number(outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
             outstanding: Number(outstanding) - Number(amount),
-            repayment_history: [ ...foundLoan.repayment_history, { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
+            repayment_history: [ ...(foundLoan.repayment_history || []), { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
           });
 
           const newUser = await update(
@@ -378,7 +362,7 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
           const transaction = await createTransaction(
             { 
               name: "Loan Repayment" + new Date().toDateString(), 
-              category: "credit",
+              category: "debit",
               type: "loan",
               user: user._id,
               details: "Loan Repayment",
@@ -412,7 +396,9 @@ export const rejectLoan = async (req: ProtectedRequest, res: Response, next: Nex
           { transactionId }, 
           [ "transactionId" ]
       );
-      const loan = await updateLoan("transactionId", transactionId);
+      const loan = await updateLoan(transactionId, {
+        status: "rejected"
+      });
   
       res.status(200).json({ status: "success", data: loan });
     } catch (error: any) {

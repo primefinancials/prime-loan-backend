@@ -112,7 +112,7 @@ export async function checkLoansAndSendEmails() {
                     await updateLoan(loan._id, { 
                         loan_payment_status: (Number(loan.outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
                         outstanding: Number(loan.outstanding) - Number(amount),
-                        repayment_history: [ ...loan.repayment_history, { amount: Number(amount), outstanding: Number(loan.outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
+                        repayment_history: [ ...(loan.repayment_history || []), { amount: Number(amount), outstanding: Number(loan.outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
                     });
                     
                     await update(

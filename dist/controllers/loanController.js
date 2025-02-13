@@ -91,24 +91,7 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
             });
             console.log({ response });
             if (response.data) {
-                const loan = yield updateLoan(transactionId, {
-                    duration
-                });
-                const transaction = yield createTransaction({
-                    name: "Loan Withdrawal-" + new Date().toDateString(),
-                    category: "credit",
-                    type: "loan",
-                    user: user._id,
-                    details: "Loan Disbursement",
-                    transaction_number: response.data.data.txnId || "no-txnId",
-                    amount,
-                    bank: "Prime Finance",
-                    receiver: `${user.user_metadata.first_name} ${user.user_metadata.surname}`,
-                    account_number: user.user_metadata.accountNo || "",
-                    outstanding: 0.0,
-                    session_id: response.data.data.sessionId || "no-sessionId",
-                    status: "success"
-                });
+                const loan = yield updateLoan(transactionId, Object.assign(Object.assign(Object.assign({}, (duration ? { duration } : {})), (amount ? { amount } : {})), { status: "accepted" }));
                 res.status(response.status).json({ status: "success", data: response.data.data });
             }
             return res.status(400).json({ status: "failed", message: 'Unable to approve loan' });
@@ -245,7 +228,7 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
                 data: null
             });
         }
-        if (Number(user.user_metadata.wallet) < Number(amount)) {
+        if (Number(user.user_metadata.wallet) < Number(outstanding)) {
             return res.status(409).json({
                 status: "Insufficient Funds.",
                 data: null
@@ -292,12 +275,12 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
                 const loan = yield updateLoan(foundLoan._id, {
                     loan_payment_status: (Number(outstanding) - Number(amount)) <= 0 ? "complete" : "in-progress",
                     outstanding: Number(outstanding) - Number(amount),
-                    repayment_history: [...foundLoan.repayment_history, { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
+                    repayment_history: [...(foundLoan.repayment_history || []), { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
                 });
                 const newUser = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
                 const transaction = yield createTransaction({
                     name: "Loan Repayment" + new Date().toDateString(),
-                    category: "credit",
+                    category: "debit",
                     type: "loan",
                     user: user._id,
                     details: "Loan Repayment",
@@ -326,7 +309,9 @@ const rejectLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, functio
         const { transactionId } = req.body;
         // Validate required parameters
         (0, validateParams_1.validateRequiredParams)({ transactionId }, ["transactionId"]);
-        const loan = yield updateLoan("transactionId", transactionId);
+        const loan = yield updateLoan(transactionId, {
+            status: "rejected"
+        });
         res.status(200).json({ status: "success", data: loan });
     }
     catch (error) {

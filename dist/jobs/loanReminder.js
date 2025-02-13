@@ -109,7 +109,7 @@ function checkLoansAndSendEmails() {
                             yield updateLoan(loan._id, {
                                 loan_payment_status: (Number(loan.outstanding) - Number(amount)) <= 0 ? "complete" : "in-progress",
                                 outstanding: Number(loan.outstanding) - Number(amount),
-                                repayment_history: [...loan.repayment_history, { amount: Number(amount), outstanding: Number(loan.outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
+                                repayment_history: [...(loan.repayment_history || []), { amount: Number(amount), outstanding: Number(loan.outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
                             });
                             yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
                             const transactionStatus = response.data.status === "00" ? "success" : "failed";

@@ -136,6 +136,7 @@ export interface UPDATELOAN {
   outstanding?: number;
   duration?: number;
   amount?: number;
+  status?: LOANSTATUS; // Loan status
   repayment_history?: {
     amount: number;
     outstanding: number;

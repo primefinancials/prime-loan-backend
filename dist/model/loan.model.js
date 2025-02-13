@@ -49,7 +49,7 @@ const CreditScoreSchema = new mongoose_1.Schema({
 const RepaymentHistorySchema = new mongoose_1.Schema({
     amount: { type: Number, required: false },
     outstanding: { type: Number, required: false },
-    date: { type: Number, required: false },
+    date: { type: String, required: false },
     action: { type: String, required: false },
 });
 // Define the LoanApplication Schema
