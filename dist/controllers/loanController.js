@@ -184,7 +184,7 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
     }
     catch (error) {
         console.log("Error getting loan transaction status:", error);
-        next("Unable to create loan cause credit check can't be performed at this time");
+        throw new exceptions_1.BadRequestError("Unable to create loan cause credit check can't be performed at this time");
     }
 });
 exports.createClientLoan = createClientLoan;

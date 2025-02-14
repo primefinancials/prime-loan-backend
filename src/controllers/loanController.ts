@@ -234,7 +234,7 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
     res.status(200).json({ status: "success", data: loan });
   } catch (error: any) {
     console.log("Error getting loan transaction status:", error);
-    next("Unable to create loan cause credit check can't be performed at this time");
+    throw new BadRequestError("Unable to create loan cause credit check can't be performed at this time");
   }
 };
 
