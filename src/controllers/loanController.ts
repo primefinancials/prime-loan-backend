@@ -160,7 +160,7 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
     console.log({ credit });
 
     if(credit.error) {
-      throw new BadRequestError(credit.message);
+      throw new BadRequestError("Unable to create loan cause credit check can't be performed at this time");
     }
 
     const loan = await createLoan({

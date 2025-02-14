@@ -114,7 +114,7 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
         const credit = yield httpRequest(bvn);
         console.log({ credit });
         if (credit.error) {
-            throw new exceptions_1.BadRequestError(credit.message);
+            throw new exceptions_1.BadRequestError("Unable to create loan cause credit check can't be performed at this time");
         }
         const loan = yield createLoan({
             first_name,
