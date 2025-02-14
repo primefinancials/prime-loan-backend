@@ -184,7 +184,7 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
     }
     catch (error) {
         console.log("Error getting loan transaction status:", error);
-        next(error);
+        next("Unable to create loan cause credit check can't be performed at this time");
     }
 });
 exports.createClientLoan = createClientLoan;
@@ -225,7 +225,7 @@ const UpdateLoanAmount = (req, res, next) => __awaiter(void 0, void 0, void 0, f
     }
     catch (error) {
         console.log("Error creating disbursing loan:", error);
-        next("Unable to create loan cause credit check can't be performed at this time");
+        next(error);
     }
 });
 exports.UpdateLoanAmount = UpdateLoanAmount;
