@@ -64,6 +64,22 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
 
     if (!user)
       throw new NotFoundError(`Invalid user ID provided`);
+
+    const foundLoan = await findLoanById(transactionId);
+
+    if (!foundLoan) {
+      return res.status(404).json({
+        status: "Loan not found.",
+        data: null
+      });
+    }
+
+    if (foundLoan.status === "accepted") {
+      return res.status(400).json({
+        status: "Loan already accepted.",
+        data: null
+      });
+    }
     
     const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
     console.log({ account })
@@ -271,7 +287,7 @@ export const UpdateLoanAmount = async (req: ProtectedRequest, res: Response, nex
     return res.status(200).json({ status: "success", data: loan });
   } catch (error: any) {
     console.log("Error creating disbursing loan:", error);
-    next(error);
+    next("Unable to create loan cause credit check can't be performed at this time");
   }
 };
 
@@ -396,6 +412,30 @@ export const rejectLoan = async (req: ProtectedRequest, res: Response, next: Nex
           { transactionId }, 
           [ "transactionId" ]
       );
+
+      const foundLoan = await findLoanById(transactionId);
+
+      if (!foundLoan) {
+        return res.status(404).json({
+          status: "Loan not found.",
+          data: null
+        });
+      }
+
+      if (foundLoan.status === "accepted") {
+        return res.status(400).json({
+          status: "Can not reject accepted loan.",
+          data: null
+        });
+      }
+
+      if (foundLoan.status === "rejected") {
+        return res.status(400).json({
+          status: "Loan already rejected.",
+          data: null
+        });
+      }
+
       const loan = await updateLoan(transactionId, {
         status: "rejected"
       });

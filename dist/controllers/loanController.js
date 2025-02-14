@@ -63,6 +63,19 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
         const user = yield find({ _id: userId }, "one");
         if (!user)
             throw new exceptions_1.NotFoundError(`Invalid user ID provided`);
+        const foundLoan = yield findLoanById(transactionId);
+        if (!foundLoan) {
+            return res.status(404).json({
+                status: "Loan not found.",
+                data: null
+            });
+        }
+        if (foundLoan.status === "accepted") {
+            return res.status(400).json({
+                status: "Loan already accepted.",
+                data: null
+            });
+        }
         const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
         console.log({ account });
         const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
@@ -212,7 +225,7 @@ const UpdateLoanAmount = (req, res, next) => __awaiter(void 0, void 0, void 0, f
     }
     catch (error) {
         console.log("Error creating disbursing loan:", error);
-        next(error);
+        next("Unable to create loan cause credit check can't be performed at this time");
     }
 });
 exports.UpdateLoanAmount = UpdateLoanAmount;
@@ -309,6 +322,25 @@ const rejectLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, functio
         const { transactionId } = req.body;
         // Validate required parameters
         (0, validateParams_1.validateRequiredParams)({ transactionId }, ["transactionId"]);
+        const foundLoan = yield findLoanById(transactionId);
+        if (!foundLoan) {
+            return res.status(404).json({
+                status: "Loan not found.",
+                data: null
+            });
+        }
+        if (foundLoan.status === "accepted") {
+            return res.status(400).json({
+                status: "Can not reject accepted loan.",
+                data: null
+            });
+        }
+        if (foundLoan.status === "rejected") {
+            return res.status(400).json({
+                status: "Loan already rejected.",
+                data: null
+            });
+        }
         const loan = yield updateLoan(transactionId, {
             status: "rejected"
         });
