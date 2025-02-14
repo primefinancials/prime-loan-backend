@@ -20,7 +20,6 @@ const js_sha512_1 = require("js-sha512");
 const services_1 = require("../services");
 const exceptions_1 = require("../exceptions");
 const axios_1 = __importDefault(require("axios"));
-const exceptions_2 = require("../exceptions");
 const { find, findByEmail, create, update } = new services_1.UserService();
 const { create: createTransaction } = new services_1.TransactionService();
 const { update: updateLoan, findById: findLoanById, find: findLoan, create: createLoan } = new services_1.LoanService();
@@ -46,7 +45,13 @@ const httpRequest = (bvn) => __awaiter(void 0, void 0, void 0, function* () {
         return response.data.data;
     }
     catch (error) {
-        throw new exceptions_2.APIError(error.status, error.response.data.message || error.message);
+        if (error.response.data.message == "Insufficient funds, minimum wallet balance of ₦538 is required"
+            || error.message == "Insufficient funds, minimum wallet balance of ₦538 is required") {
+            return ({ error: "Unable to create loan cause credit check can't be performed at this time" });
+        }
+        else {
+            return ({ error });
+        }
     }
 });
 const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
@@ -127,7 +132,7 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
         const credit = yield httpRequest(bvn);
         console.log({ credit });
         if (credit.error) {
-            throw new exceptions_1.BadRequestError("Unable to create loan cause credit check can't be performed at this time");
+            throw new exceptions_1.BadRequestError(credit.error);
         }
         const loan = yield createLoan({
             first_name,
@@ -184,7 +189,7 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
     }
     catch (error) {
         console.log("Error getting loan transaction status:", error);
-        throw new exceptions_1.BadRequestError("Unable to create loan cause credit check can't be performed at this time");
+        next(error);
     }
 });
 exports.createClientLoan = createClientLoan;

@@ -42,7 +42,14 @@ const httpRequest = async (bvn: string) => {
 
     return response.data.data;
   } catch (error: any) {
-    throw new APIError(error.status, error.response.data.message || error.message);
+    if(
+      error.response.data.message == "Insufficient funds, minimum wallet balance of ₦538 is required" 
+      || error.message == "Insufficient funds, minimum wallet balance of ₦538 is required"
+    ) {
+      return ({ error: "Unable to create loan cause credit check can't be performed at this time" });
+    } else {
+      return ({ error });
+    }
   }
 };
 
@@ -176,7 +183,7 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
     console.log({ credit });
 
     if(credit.error) {
-      throw new BadRequestError("Unable to create loan cause credit check can't be performed at this time");
+      throw new BadRequestError(credit.error);
     }
 
     const loan = await createLoan({
@@ -234,7 +241,7 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
     res.status(200).json({ status: "success", data: loan });
   } catch (error: any) {
     console.log("Error getting loan transaction status:", error);
-    throw new BadRequestError("Unable to create loan cause credit check can't be performed at this time");
+    next(error);
   }
 };
 
