@@ -56,7 +56,7 @@ const httpRequest = (bvn) => __awaiter(void 0, void 0, void 0, function* () {
 });
 const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const amount = Number(req.body.amount); // Ensure amount is a number
+        const amount = parseInt(req.body.amount, 10); // Ensure amount is a number
         const { duration, transactionId, userId } = req.body;
         const { admin } = req;
         console.log({ admin });

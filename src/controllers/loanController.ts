@@ -55,7 +55,7 @@ const httpRequest = async (bvn: string) => {
 
 export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
-    const amount = Number(req.body.amount); // Ensure amount is a number
+    const amount = parseInt(req.body.amount, 10); // Ensure amount is a number
     const { duration, transactionId, userId } = req.body;
 
     const { admin } = req;
