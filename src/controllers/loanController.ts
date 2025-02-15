@@ -380,13 +380,13 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
           const loan = await updateLoan(foundLoan._id, { 
             loan_payment_status: (Number(outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
             outstanding: Number(outstanding) - Number(amount) <= 0? 0 : Number(outstanding) - Number(amount),
-            repayment_history: [ ...(foundLoan.repayment_history || []), { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
+            repayment_history: [ ...(foundLoan.repayment_history || []), { amount: Number(amount), outstanding: Number(outstanding) - Number(amount) <= 0? 0 : Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
           });
 
           const newUser = await update(
             user._id,
             "user_metadata.wallet",
-            String(Number(user?.user_metadata?.wallet) - Number(amount))
+            String(Number(user?.user_metadata?.wallet) - Number(outstanding))
           );
 
           const transaction = await createTransaction(
@@ -401,7 +401,7 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
               receiver: `Prime Finance`,
               account_number: accountNo,
               amount: outstanding,
-              outstanding: outstanding - amount,
+              outstanding: Number(outstanding) - Number(amount),
               session_id: response.data.data.sessionId || "no-sessionId",
               status: "success"
             }

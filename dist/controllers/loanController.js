@@ -298,9 +298,9 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
                 const loan = yield updateLoan(foundLoan._id, {
                     loan_payment_status: (Number(outstanding) - Number(amount)) <= 0 ? "complete" : "in-progress",
                     outstanding: Number(outstanding) - Number(amount) <= 0 ? 0 : Number(outstanding) - Number(amount),
-                    repayment_history: [...(foundLoan.repayment_history || []), { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
+                    repayment_history: [...(foundLoan.repayment_history || []), { amount: Number(amount), outstanding: Number(outstanding) - Number(amount) <= 0 ? 0 : Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
                 });
-                const newUser = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
+                const newUser = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(outstanding)));
                 const transaction = yield createTransaction({
                     name: "Loan Repayment" + new Date().toDateString(),
                     category: "debit",
@@ -312,7 +312,7 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
                     receiver: `Prime Finance`,
                     account_number: accountNo,
                     amount: outstanding,
-                    outstanding: outstanding - amount,
+                    outstanding: Number(outstanding) - Number(amount),
                     session_id: response.data.data.sessionId || "no-sessionId",
                     status: "success"
                 });
