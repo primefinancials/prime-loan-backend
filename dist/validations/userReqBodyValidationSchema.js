@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.changePasswordSchema = exports.updateUserSchema = exports.loginReqBodySchema = exports.walletAlertsSchema = exports.transferSchema = exports.createAdminAccountSchema = exports.createClientAccountSchema = void 0;
+exports.changePasswordSchema = exports.updateUserSchema = exports.activateAdminReqBodySchema = exports.activateUserReqBodySchema = exports.loginReqBodySchema = exports.walletAlertsSchema = exports.transferSchema = exports.createAdminAccountSchema = exports.createClientAccountSchema = void 0;
 const joi_1 = __importDefault(require("joi"));
 const date_1 = __importDefault(require("@joi/date"));
 joi_1.default.extend(date_1.default);
@@ -125,6 +125,14 @@ exports.walletAlertsSchema = joi_1.default.object({
 exports.loginReqBodySchema = joi_1.default.object({
     password: joi_1.default.string().min(8).required(),
     email: joi_1.default.string().email(),
+});
+exports.activateUserReqBodySchema = joi_1.default.object({
+    status: joi_1.default.string().allow("active", "inactive").required(),
+    userId: joi_1.default.string().required(),
+});
+exports.activateAdminReqBodySchema = joi_1.default.object({
+    status: joi_1.default.string().allow("active", "inactive").required(),
+    adminId: joi_1.default.string().required(),
 });
 exports.updateUserSchema = joi_1.default.object({
     data: joi_1.default.string().required(),

@@ -127,6 +127,16 @@ export const loginReqBodySchema = Joi.object({
     email: Joi.string().email(),
 });
 
+export const activateUserReqBodySchema = Joi.object({
+  status: Joi.string().allow("active", "inactive").required(),
+  userId: Joi.string().required(),
+});
+
+export const activateAdminReqBodySchema = Joi.object({
+  status: Joi.string().allow("active", "inactive").required(),
+  adminId: Joi.string().required(),
+});
+
 export const updateUserSchema = Joi.object({
   data: Joi.string().required(),
   updateField: Joi.string().required(),

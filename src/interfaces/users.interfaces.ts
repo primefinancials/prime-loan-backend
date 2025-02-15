@@ -1,4 +1,5 @@
 export type USERROLES = "admin" | "user";
+export type USERSTATUS = "active" | "inactive";
 
 export interface User {
   _id: string;
@@ -13,6 +14,7 @@ export interface User {
   last_sign_in_at?: string; 
   phone: string; 
   role: USERROLES; 
+  status: USERSTATUS; 
   updated_at: string; 
   user_metadata: {
     bvn?: string;
@@ -21,6 +23,7 @@ export interface User {
     email?: string;
     phone?: string;
     surname?: string;
+    gender?: string;
     first_name?: string;
     dateOfBirth?: string;
     email_verified?: boolean;
@@ -47,6 +50,7 @@ export interface CREATEUSER {
   last_sign_in_at?: string; 
   phone: string; 
   role: USERROLES; 
+  status: USERSTATUS; 
   user_metadata: {
     bvn?: string;
     nin?: string;
@@ -75,6 +79,7 @@ export interface UPDATEUSER {
   email_confirmed_at?: string; 
   last_sign_in_at?: string; 
   role?: USERROLES; 
+  status?: USERSTATUS; 
   user_metadata?: {
     bvn?: string;
     nin?: string;

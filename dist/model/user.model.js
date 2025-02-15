@@ -38,6 +38,7 @@ const userSchema = new mongoose_1.Schema({
     last_sign_in_at: { type: String, required: false },
     phone: { type: String, required: false },
     role: { type: String, enum: ["user", "admin"], required: true },
+    status: { type: String, enum: ["active", "inactive"], required: true },
     user_metadata: {
         bvn: { type: String, required: false },
         nin: { type: String, required: false },

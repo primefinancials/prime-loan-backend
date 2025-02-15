@@ -12,7 +12,11 @@ import {
     login,
     logout,
     changePassword,
-    getUsers
+    getUsers,
+    getAdmin,
+    createSuperAdminAccount,
+    ActivateAndDeactivateAdmin,
+    ActivateAndDeactivateUser
 } from "../controllers/userController";
 import { validateReqBody, verifyJwtRest } from "../middlewares";
 import { 
@@ -22,13 +26,19 @@ import {
     updateUserSchema, 
     transferSchema,
     changePasswordSchema,
-    walletAlertsSchema
+    walletAlertsSchema,
+    activateAdminReqBodySchema,
+    activateUserReqBodySchema
 } from "../validations";
 
 const router = express.Router();
 
 router.get("/account-enquiry", verifyJwtRest(), beneficiaryEnquiry);
 router.get("/get-user", verifyJwtRest(), getUser);
+router.get("/get-admin", verifyJwtRest(), getAdmin);
+router.get("/create-super-admin", verifyJwtRest(), validateReqBody(createAdminAccountSchema), createSuperAdminAccount);
+router.get("/activate-admin", verifyJwtRest(), validateReqBody(activateAdminReqBodySchema), ActivateAndDeactivateAdmin);
+router.get("/activate-user", verifyJwtRest(), validateReqBody(activateUserReqBodySchema), ActivateAndDeactivateUser);
 router.get("/get-users", verifyJwtRest(), getUsers);
 router.get("/my-enquiry", verifyJwtRest(), accountEnquiry);
 router.post("/create-admin", validateReqBody(createAdminAccountSchema), createAdminAccount);

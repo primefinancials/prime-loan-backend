@@ -23,7 +23,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.changePassword = exports.logout = exports.login = exports.updateClientAccount = exports.getUsers = exports.getUser = exports.createAdminAccount = exports.createClientAccount = void 0;
+exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.changePassword = exports.logout = exports.login = exports.updateClientAccount = exports.ActivateAndDeactivateAdmin = exports.ActivateAndDeactivateUser = exports.getUsers = exports.getUser = exports.getAdmin = exports.createSuperAdminAccount = exports.createAdminAccount = exports.createClientAccount = void 0;
 const validateParams_1 = require("../utils/validateParams");
 const convertDate_1 = require("../utils/convertDate");
 const httpClient_1 = require("../utils/httpClient");
@@ -64,7 +64,8 @@ const createClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0
                 email_confirmed_at: "",
                 is_anonymous: false,
                 phone,
-                is_super_admin: false
+                is_super_admin: false,
+                status: "active"
             });
             return res.status(201).json({ status: "success", data: Object.assign(Object.assign({}, response.data.data), { user }) });
         }
@@ -95,7 +96,8 @@ const createAdminAccount = (req, res, next) => __awaiter(void 0, void 0, void 0,
             email_confirmed_at: "",
             is_anonymous: false,
             phone,
-            is_super_admin: false
+            is_super_admin: false,
+            status: "active"
         });
         return res.status(201).json({ status: "success", data: { user } });
     }
@@ -104,6 +106,51 @@ const createAdminAccount = (req, res, next) => __awaiter(void 0, void 0, void 0,
     }
 });
 exports.createAdminAccount = createAdminAccount;
+const createSuperAdminAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { email, name, surname, password, phone } = req.body;
+        const duplicateEmail = yield findByEmail(email);
+        const duplicateNumber = yield find({ user_metadata: { phone } }, "one");
+        if (duplicateEmail)
+            throw new exceptions_1.ConflictError(`A user already exists with the email ${email}`);
+        if (duplicateNumber)
+            throw new exceptions_1.ConflictError(`A user already exists with the phone number ${phone}`);
+        req.body.password = (0, utils_1.encryptPassword)(password);
+        const user = yield create({
+            password: req.body.password,
+            user_metadata: { email, first_name: name, surname, phone },
+            role: "admin",
+            confirmation_sent_at: (0, convertDate_2.getCurrentTimestamp)(),
+            confirmed_at: "",
+            email,
+            email_confirmed_at: "",
+            is_anonymous: false,
+            phone,
+            is_super_admin: true,
+            status: "active"
+        });
+        return res.status(201).json({ status: "success", data: { user } });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.createSuperAdminAccount = createSuperAdminAccount;
+const getAdmin = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const admin = req.admin;
+        if (!admin)
+            throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as admin to continue`);
+        const foundAdmin = yield find({ _id: admin._id }, "one");
+        if (!foundAdmin)
+            throw new exceptions_1.NotFoundError(`No admin found`);
+        return res.status(200).json({ status: "success", data: foundAdmin });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.getAdmin = getAdmin;
 const getUser = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const user = req.user;
@@ -132,6 +179,38 @@ const getUsers = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
     }
 });
 exports.getUsers = getUsers;
+const ActivateAndDeactivateUser = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { admin } = req;
+        if (!admin) {
+            throw new exceptions_1.UnauthorizedError("Unauthorized! Please log in as a admin to continue");
+        }
+        const { status, userId } = req.body; // Extract update field and data from request body
+        const updatedUser = yield update(userId, "status", status);
+        console.log({ updatedUser });
+        return res.status(200).json({ status: "success", data: { user: updatedUser } });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.ActivateAndDeactivateUser = ActivateAndDeactivateUser;
+const ActivateAndDeactivateAdmin = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { admin } = req;
+        if (!admin) {
+            throw new exceptions_1.UnauthorizedError("Unauthorized! Please log in as a admin to continue");
+        }
+        const { status, adminId } = req.body; // Extract update field and data from request body
+        const updatedAdmin = yield update(adminId, "status", status);
+        console.log({ updatedAdmin });
+        return res.status(200).json({ status: "success", data: { user: updatedAdmin } });
+    }
+    catch (error) {
+        next(error);
+    }
+});
+exports.ActivateAndDeactivateAdmin = ActivateAndDeactivateAdmin;
 const updateClientAccount = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { user } = req;

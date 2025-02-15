@@ -57,7 +57,8 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
         email_confirmed_at: "", 
         is_anonymous: false,
         phone,
-        is_super_admin: false
+        is_super_admin: false,
+        status: "active"
       });
 
       return res.status(201).json({ status: "success", data: { ...response.data.data, user } });
@@ -94,7 +95,8 @@ export const createAdminAccount = async (req: Request, res: Response, next: Next
       email_confirmed_at: "", 
       is_anonymous: false,
       phone,
-      is_super_admin: false
+      is_super_admin: false,
+      status: "active"
     });
 
     return res.status(201).json({ status: "success", data: { user } });
@@ -102,6 +104,62 @@ export const createAdminAccount = async (req: Request, res: Response, next: Next
     next(error)
   }
 };
+
+export const createSuperAdminAccount = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, name, surname, password, phone } = req.body;
+
+    const duplicateEmail = await findByEmail(email);
+
+    const duplicateNumber = await find({ user_metadata: { phone } }, "one")
+    
+    if (duplicateEmail)
+      throw new ConflictError(`A user already exists with the email ${email}`)
+    if (duplicateNumber)
+      throw new ConflictError(`A user already exists with the phone number ${phone}`)
+
+    req.body.password = encryptPassword(password);
+
+    const user: any = await create({ 
+      password: req.body.password,
+      user_metadata: { email, first_name: name, surname, phone }, 
+      role: "admin",
+      confirmation_sent_at: getCurrentTimestamp(),
+      confirmed_at: "",
+      email,
+      email_confirmed_at: "", 
+      is_anonymous: false,
+      phone,
+      is_super_admin: true,
+      status: "active"
+    });
+
+    return res.status(201).json({ status: "success", data: { user } });
+  } catch (error: any) {
+    next(error)
+  }
+};
+
+export const getAdmin = async (
+  req: ProtectedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const admin = req.admin;
+
+    if (!admin) throw new UnauthorizedError(`Unauthorized! Please log in as admin to continue`);
+
+    const foundAdmin: any = await find({ _id: admin._id}, "one");
+
+    if (!foundAdmin)
+      throw new NotFoundError(`No admin found`);
+
+    return res.status(200).json({status: "success", data: foundAdmin});
+  } catch (err: any) {
+    next(err)
+  }
+}
 
 export const getUser = async (
   req: ProtectedRequest,
@@ -141,6 +199,46 @@ export const getUsers = async (
     next(err)
   }
 }
+
+export const ActivateAndDeactivateUser = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { admin } = req;
+
+    if (!admin) {
+      throw new UnauthorizedError("Unauthorized! Please log in as a admin to continue");
+    }
+
+    const { status, userId } = req.body; // Extract update field and data from request body
+
+    const updatedUser = await update(userId, "status", status);
+
+    console.log({ updatedUser });
+
+    return res.status(200).json({ status: "success", data: { user: updatedUser } });
+  } catch (error: any) {
+    next(error);
+  }
+};
+
+export const ActivateAndDeactivateAdmin = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { admin } = req;
+
+    if (!admin) {
+      throw new UnauthorizedError("Unauthorized! Please log in as a admin to continue");
+    }
+
+    const { status, adminId } = req.body; // Extract update field and data from request body
+
+    const updatedAdmin = await update(adminId, "status", status);
+
+    console.log({ updatedAdmin });
+
+    return res.status(200).json({ status: "success", data: { user: updatedAdmin } });
+  } catch (error: any) {
+    next(error);
+  }
+};
 
 export const updateClientAccount = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
