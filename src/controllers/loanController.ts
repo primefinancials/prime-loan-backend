@@ -55,7 +55,7 @@ const httpRequest = async (bvn: string) => {
 
 export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
-    const amount = parseInt(req.body.amount, 10); // Ensure amount is a number
+    const amount = Number(req.body.amount); // Ensure amount is a number
     const { duration, transactionId, userId } = req.body;
 
     const { admin } = req;
@@ -104,7 +104,7 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
       const processing_fee = (amount * 3) / 100;
       const total_amount = foundLoan.category === "working" ? amount - processing_fee : amount;
 
-      console.log({ amount, processing_fee, total_amount });
+      console.log({ request_amount: req.body.amount, amount, processing_fee, total_amount });
 
       const response = await httpClient("/wallet2/transfer", "POST", {
         fromAccount: accountNo,

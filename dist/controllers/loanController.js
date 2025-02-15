@@ -56,7 +56,7 @@ const httpRequest = (bvn) => __awaiter(void 0, void 0, void 0, function* () {
 });
 const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const amount = parseInt(req.body.amount, 10); // Ensure amount is a number
+        const amount = Number(req.body.amount); // Ensure amount is a number
         const { duration, transactionId, userId } = req.body;
         const { admin } = req;
         console.log({ admin });
@@ -93,7 +93,7 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
             // Processing Fee Calculation
             const processing_fee = (amount * 3) / 100;
             const total_amount = foundLoan.category === "working" ? amount - processing_fee : amount;
-            console.log({ amount, processing_fee, total_amount });
+            console.log({ request_amount: req.body.amount, amount, processing_fee, total_amount });
             const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", {
                 fromAccount: accountNo,
                 uniqueSenderAccountId: "",
