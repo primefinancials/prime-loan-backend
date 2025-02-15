@@ -128,9 +128,17 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
       console.log({ response });
 
       if(response.data) {
+        const fee = Number(500);
+        const loan_per = foundLoan.category === "working"? 4 : 10;
+        const percentage = duration / 30 >= 1
+        ? ((amount * loan_per) / 100) * (duration / 30)
+        : (amount * loan_per) / 100;
+        const total = Number(Number(amount) + Number(fee + percentage));
+
         const loan = await updateLoan(transactionId, {
           ...(duration? { duration } : { }),
           ...(amount? { amount } : { }),
+          outstanding: total,
           status: "accepted"
         });
 

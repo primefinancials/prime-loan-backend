@@ -114,7 +114,13 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
             });
             console.log({ response });
             if (response.data) {
-                const loan = yield updateLoan(transactionId, Object.assign(Object.assign(Object.assign({}, (duration ? { duration } : {})), (amount ? { amount } : {})), { status: "accepted" }));
+                const fee = Number(500);
+                const loan_per = foundLoan.category === "working" ? 4 : 10;
+                const percentage = duration / 30 >= 1
+                    ? ((amount * loan_per) / 100) * (duration / 30)
+                    : (amount * loan_per) / 100;
+                const total = Number(Number(amount) + Number(fee + percentage));
+                const loan = yield updateLoan(transactionId, Object.assign(Object.assign(Object.assign({}, (duration ? { duration } : {})), (amount ? { amount } : {})), { outstanding: total, status: "accepted" }));
                 res.status(response.status).json({ status: "success", data: response.data.data });
             }
             return res.status(400).json({ status: "failed", message: 'Unable to approve loan' });
