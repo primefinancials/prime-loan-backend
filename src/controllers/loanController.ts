@@ -101,6 +101,8 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
 
       const processing_fee = (Number(amount) * 3) / 100;
 
+      console.log({ amount, processing_fee, total_amount: foundLoan.category === "working"? Number(amount) - processing_fee : amount })
+
       const response = await httpClient("/wallet2/transfer", "POST", {
         fromAccount: accountNo,
         uniqueSenderAccountId: "",
