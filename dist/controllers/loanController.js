@@ -103,7 +103,7 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
                 toAccount: uan,
                 toBank: "999999",
                 signature: js_sha512_1.sha512.hex(`${accountNo}${uan}`),
-                amount: foundLoan.category === "working" ? amount - processing_fee : amount,
+                amount: foundLoan.category === "working" ? Number(amount) - processing_fee : amount,
                 remark: "Loan Disbursement",
                 transferType: "intra",
                 reference

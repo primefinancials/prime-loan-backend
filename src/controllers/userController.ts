@@ -152,6 +152,9 @@ export const getAdmin = async (
 
     const foundAdmin: any = await find({ _id: admin._id}, "one");
 
+    if(foundAdmin.status !== "active") 
+      throw new UnauthorizedError(`Account has been suspended! Contact super admin for revert action.`);
+
     if (!foundAdmin)
       throw new NotFoundError(`No admin found`);
 

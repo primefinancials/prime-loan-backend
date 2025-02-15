@@ -142,6 +142,8 @@ const getAdmin = (req, res, next) => __awaiter(void 0, void 0, void 0, function*
         if (!admin)
             throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as admin to continue`);
         const foundAdmin = yield find({ _id: admin._id }, "one");
+        if (foundAdmin.status !== "active")
+            throw new exceptions_1.UnauthorizedError(`Account has been suspended! Contact super admin for revert action.`);
         if (!foundAdmin)
             throw new exceptions_1.NotFoundError(`No admin found`);
         return res.status(200).json({ status: "success", data: foundAdmin });

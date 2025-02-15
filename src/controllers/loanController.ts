@@ -114,7 +114,7 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
         toAccount: uan,
         toBank: "999999",
         signature: sha512.hex(`${accountNo}${uan}`),
-        amount: foundLoan.category === "working"? amount - processing_fee : amount,
+        amount: foundLoan.category === "working"? Number(amount) - processing_fee : amount,
         remark: "Loan Disbursement",
         transferType: "intra",
         reference
