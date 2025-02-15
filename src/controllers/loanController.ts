@@ -378,9 +378,9 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
           }
 
           const loan = await updateLoan(foundLoan._id, { 
-            loan_payment_status: (Number(outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
-            outstanding: Number(outstanding) - Number(amount) <= 0? 0 : Number(outstanding) - Number(amount),
-            repayment_history: [ ...(foundLoan.repayment_history || []), { amount: Number(amount), outstanding: Number(outstanding) - Number(amount) <= 0? 0 : Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
+            loan_payment_status: (Number(outstanding) - Number(foundLoan.outstanding)) <= 0? "complete" : "in-progress", 
+            outstanding: Number(outstanding) - Number(foundLoan.outstanding) <= 0? 0 : Number(outstanding) - Number(foundLoan.outstanding),
+            repayment_history: [ ...(foundLoan.repayment_history || []), { amount: Number(outstanding), outstanding: Number(outstanding) - Number(foundLoan.outstanding) <= 0? 0 : Number(outstanding) - Number(foundLoan.outstanding), action: "repayment", date: new Date().toLocaleString() }]
           });
 
           const newUser = await update(
@@ -401,7 +401,7 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
               receiver: `Prime Finance`,
               account_number: accountNo,
               amount: outstanding,
-              outstanding: Number(outstanding) - Number(amount),
+              outstanding: Number(outstanding) - Number(foundLoan.outstanding),
               session_id: response.data.data.sessionId || "no-sessionId",
               status: "success"
             }
