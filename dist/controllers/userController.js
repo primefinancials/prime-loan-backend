@@ -157,6 +157,8 @@ const getUser = (req, res, next) => __awaiter(void 0, void 0, void 0, function* 
         if (!user)
             throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as user to continue`);
         const foundUser = yield find({ _id: user._id }, "one");
+        if (foundUser.status !== "active")
+            throw new exceptions_1.UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
         if (!foundUser)
             throw new exceptions_1.NotFoundError(`No user found`);
         return res.status(200).json({ status: "success", data: foundUser });
@@ -232,6 +234,8 @@ const login = (req, res, next) => __awaiter(void 0, void 0, void 0, function* ()
         const { email, password } = req.body;
         let foundUser;
         foundUser = yield findByEmail(email);
+        if (foundUser.status !== "active")
+            throw new exceptions_1.UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
         if (!foundUser)
             throw new exceptions_1.UnauthorizedError(`Invalid credentials`);
         const { password: encrypted } = foundUser;

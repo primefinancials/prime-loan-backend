@@ -99,6 +99,8 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
       const { accountNo: uan, accountBalance: uab, accountId: uai, bn, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
       const reference =`Prime-Finance-${generateRandomString(9)}`;
 
+      const processing_fee = (Number(amount) * 3) / 100;
+
       const response = await httpClient("/wallet2/transfer", "POST", {
         fromAccount: accountNo,
         uniqueSenderAccountId: "",
@@ -112,7 +114,7 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
         toAccount: uan,
         toBank: "999999",
         signature: sha512.hex(`${accountNo}${uan}`),
-        amount,
+        amount: foundLoan.category === "working"? amount - processing_fee : amount,
         remark: "Loan Disbursement",
         transferType: "intra",
         reference
@@ -178,123 +180,67 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       throw new NotFoundError("User not found.");
     }
 
-    const createLoanInfo = async () => {
-      const credit = await httpRequest(bvn);
+    const credit = await httpRequest(bvn);
 
-      console.log({ credit });
+    console.log({ credit });
 
-      if(credit.error) {
-        throw new BadRequestError(credit.error);
-      }
-
-      const loan = await createLoan({
-        first_name,
-        last_name,
-        dob,
-        nin,
-        email,
-        bvn,
-        phone,
-        address,
-        company,
-        company_address,
-        annual_income,
-        guarantor_1_name,
-        guarantor_1_phone,
-        guarantor_2_name,
-        guarantor_2_phone,
-        requested_amount: amount,
-        amount,
-        reason,
-        base64Image, 
-        outstanding, 
-        category, type,
-        status,
-        userId: user._id,
-        duration, 
-        repayment_amount,
-        percentage,
-        loan_date,
-        repayment_date,
-        acknowledgment,
-        loan_payment_status: "not-started",
-        credit_score: {
-          loanId: credit._id,
-          lastReported: "",
-          creditorName: credit.name,
-          totalDebt: credit.score.totalBorrowed,
-          accountype: "",
-          outstandingBalance: credit.score.totalOutstanding,
-          activeLoan: credit.score.totalNoOfActiveLoans,
-          loansTaken: credit.score.totalNoOfLoans,
-          income: 0,
-          repaymentHistory: credit.score.totalNoOfPerformingLoans,
-          openedDate: credit.score.totalNoOfActiveLoans,
-          lengthOfCreditHistory: credit.score.totalNoOfLoans,
-          remarks: "",
-          creditors: credit.score.creditors,
-          loan_details: credit.score.loanPerformance,
-        }
-      });
-
-      if(!loan) throw new NotFoundError("Loan not created");
-
-      res.status(200).json({ status: "success", data: loan });
+    if(credit.error) {
+      throw new BadRequestError(credit.error);
     }
 
-    if(category === "working"){
-      const processing_fee = (Number(amount) * 3) / 100;
-
-      if (Number(user.user_metadata.wallet) < Number(processing_fee)) {
-        return res.status(409).json({
-          status: "Insufficient Fund! Fund your account with 3% of required working loan and try again.",
-          data: null
-        });
+    const loan = await createLoan({
+      first_name,
+      last_name,
+      dob,
+      nin,
+      email,
+      bvn,
+      phone,
+      address,
+      company,
+      company_address,
+      annual_income,
+      guarantor_1_name,
+      guarantor_1_phone,
+      guarantor_2_name,
+      guarantor_2_phone,
+      requested_amount: amount,
+      amount,
+      reason,
+      base64Image, 
+      outstanding, 
+      category, type,
+      status,
+      userId: user._id,
+      duration, 
+      repayment_amount,
+      percentage,
+      loan_date,
+      repayment_date,
+      acknowledgment,
+      loan_payment_status: "not-started",
+      credit_score: {
+        loanId: credit._id,
+        lastReported: "",
+        creditorName: credit.name,
+        totalDebt: credit.score.totalBorrowed,
+        accountype: "",
+        outstandingBalance: credit.score.totalOutstanding,
+        activeLoan: credit.score.totalNoOfActiveLoans,
+        loansTaken: credit.score.totalNoOfLoans,
+        income: 0,
+        repaymentHistory: credit.score.totalNoOfPerformingLoans,
+        openedDate: credit.score.totalNoOfActiveLoans,
+        lengthOfCreditHistory: credit.score.totalNoOfLoans,
+        remarks: "",
+        creditors: credit.score.creditors,
+        loan_details: credit.score.loanPerformance,
       }
-        
-      const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
-      console.log({ account, data: account.data.data })
+    });
 
-      const useraccount = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
-      console.log({ useraccount, data: useraccount.data.data })
-      
-      if(account.data && useraccount.data) {
-        const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
-        const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
-        const ref =`Prime-Finance-${generateRandomString(9)}`;
+    if(!loan) throw new NotFoundError("Loan not created");
 
-        const body = {
-          fromAccount: userAccountNumber,
-          uniqueSenderAccountId: userAccountId,
-          fromClientId: userClientId,
-          fromClient: userClient,
-          fromSavingsId: userAccountId,
-          // fromBvn: "Rolandpay-birght 221552585559",
-          toClientId: clientId,
-          toClient: client,
-          toSavingsId: accountId,
-          toSession: accountId,
-          // toBvn: "11111111111",
-          toAccount: accountNo,
-          toBank: "999999",
-          signature: sha512.hex(`${userAccountNumber}${accountNo}`),
-          amount: processing_fee,
-          remark: "Loan",
-          transferType: "intra",
-          reference: ref
-        }
-        
-        const response = await httpClient("/wallet2/transfer", "POST", body);
-
-        console.log({ response });
-
-        if(response.data && response.data.status === "00") { 
-          await createLoanInfo();
-        }
-      }
-    } else {
-      await createLoanInfo();
-    }
+    res.status(200).json({ status: "success", data: loan });
   } catch (error: any) {
     console.log("Error getting loan transaction status:", error);
     next(error);

@@ -173,6 +173,9 @@ export const getUser = async (
 
     const foundUser: any = await find({ _id: user._id}, "one");
 
+    if(foundUser.status !== "active") 
+      throw new UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
+
     if (!foundUser)
       throw new NotFoundError(`No user found`);
 
@@ -270,7 +273,10 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
     let foundUser: any;
 
-    foundUser = await findByEmail(email); 
+    foundUser = await findByEmail(email);
+    
+    if(foundUser.status !== "active") 
+      throw new UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
 
     if (!foundUser)
       throw new UnauthorizedError(`Invalid credentials`);
