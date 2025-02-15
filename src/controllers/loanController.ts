@@ -55,7 +55,8 @@ const httpRequest = async (bvn: string) => {
 
 export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
   try {
-    const { amount, duration, transactionId, userId } = req.body;
+    const amount = Number(req.body.amount); // Ensure amount is a number
+    const { duration, transactionId, userId } = req.body;
 
     const { admin } = req;
     console.log({ admin })
@@ -99,7 +100,11 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
       const { accountNo: uan, accountBalance: uab, accountId: uai, bn, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
       const reference =`Prime-Finance-${generateRandomString(9)}`;
 
-      const processing_fee = (Number(amount) * 3) / 100;
+      // Processing Fee Calculation
+      const processing_fee = (amount * 3) / 100;
+      const total_amount = foundLoan.category === "working" ? amount - processing_fee : amount;
+
+      console.log({ amount, processing_fee, total_amount });
 
       const response = await httpClient("/wallet2/transfer", "POST", {
         fromAccount: accountNo,
@@ -114,7 +119,7 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
         toAccount: uan,
         toBank: "999999",
         signature: sha512.hex(`${accountNo}${uan}`),
-        amount: foundLoan.category === "working"? String(Number(amount) - processing_fee) : amount,
+        amount: String(total_amount),
         remark: "Loan Disbursement",
         transferType: "intra",
         reference
