@@ -280,7 +280,7 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
                 toAccount: accountNo,
                 toBank: "999999",
                 signature: js_sha512_1.sha512.hex(`${userAccountNumber}${accountNo}`),
-                amount,
+                amount: outstanding,
                 remark: "Loan",
                 transferType: "intra",
                 reference: ref
@@ -297,7 +297,7 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
                 }
                 const loan = yield updateLoan(foundLoan._id, {
                     loan_payment_status: (Number(outstanding) - Number(amount)) <= 0 ? "complete" : "in-progress",
-                    outstanding: Number(outstanding) - Number(amount),
+                    outstanding: Number(outstanding) - Number(amount) <= 0 ? 0 : Number(outstanding) - Number(amount),
                     repayment_history: [...(foundLoan.repayment_history || []), { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
                 });
                 const newUser = yield update(user._id, "user_metadata.wallet", String(Number((_a = user === null || user === void 0 ? void 0 : user.user_metadata) === null || _a === void 0 ? void 0 : _a.wallet) - Number(amount)));
@@ -311,7 +311,7 @@ const repayLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, function
                     bank: "Prime Finance",
                     receiver: `Prime Finance`,
                     account_number: accountNo,
-                    amount,
+                    amount: outstanding,
                     outstanding: outstanding - amount,
                     session_id: response.data.data.sessionId || "no-sessionId",
                     status: "success"

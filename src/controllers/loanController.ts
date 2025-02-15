@@ -357,7 +357,7 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
           toAccount: accountNo,
           toBank: "999999",
           signature: sha512.hex(`${userAccountNumber}${accountNo}`),
-          amount,
+          amount: outstanding,
           remark: "Loan",
           transferType: "intra",
           reference: ref
@@ -379,7 +379,7 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
 
           const loan = await updateLoan(foundLoan._id, { 
             loan_payment_status: (Number(outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
-            outstanding: Number(outstanding) - Number(amount),
+            outstanding: Number(outstanding) - Number(amount) <= 0? 0 : Number(outstanding) - Number(amount),
             repayment_history: [ ...(foundLoan.repayment_history || []), { amount: Number(amount), outstanding: Number(outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
           });
 
@@ -400,7 +400,7 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
               bank: "Prime Finance",
               receiver: `Prime Finance`,
               account_number: accountNo,
-              amount,
+              amount: outstanding,
               outstanding: outstanding - amount,
               session_id: response.data.data.sessionId || "no-sessionId",
               status: "success"
