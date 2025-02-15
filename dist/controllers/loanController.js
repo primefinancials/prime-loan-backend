@@ -90,7 +90,6 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
             const { accountNo: uan, accountBalance: uab, accountId: uai, bn, client: uc, clientId: uci, savingsProductName: uspn } = useraccount.data.data;
             const reference = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
             const processing_fee = (Number(amount) * 3) / 100;
-            console.log({ amount, processing_fee, total_amount: foundLoan.category === "working" ? Number(amount) - processing_fee : amount });
             const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", {
                 fromAccount: accountNo,
                 uniqueSenderAccountId: "",
@@ -104,7 +103,7 @@ const createAndDisburseLoan = (req, res, next) => __awaiter(void 0, void 0, void
                 toAccount: uan,
                 toBank: "999999",
                 signature: js_sha512_1.sha512.hex(`${accountNo}${uan}`),
-                amount: foundLoan.category === "working" ? Number(amount) - processing_fee : amount,
+                amount: foundLoan.category === "working" ? String(Number(amount) - processing_fee) : amount,
                 remark: "Loan Disbursement",
                 transferType: "intra",
                 reference
