@@ -236,17 +236,16 @@ const login = (req, res, next) => __awaiter(void 0, void 0, void 0, function* ()
         const { email, password } = req.body;
         let foundUser;
         foundUser = yield findByEmail(email);
-        if (foundUser.status !== "active")
-            throw new exceptions_1.UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
         if (!foundUser)
-            throw new exceptions_1.UnauthorizedError(`Invalid credentials`);
+            throw new exceptions_1.UnauthorizedError(`Invalid Email Address!`);
+        if ((foundUser === null || foundUser === void 0 ? void 0 : foundUser.status) && foundUser.status !== "active")
+            throw new exceptions_1.UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
         const { password: encrypted } = foundUser;
         // decrypt found user password
         const decrypted = (0, utils_2.decodePassword)(encrypted);
-        console.log({ password, encrypted, decrypted });
         // compare decrypted password with sent password
         if (password !== decrypted)
-            throw new exceptions_1.UnauthorizedError(`Invalid credentials`);
+            throw new exceptions_1.UnauthorizedError(`Incorrect Password!`);
         const _a = foundUser._doc, { password: dbPassword, // strip out password so would'nt send back to client
         refreshToken: dbRefreshToken } = _a, //Strip out old refreshToken so it wont keep signing old ones
         _user = __rest(_a, ["password", "refreshToken"]);
