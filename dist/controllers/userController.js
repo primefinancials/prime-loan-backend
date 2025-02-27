@@ -354,36 +354,34 @@ const validateReset = (req, res, next) => __awaiter(void 0, void 0, void 0, func
     try {
         const { email, pin } = req.body;
         if (!email)
-            throw new exceptions_1.BadRequestError(`Provide a valid email`);
+            throw new exceptions_1.BadRequestError('Email is required');
         if (!pin)
-            throw new exceptions_1.BadRequestError(`Provide a valid PIN`);
+            throw new exceptions_1.BadRequestError('PIN is required');
         const foundUser = yield find({ email }, "one");
         if (!foundUser)
-            throw new exceptions_1.NotFoundError(`No user found`);
-        // Get the last update from the updates array
-        const lastUpdate = foundUser.updates[foundUser.updates.length - 1];
-        // Check if last update exists
+            throw new exceptions_1.NotFoundError('User not found with provided email');
+        const updates = foundUser.updates;
+        const lastUpdate = updates[updates.length - 1];
         if (!lastUpdate)
-            throw new exceptions_1.BadRequestError(`No reset request found`);
+            throw new exceptions_1.BadRequestError('No reset request found');
         const currentTime = new Date();
         const createdAt = new Date(lastUpdate.created_at);
-        // Calculate the difference in minutes
         const timeDifferenceInMinutes = (currentTime.getTime() - createdAt.getTime()) / (1000 * 60);
         console.log({ currentTime, createdAt, timeDifferenceInMinutes, lastPin: lastUpdate.pin, pin });
-        // Validate the PIN and the time difference
         if (lastUpdate.pin === pin && timeDifferenceInMinutes < 10) {
-            // Update the status to validated
             lastUpdate.status = "validated";
         }
         else {
-            // Change status to invalid and throw error
             lastUpdate.status = "invalid";
-            yield update(foundUser._id, "updates", foundUser.updates); // Update user with invalid status
-            throw new exceptions_1.BadRequestError("Invalid OTP code provided, or OTP code created longer than 10 mins ago");
+            yield update(foundUser._id, "updates", updates);
+            throw new exceptions_1.BadRequestError('Invalid or expired OTP');
         }
-        // Update the user with the validated status
-        yield update(foundUser._id, "updates", foundUser.updates);
-        return res.status(200).json({ status: "success", message: "OTP validated successfully", data: true });
+        yield update(foundUser._id, "updates", updates);
+        return res.status(200).json({
+            status: "success",
+            message: "OTP validated successfully",
+            data: true
+        });
     }
     catch (err) {
         next(err);
