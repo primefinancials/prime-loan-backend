@@ -278,23 +278,21 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     let foundUser: any;
 
     foundUser = await findByEmail(email);
-    
-    if(foundUser.status !== "active") 
-      throw new UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
 
     if (!foundUser)
-      throw new UnauthorizedError(`Invalid credentials`);
+      throw new UnauthorizedError(`Invalid Email Address!`);
+    
+    if(foundUser?.status && foundUser.status !== "active") 
+      throw new UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
 
     const { password: encrypted } = foundUser;
 
     // decrypt found user password
     const decrypted = decodePassword(encrypted);
 
-    console.log({ password, encrypted, decrypted })
-
     // compare decrypted password with sent password
     if (password !== decrypted)
-      throw new UnauthorizedError(`Invalid credentials`);
+      throw new UnauthorizedError(`Incorrect Password!`);
 
     const {
       password: dbPassword, // strip out password so would'nt send back to client
