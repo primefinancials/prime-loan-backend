@@ -369,7 +369,7 @@ const validateReset = (req, res, next) => __awaiter(void 0, void 0, void 0, func
         const createdAt = new Date(lastUpdate.created_at);
         // Calculate the difference in minutes
         const timeDifferenceInMinutes = (currentTime.getTime() - createdAt.getTime()) / (1000 * 60);
-        console.log({ currentTime, createdAt, timeDifferenceInMinutes });
+        console.log({ currentTime, createdAt, timeDifferenceInMinutes, lastPin: lastUpdate.pin, pin });
         // Validate the PIN and the time difference
         if (lastUpdate.pin === pin && timeDifferenceInMinutes < 10) {
             // Update the status to validated
