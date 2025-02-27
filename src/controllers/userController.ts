@@ -450,6 +450,8 @@ export const validateReset = async (
     // Calculate the difference in minutes
     const timeDifferenceInMinutes = (currentTime.getTime() - createdAt.getTime()) / (1000 * 60);
 
+    console.log({ currentTime, createdAt, timeDifferenceInMinutes });
+
     // Validate the PIN and the time difference
     if (lastUpdate.pin === pin && timeDifferenceInMinutes < 10) {
       // Update the status to validated
