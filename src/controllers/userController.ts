@@ -453,7 +453,7 @@ export const validateReset = async (
     console.log(`Time difference: ${hours}h ${minutes%60}m ${seconds%60}s`);
 
     // Check if within 10 minute window
-    if (lastUpdate.pin !== pin || timeDiff > 10 * 60 * 1000) {
+    if (lastUpdate.pin !== pin || minutes > 10) {
       lastUpdate.status = "invalid";
       await update(foundUser._id, "updates", updates);
       throw new BadRequestError('Invalid or expired OTP');
