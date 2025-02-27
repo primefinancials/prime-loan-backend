@@ -125,7 +125,7 @@ export async function checkLoansAndSendEmails() {
           
                   console.log({ response });
           
-                  if(response.data && response.data.status === "00") {
+                  if(response.data) {
                       await updateLoan(loan._id, { 
                           loan_payment_status: (Number(loan.outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
                           outstanding: Number(loan.outstanding) - Number(amount),

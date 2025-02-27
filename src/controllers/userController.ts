@@ -430,6 +430,7 @@ export const validateReset = async (
     if (!pin) throw new BadRequestError('PIN is required');
 
     const foundUser: any = await find({ email }, "one");
+    
     if (!foundUser) throw new NotFoundError('User not found with provided email');
 
     const updates = foundUser.updates;
@@ -437,21 +438,28 @@ export const validateReset = async (
     
     if (!lastUpdate) throw new BadRequestError('No reset request found');
 
+    // Get time components for both dates
     const currentTime = new Date();
     const createdAt = new Date(lastUpdate.created_at);
-    const timeDifferenceInMinutes = 
-      (currentTime.getTime() - createdAt.getTime()) / (1000 * 60);
+    
+    // Calculate absolute time difference in milliseconds
+    const timeDiff = currentTime.getTime() - createdAt.getTime();
 
-    console.log({ currentTime, createdAt, timeDifferenceInMinutes, lastPin: lastUpdate.pin, pin });
+    // Break down milliseconds into time components
+    const seconds = Math.floor(timeDiff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
 
-    if (lastUpdate.pin === pin && timeDifferenceInMinutes < 10) {
-      lastUpdate.status = "validated";
-    } else {
+    console.log(`Time difference: ${hours}h ${minutes%60}m ${seconds%60}s`);
+
+    // Check if within 10 minute window
+    if (lastUpdate.pin !== pin || timeDiff > 10 * 60 * 1000) {
       lastUpdate.status = "invalid";
       await update(foundUser._id, "updates", updates);
       throw new BadRequestError('Invalid or expired OTP');
     }
 
+    lastUpdate.status = "validated";
     await update(foundUser._id, "updates", updates);
 
     return res.status(200).json({

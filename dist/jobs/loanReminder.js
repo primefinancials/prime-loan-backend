@@ -118,7 +118,7 @@ function checkLoansAndSendEmails() {
                             };
                             const response = yield (0, httpClient_1.httpClient)("/wallet2/transfer", "POST", body);
                             console.log({ response });
-                            if (response.data && response.data.status === "00") {
+                            if (response.data) {
                                 yield updateLoan(loan._id, {
                                     loan_payment_status: (Number(loan.outstanding) - Number(amount)) <= 0 ? "complete" : "in-progress",
                                     outstanding: Number(loan.outstanding) - Number(amount),
