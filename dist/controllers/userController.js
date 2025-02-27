@@ -23,7 +23,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.changePassword = exports.logout = exports.login = exports.updateClientAccount = exports.ActivateAndDeactivateAdmin = exports.ActivateAndDeactivateUser = exports.getUsers = exports.getUser = exports.getAdmin = exports.createSuperAdminAccount = exports.createAdminAccount = exports.createClientAccount = void 0;
+exports.walletAlerts = exports.transfer = exports.bankListing = exports.beneficiaryEnquiry = exports.accountEnquiry = exports.changePassword = exports.forgotPassword = exports.updatePasswordOrPin = exports.validateReset = exports.initiateReset = exports.logout = exports.login = exports.updateClientAccount = exports.ActivateAndDeactivateAdmin = exports.ActivateAndDeactivateUser = exports.getUsers = exports.getUser = exports.getAdmin = exports.createSuperAdminAccount = exports.createAdminAccount = exports.createClientAccount = void 0;
 const validateParams_1 = require("../utils/validateParams");
 const convertDate_1 = require("../utils/convertDate");
 const httpClient_1 = require("../utils/httpClient");
@@ -36,6 +36,7 @@ const utils_2 = require("../utils");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const constants_1 = require("../constants");
 const config_1 = require("../config");
+const loanReminder_1 = require("../jobs/loanReminder");
 function isUser(object, value) {
     return value in object;
 }
@@ -308,6 +309,146 @@ const logout = (req, res, next) => __awaiter(void 0, void 0, void 0, function* (
     }
 });
 exports.logout = logout;
+const initiateReset = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { email, type } = req.body;
+        if (!email)
+            throw new exceptions_1.BadRequestError(`Provide a valid email`);
+        if (!type)
+            throw new exceptions_1.BadRequestError(`Provide a valid type`);
+        const foundUser = yield find({ email }, "one");
+        if (!foundUser)
+            throw new exceptions_1.NotFoundError(`No user found`);
+        const pin = Math.floor(100000 + Math.random() * 900000);
+        const updates = [
+            ...foundUser.updates,
+            {
+                pin,
+                type,
+                status: "awaiting_validation",
+                created_at: new Date().toLocaleDateString()
+            }
+        ];
+        yield (0, loanReminder_1.sendEmail)(email, "Reset Your Password – OTP Verification Code", `
+      Dear ${foundUser.first_name},
+
+      We received a request to reset your password. Use the One-Time Password (OTP) below to proceed:
+
+      🔐 Your OTP Code: [${pin}]
+
+      This code is valid for the next 10 minutes. If you did not request a password reset, please ignore this email or contact our support team immediately.
+
+      Stay secure,
+      Prime Finance Support Team
+      support@primefinance.live | primefinance.live
+    `);
+        yield update(foundUser._id, "updates", updates);
+        return res.status(200).json({ status: "success", message: "OTP initiated successfully" });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.initiateReset = initiateReset;
+const validateReset = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { email, pin } = req.body;
+        if (!email)
+            throw new exceptions_1.BadRequestError(`Provide a valid email`);
+        if (!pin)
+            throw new exceptions_1.BadRequestError(`Provide a valid PIN`);
+        const foundUser = yield find({ email }, "one");
+        if (!foundUser)
+            throw new exceptions_1.NotFoundError(`No user found`);
+        // Get the last update from the updates array
+        const lastUpdate = foundUser.updates[foundUser.updates.length - 1];
+        // Check if last update exists
+        if (!lastUpdate)
+            throw new exceptions_1.BadRequestError(`No reset request found`);
+        const currentTime = new Date();
+        const createdAt = new Date(lastUpdate.created_at);
+        // Calculate the difference in minutes
+        const timeDifferenceInMinutes = (currentTime.getTime() - createdAt.getTime()) / (1000 * 60);
+        // Validate the PIN and the time difference
+        if (lastUpdate.pin === pin && timeDifferenceInMinutes < 10) {
+            // Update the status to validated
+            lastUpdate.status = "validated";
+        }
+        else {
+            // Change status to invalid and throw error
+            lastUpdate.status = "invalid";
+            yield update(foundUser._id, "updates", foundUser.updates); // Update user with invalid status
+            throw new exceptions_1.BadRequestError("Invalid OTP code provided, or OTP code created longer than 10 mins ago");
+        }
+        // Update the user with the validated status
+        yield update(foundUser._id, "updates", foundUser.updates);
+        return res.status(200).json({ status: "success", message: "OTP validated successfully" });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.validateReset = validateReset;
+const updatePasswordOrPin = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { email, newPassword, newPin } = req.body;
+        if (!email)
+            throw new exceptions_1.BadRequestError(`Provide a valid email`);
+        const foundUser = yield find({ email }, "one");
+        if (!foundUser)
+            throw new exceptions_1.NotFoundError(`No user found`);
+        // Get the last update from the updates array
+        const lastUpdate = foundUser.updates[foundUser.updates.length - 1];
+        // Check if last update exists and is validated
+        if (!lastUpdate || lastUpdate.status !== "validated") {
+            throw new exceptions_1.BadRequestError(`Password or PIN update is not validated`);
+        }
+        // Hash the new password if provided
+        if (newPassword) {
+            const hashedPassword = yield (0, utils_1.encryptPassword)(newPassword); // Hashing the password with salt rounds
+            foundUser.password = hashedPassword; // Update the user's password
+            yield update(foundUser._id, "password", foundUser.password); // Save password
+            return res.status(200).json({ status: "success", message: "Password updated successfully" });
+        }
+        // Update the new PIN if provided
+        if (newPin) {
+            foundUser.pin = newPin; // Update the user's PIN
+            yield update(foundUser._id, "pin", foundUser.pin); // Save PIN (if you have a separate update mechanism)
+            return res.status(200).json({ status: "success", message: "PIN updated successfully" });
+        }
+        return res.status(400).json({ status: "failed", message: "Missing Parameters" });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.updatePasswordOrPin = updatePasswordOrPin;
+const forgotPassword = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { oldPassword, newPassword } = req.body;
+        const user = req.user;
+        if (!user)
+            throw new exceptions_1.UnauthorizedError(`Unauthorized! Please log in as user to continue`);
+        const foundUser = yield find({ _id: user._id }, "one");
+        if (!foundUser)
+            throw new exceptions_1.NotFoundError(`No user found`);
+        let userPassword = "";
+        if (isUser(foundUser, "password") && foundUser.password)
+            userPassword = foundUser.password;
+        // Decoding password
+        const decrypted = (0, utils_2.decodePassword)(userPassword);
+        if (oldPassword !== decrypted)
+            throw new exceptions_1.UnauthorizedError(`Invalid credentials`);
+        const encrypted = (0, utils_1.encryptPassword)(newPassword);
+        foundUser.password = encrypted;
+        foundUser.save();
+        return res.status(200).json({ status: "success", data: foundUser });
+    }
+    catch (err) {
+        next(err);
+    }
+});
+exports.forgotPassword = forgotPassword;
 const changePassword = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { oldPassword, newPassword } = req.body;

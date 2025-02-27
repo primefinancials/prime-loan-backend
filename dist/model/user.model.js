@@ -10,6 +10,12 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = require("mongoose");
+const updateSchema = new mongoose_1.Schema({
+    pin: { type: Number, required: true }, // Optional
+    type: { type: String, enum: ["pin", "password"], required: true },
+    status: { type: String, enum: ["validated", "invalid", "awaiting_validation"], required: true },
+    created_at: { type: String, required: true },
+});
 const userSchema = new mongoose_1.Schema({
     confirmation_sent_at: { type: String, required: false },
     confirmed_at: { type: String, required: false },
@@ -64,6 +70,7 @@ const userSchema = new mongoose_1.Schema({
             required: false,
         },
     },
+    updates: { type: [updateSchema], default: [] },
     is_super_admin: { type: Boolean, required: false, default: null },
 }, { timestamps: true });
 const User = (0, mongoose_1.model)('users', userSchema);

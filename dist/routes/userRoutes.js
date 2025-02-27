@@ -20,6 +20,9 @@ router.post("/create-admin", (0, middlewares_1.validateReqBody)(validations_1.cr
 router.post("/create-client", (0, middlewares_1.validateReqBody)(validations_1.createClientAccountSchema), userController_1.createClientAccount);
 router.patch("/update-client", (0, middlewares_1.validateReqBody)(validations_1.updateUserSchema), (0, middlewares_1.verifyJwtRest)(), userController_1.updateClientAccount);
 router.post("/login", (0, middlewares_1.validateReqBody)(validations_1.loginReqBodySchema), userController_1.login);
+router.post("/initiate-reset", userController_1.initiateReset);
+router.post("/validate-reset", userController_1.validateReset);
+router.post("/update-password-or-pin", userController_1.updatePasswordOrPin);
 router.post("/change-password", (0, middlewares_1.validateReqBody)(validations_1.changePasswordSchema), userController_1.changePassword);
 router.get("/logout", (0, middlewares_1.verifyJwtRest)(), userController_1.logout);
 router.get("/bank-listing", (0, middlewares_1.verifyJwtRest)(), userController_1.bankListing);
