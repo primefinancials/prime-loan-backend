@@ -330,7 +330,7 @@ const initiateReset = (req, res, next) => __awaiter(void 0, void 0, void 0, func
             }
         ];
         yield (0, loanReminder_1.sendEmail)(email, "Reset Your Password – OTP Verification Code", `
-      Dear ${foundUser.first_name},
+      Dear ${foundUser.user_metadata.first_name},
 
       We received a request to reset your password. Use the One-Time Password (OTP) below to proceed:
 

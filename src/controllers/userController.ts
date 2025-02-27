@@ -397,7 +397,7 @@ export const initiateReset = async (
     ]
 
     await sendEmail(email, "Reset Your Password – OTP Verification Code", `
-      Dear ${foundUser.first_name},
+      Dear ${foundUser.user_metadata.first_name},
 
       We received a request to reset your password. Use the One-Time Password (OTP) below to proceed:
 
