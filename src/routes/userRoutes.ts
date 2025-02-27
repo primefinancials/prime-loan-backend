@@ -48,8 +48,8 @@ router.post("/create-admin", validateReqBody(createAdminAccountSchema), createAd
 router.post("/create-client", validateReqBody(createClientAccountSchema), createClientAccount);
 router.patch("/update-client", validateReqBody(updateUserSchema), verifyJwtRest(), updateClientAccount);
 router.post("/login", validateReqBody(loginReqBodySchema), login);
-router.post("/initiate-reset", initiateReset);
-router.post("/validate-reset", validateReset);
+router.post("/initiate-reset", initiateReset); 
+router.post("/validate-reset", validateReset); 
 router.post("/update-password-or-pin", updatePasswordOrPin);
 router.post("/change-password", validateReqBody(changePasswordSchema), changePassword);
 router.get("/logout", verifyJwtRest(), logout);

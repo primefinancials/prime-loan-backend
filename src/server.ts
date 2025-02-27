@@ -5,7 +5,6 @@ import { connectToDB } from "./utils";
 import { PORT } from "./config";
 import { checkLoansAndSendEmails, addOnePercentToOverdueLoan } from "./jobs/loanReminder";
 import cron from 'node-cron';
-import { sendEmail } from "./jobs/loanReminder";
 
 cron.schedule('0 */6 * * *', async () => {
   console.log('Running loan check every 6 hours...');
