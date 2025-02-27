@@ -343,7 +343,7 @@ const initiateReset = (req, res, next) => __awaiter(void 0, void 0, void 0, func
       support@primefinance.live | primefinance.live
     `);
         yield update(foundUser._id, "updates", updates);
-        return res.status(200).json({ status: "success", message: "OTP initiated successfully" });
+        return res.status(200).json({ status: "success", message: "OTP initiated successfully", data: true });
     }
     catch (err) {
         next(err);
@@ -382,7 +382,7 @@ const validateReset = (req, res, next) => __awaiter(void 0, void 0, void 0, func
         }
         // Update the user with the validated status
         yield update(foundUser._id, "updates", foundUser.updates);
-        return res.status(200).json({ status: "success", message: "OTP validated successfully" });
+        return res.status(200).json({ status: "success", message: "OTP validated successfully", data: true });
     }
     catch (err) {
         next(err);
@@ -416,7 +416,7 @@ const updatePasswordOrPin = (req, res, next) => __awaiter(void 0, void 0, void 0
             yield update(foundUser._id, "pin", foundUser.pin); // Save PIN (if you have a separate update mechanism)
             return res.status(200).json({ status: "success", message: "PIN updated successfully" });
         }
-        return res.status(400).json({ status: "failed", message: "Missing Parameters" });
+        return res.status(400).json({ status: "failed", message: "Missing Parameters", data: true });
     }
     catch (err) {
         next(err);

@@ -412,7 +412,7 @@ export const initiateReset = async (
 
     await update(foundUser._id, "updates", updates);
 
-    return res.status(200).json({ status: "success", message: "OTP initiated successfully" });
+    return res.status(200).json({ status: "success", message: "OTP initiated successfully", data: true });
   } catch (err: any) {
     next(err)
   }
@@ -464,7 +464,7 @@ export const validateReset = async (
     // Update the user with the validated status
     await update(foundUser._id, "updates", foundUser.updates);
 
-    return res.status(200).json({ status: "success", message: "OTP validated successfully" });
+    return res.status(200).json({ status: "success", message: "OTP validated successfully", data: true });
   } catch (err: any) {
     next(err);
   }
@@ -509,7 +509,7 @@ export const updatePasswordOrPin = async (
       return res.status(200).json({ status: "success", message: "PIN updated successfully" });
     }
 
-    return res.status(400).json({ status: "failed", message: "Missing Parameters" });
+    return res.status(400).json({ status: "failed", message: "Missing Parameters", data: true });
   } catch (err: any) {
     next(err);
   }
