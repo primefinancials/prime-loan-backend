@@ -16,7 +16,10 @@ import {
     getAdmin,
     createSuperAdminAccount,
     ActivateAndDeactivateAdmin,
-    ActivateAndDeactivateUser
+    ActivateAndDeactivateUser,
+    initiateReset,
+    validateReset,
+    updatePasswordOrPin
 } from "../controllers/userController";
 import { validateReqBody, verifyJwtRest } from "../middlewares";
 import { 
@@ -45,6 +48,9 @@ router.post("/create-admin", validateReqBody(createAdminAccountSchema), createAd
 router.post("/create-client", validateReqBody(createClientAccountSchema), createClientAccount);
 router.patch("/update-client", validateReqBody(updateUserSchema), verifyJwtRest(), updateClientAccount);
 router.post("/login", validateReqBody(loginReqBodySchema), login);
+router.post("/initiate-reset", initiateReset);
+router.post("/validate-reset", validateReset);
+router.post("/update-password-or-pin", updatePasswordOrPin);
 router.post("/change-password", validateReqBody(changePasswordSchema), changePassword);
 router.get("/logout", verifyJwtRest(), logout);
 router.get("/bank-listing", verifyJwtRest(), bankListing);

@@ -1,6 +1,13 @@
 export type USERROLES = "admin" | "user";
 export type USERSTATUS = "active" | "inactive";
 
+export interface Update {
+  pin?: number; // Optional
+  type: "pin" | "password"; // Enforced enum values
+  status: "validated" | "invalid" | "awaiting_validation"; // Enforced enum values
+  created_at: string;
+}
+
 export interface User {
   _id: string;
   confirmation_sent_at: string; 
@@ -38,6 +45,7 @@ export interface User {
     verified_address?: "verified" | "pending" | "unverified";
   };
   is_super_admin?: boolean;
+  updates: Update[]; // Array of update objects
 }
   
 export interface CREATEUSER {
@@ -101,4 +109,5 @@ export interface UPDATEUSER {
     types?: string;
     verified_address?: "verified" | "pending" | "unverified";
   };
+  updates?: Update[]; // Array of update objects
 }

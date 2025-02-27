@@ -1,5 +1,12 @@
 import { Schema, model, SchemaTypes } from 'mongoose';
-import { User } from '../interfaces';
+import { User, Update } from '../interfaces';
+
+const updateSchema = new Schema<Update>({
+  pin: { type: Number, required: true }, // Optional
+  type: { type: String, enum: ["pin", "password"], required: true },
+  status: { type: String, enum: ["validated", "invalid", "awaiting_validation"], required: true },
+  created_at: { type: String, required: true },
+});
 
 const userSchema = new Schema<User>(
   {
@@ -56,6 +63,7 @@ const userSchema = new Schema<User>(
         required: false,
       },
     },
+    updates: { type: [updateSchema], default: [] },
     is_super_admin: { type: Boolean, required: false, default: null },
   },
   { timestamps: true }

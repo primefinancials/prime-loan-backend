@@ -4,7 +4,7 @@ import { convertDate } from "../utils/convertDate";
 import { httpClient } from "../utils/httpClient";
 import { sha512 } from "js-sha512";
 import { UserService, TransactionService } from "../services";
-import { ConflictError, UnauthorizedError, NotFoundError } from "../exceptions";
+import { ConflictError, UnauthorizedError, NotFoundError, BadRequestError } from "../exceptions";
 import { encryptPassword } from "../utils";
 import { getCurrentTimestamp } from "../utils/convertDate";
 import { decodePassword } from "../utils";
@@ -19,6 +19,7 @@ import {
   REFRESH_TOKEN_SECRET
 } from "../config";
 import { ProtectedRequest, User } from "../interfaces";
+import { sendEmail } from "../jobs/loanReminder";
 
 function isUser(object: any, value: string): object is User {
   return value in object;
@@ -363,6 +364,192 @@ export const logout = async (req: Request, res: Response, next: NextFunction) =>
       .sendStatus(204);
   } catch (error: any) {
     next(error)
+  }
+}
+
+export const initiateReset = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { email, type } = req.body;
+
+    if (!email)
+      throw new BadRequestError(`Provide a valid email`);
+
+    if (!type)
+      throw new BadRequestError(`Provide a valid type`);
+
+    const foundUser: any = await find({ email }, "one");
+
+    if (!foundUser)
+      throw new NotFoundError(`No user found`);
+
+    const pin = Math.floor(100000 + Math.random() * 900000);
+
+    const updates = [
+      ...foundUser.updates, 
+      {
+        pin,
+        type,
+        status: "awaiting_validation",
+        created_at: new Date().toLocaleDateString()
+      }
+    ]
+
+    await sendEmail(email, "Reset Your Password – OTP Verification Code", `
+      Dear ${foundUser.first_name},
+
+      We received a request to reset your password. Use the One-Time Password (OTP) below to proceed:
+
+      🔐 Your OTP Code: [${pin}]
+
+      This code is valid for the next 10 minutes. If you did not request a password reset, please ignore this email or contact our support team immediately.
+
+      Stay secure,
+      Prime Finance Support Team
+      support@primefinance.live | primefinance.live
+    `)
+
+    await update(foundUser._id, "updates", updates);
+
+    return res.status(200).json({ status: "success", message: "OTP initiated successfully" });
+  } catch (err: any) {
+    next(err)
+  }
+}
+
+export const validateReset = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { email, pin } = req.body;
+
+    if (!email)
+      throw new BadRequestError(`Provide a valid email`);
+
+    if (!pin)
+      throw new BadRequestError(`Provide a valid PIN`);
+
+    const foundUser: any = await find({ email }, "one");
+
+    if (!foundUser)
+      throw new NotFoundError(`No user found`);
+
+    // Get the last update from the updates array
+    const lastUpdate = foundUser.updates[foundUser.updates.length - 1];
+
+    // Check if last update exists
+    if (!lastUpdate)
+      throw new BadRequestError(`No reset request found`);
+
+    const currentTime = new Date();
+    const createdAt = new Date(lastUpdate.created_at);
+    
+    // Calculate the difference in minutes
+    const timeDifferenceInMinutes = (currentTime.getTime() - createdAt.getTime()) / (1000 * 60);
+
+    // Validate the PIN and the time difference
+    if (lastUpdate.pin === pin && timeDifferenceInMinutes < 10) {
+      // Update the status to validated
+      lastUpdate.status = "validated";
+    } else {
+      // Change status to invalid and throw error
+      lastUpdate.status = "invalid";
+      await update(foundUser._id, "updates", foundUser.updates); // Update user with invalid status
+      throw new BadRequestError("Invalid OTP code provided, or OTP code created longer than 10 mins ago");
+    }
+
+    // Update the user with the validated status
+    await update(foundUser._id, "updates", foundUser.updates);
+
+    return res.status(200).json({ status: "success", message: "OTP validated successfully" });
+  } catch (err: any) {
+    next(err);
+  }
+};
+
+export const updatePasswordOrPin = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { email, newPassword, newPin } = req.body;
+
+    if (!email)
+      throw new BadRequestError(`Provide a valid email`);
+
+    const foundUser: any = await find({ email }, "one");
+
+    if (!foundUser)
+      throw new NotFoundError(`No user found`);
+
+    // Get the last update from the updates array
+    const lastUpdate = foundUser.updates[foundUser.updates.length - 1];
+
+    // Check if last update exists and is validated
+    if (!lastUpdate || lastUpdate.status !== "validated") {
+      throw new BadRequestError(`Password or PIN update is not validated`);
+    }
+
+    // Hash the new password if provided
+    if (newPassword) {
+      const hashedPassword = await encryptPassword(newPassword); // Hashing the password with salt rounds
+      foundUser.password = hashedPassword; // Update the user's password
+      await update(foundUser._id, "password", foundUser.password); // Save password
+      return res.status(200).json({ status: "success", message: "Password updated successfully" });
+    }
+
+    // Update the new PIN if provided
+    if (newPin) {
+      foundUser.pin = newPin; // Update the user's PIN
+      await update(foundUser._id, "pin", foundUser.pin); // Save PIN (if you have a separate update mechanism)
+      return res.status(200).json({ status: "success", message: "PIN updated successfully" });
+    }
+
+    return res.status(400).json({ status: "failed", message: "Missing Parameters" });
+  } catch (err: any) {
+    next(err);
+  }
+};
+
+export const forgotPassword = async (
+  req: ProtectedRequest,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const user = req.user;
+
+    if (!user) throw new UnauthorizedError(`Unauthorized! Please log in as user to continue`)
+
+    const foundUser: any = await find({ _id: user._id}, "one");
+
+    if (!foundUser)
+      throw new NotFoundError(`No user found`);
+
+    let userPassword = "";
+
+    if (isUser(foundUser, "password") && foundUser.password) userPassword = foundUser.password;
+
+    // Decoding password
+    const decrypted = decodePassword(userPassword);
+
+    if (oldPassword !== decrypted) throw new UnauthorizedError(`Invalid credentials`)
+
+    const encrypted = encryptPassword(newPassword);
+
+    foundUser.password = encrypted;
+    foundUser.save();
+
+    return res.status(200).json({status: "success", data: foundUser});
+  } catch (err: any) {
+    next(err)
   }
 }
 
