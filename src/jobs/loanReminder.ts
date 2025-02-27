@@ -42,19 +42,30 @@ export async function checkLoansAndSendEmails() {
     const todayStr = formatDate(today);
     const tomorrowStr = formatDate(tomorrow);
 
-    const upcomingLoans = await findLoan({ repayment_date: tomorrowStr }, "many");
+    const upcomingLoans = await findLoan(
+      {
+        repayment_date: tomorrowStr,
+        outstanding: { $gt: 0 } // Condition for outstanding > 0
+      },
+      "many"
+    );    
 
     const overdueLoans = await findLoan(
       {
         $expr: {
-          $lte: [
-            { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } }, 
-            new Date()
+          $and: [
+            {
+              $lte: [
+                { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } }, 
+                new Date()
+              ]
+            },
+            { $gt: ["$outstanding", 0] } // Condition for outstanding > 0
           ]
         }
       },
       "many"
-    );
+    );    
 
     console.log({ upcomingLoans, overdueLoans, tomorrowStr, todayStr });
 
@@ -64,7 +75,7 @@ export async function checkLoansAndSendEmails() {
           const user = await find({ _id: loan.userId }, "one");
           console.log({ loan });
           if(user && !Array.isArray(user))
-              await sendEmail(user.email, 'Loan Due Soon', `Your loan is due on ${loan.repayment_date}. Please make your payment.`);
+            await sendEmail(user.email, 'Loan Due Soon', `Your loan is due on ${loan.repayment_date}. Please make your payment.`);
       }
     }
 
@@ -153,6 +164,43 @@ export async function checkLoansAndSendEmails() {
 
               await sendEmail(user.email, 'Loan Overdue', `Your loan was due on ${loan.repayment_date}. Please make the repayment immediately.`);
           }
+      }
+    }
+  } catch(error: any) {
+    console.log({ error })
+  }
+}
+
+export async function addOnePercentToOverdueLoan() {
+  try {
+    console.log('Checking loans and adding percentage...');
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+
+    const overdueLoans = await findLoan(
+      {
+        $expr: {
+          $and: [
+            {
+              $lte: [
+                { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } }, 
+                new Date()
+              ]
+            },
+            { $gt: ["$outstanding", 0] } // Condition for outstanding > 0
+          ]
+        }
+      },
+      "many"
+    ); 
+
+    if(overdueLoans && Array.isArray(overdueLoans) && overdueLoans.length > 0) {
+      console.log("In Overdue Loans");
+      for (const loan of overdueLoans) {
+        await updateLoan(loan._id, { 
+          outstanding: loan.outstanding + (Number(loan.amount) * 0.01)
+        });
       }
     }
   } catch(error: any) {
