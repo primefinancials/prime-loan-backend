@@ -498,17 +498,17 @@ export const updatePasswordOrPin = async (
       const hashedPassword = await encryptPassword(newPassword); // Hashing the password with salt rounds
       foundUser.password = hashedPassword; // Update the user's password
       await update(foundUser._id, "password", foundUser.password); // Save password
-      return res.status(200).json({ status: "success", message: "Password updated successfully" });
+      return res.status(200).json({ status: "success", message: "Password updated successfully", data: true });
     }
 
     // Update the new PIN if provided
     if (newPin) {
       foundUser.pin = newPin; // Update the user's PIN
       await update(foundUser._id, "pin", foundUser.pin); // Save PIN (if you have a separate update mechanism)
-      return res.status(200).json({ status: "success", message: "PIN updated successfully" });
+      return res.status(200).json({ status: "success", message: "PIN updated successfully", data: true });
     }
 
-    return res.status(400).json({ status: "failed", message: "Missing Parameters", data: true });
+    return res.status(400).json({ status: "failed", message: "Missing Parameters" });
   } catch (err: any) {
     next(err);
   }
