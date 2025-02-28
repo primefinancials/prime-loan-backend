@@ -410,14 +410,12 @@ const updatePasswordOrPin = (req, res, next) => __awaiter(void 0, void 0, void 0
         // Hash the new password if provided
         if (newPassword) {
             const hashedPassword = yield (0, utils_1.encryptPassword)(newPassword); // Hashing the password with salt rounds
-            foundUser.password = hashedPassword; // Update the user's password
-            yield update(foundUser._id, "password", foundUser.password); // Save password
+            yield update(foundUser._id, "password", hashedPassword); // Save password
             return res.status(200).json({ status: "success", message: "Password updated successfully", data: true });
         }
         // Update the new PIN if provided
         if (newPin) {
-            foundUser.pin = newPin; // Update the user's PIN
-            yield update(foundUser._id, "pin", foundUser.pin); // Save PIN (if you have a separate update mechanism)
+            yield update(foundUser._id, "pin", newPin); // Save PIN (if you have a separate update mechanism)
             return res.status(200).json({ status: "success", message: "PIN updated successfully", data: true });
         }
         return res.status(400).json({ status: "failed", message: "Missing Parameters" });
