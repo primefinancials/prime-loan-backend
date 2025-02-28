@@ -415,7 +415,7 @@ const updatePasswordOrPin = (req, res, next) => __awaiter(void 0, void 0, void 0
         }
         // Update the new PIN if provided
         if (newPin) {
-            yield update(foundUser._id, "pin", newPin); // Save PIN (if you have a separate update mechanism)
+            yield update(foundUser._id, "user_metadate.pin", newPin); // Save PIN (if you have a separate update mechanism)
             return res.status(200).json({ status: "success", message: "PIN updated successfully", data: true });
         }
         return res.status(400).json({ status: "failed", message: "Missing Parameters" });

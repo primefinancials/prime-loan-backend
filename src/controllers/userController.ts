@@ -502,7 +502,7 @@ export const updatePasswordOrPin = async (
 
     // Update the new PIN if provided
     if (newPin) {
-      await update(foundUser._id, "pin", newPin); // Save PIN (if you have a separate update mechanism)
+      await update(foundUser._id, "user_metadate.pin", newPin); // Save PIN (if you have a separate update mechanism)
       return res.status(200).json({ status: "success", message: "PIN updated successfully", data: true });
     }
 
