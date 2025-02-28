@@ -373,30 +373,29 @@ export const initiateReset = async (
   try {
     const { email, type } = req.body;
 
-    if (!email)
-      throw new BadRequestError(`Provide a valid email`);
-
-    if (!type)
-      throw new BadRequestError(`Provide a valid type`);
+    if (!email) throw new BadRequestError("Provide a valid email");
+    if (!type) throw new BadRequestError("Provide a valid type");
 
     const foundUser: any = await find({ email }, "one");
-
-    if (!foundUser)
-      throw new NotFoundError(`No user found`);
+    if (!foundUser) throw new NotFoundError("No user found");
 
     const pin = Math.floor(100000 + Math.random() * 900000);
 
+    // Initialize updates array if it doesn't exist
     const updates = [
-      ...foundUser.updates, 
+      ...(foundUser.updates || []), // Handle undefined updates array
       {
         pin,
         type,
         status: "awaiting_validation",
-        created_at: new Date().toLocaleDateString()
+        created_at: new Date().toISOString() // Include full timestamp
       }
-    ]
+    ];
 
-    await sendEmail(email, "Reset Your Password – OTP Verification Code", `
+    await sendEmail(
+      email,
+      "Reset Your Password – OTP Verification Code",
+      `
       Dear ${foundUser.user_metadata.first_name},
 
       We received a request to reset your password. Use the One-Time Password (OTP) below to proceed:
@@ -408,15 +407,20 @@ export const initiateReset = async (
       Stay secure,
       Prime Finance Support Team
       support@primefinance.live | primefinance.live
-    `)
+      `
+    );
 
     await update(foundUser._id, "updates", updates);
 
-    return res.status(200).json({ status: "success", message: "OTP initiated successfully", data: true });
+    return res.status(200).json({
+      status: "success",
+      message: "OTP initiated successfully",
+      data: true
+    });
   } catch (err: any) {
-    next(err)
+    next(err);
   }
-}
+};
 
 export const validateReset = async (
   req: Request,

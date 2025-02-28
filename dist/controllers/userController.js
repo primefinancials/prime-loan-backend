@@ -313,20 +313,21 @@ const initiateReset = (req, res, next) => __awaiter(void 0, void 0, void 0, func
     try {
         const { email, type } = req.body;
         if (!email)
-            throw new exceptions_1.BadRequestError(`Provide a valid email`);
+            throw new exceptions_1.BadRequestError("Provide a valid email");
         if (!type)
-            throw new exceptions_1.BadRequestError(`Provide a valid type`);
+            throw new exceptions_1.BadRequestError("Provide a valid type");
         const foundUser = yield find({ email }, "one");
         if (!foundUser)
-            throw new exceptions_1.NotFoundError(`No user found`);
+            throw new exceptions_1.NotFoundError("No user found");
         const pin = Math.floor(100000 + Math.random() * 900000);
+        // Initialize updates array if it doesn't exist
         const updates = [
-            ...foundUser.updates,
+            ...(foundUser.updates || []), // Handle undefined updates array
             {
                 pin,
                 type,
                 status: "awaiting_validation",
-                created_at: new Date().toLocaleDateString()
+                created_at: new Date().toISOString() // Include full timestamp
             }
         ];
         yield (0, loanReminder_1.sendEmail)(email, "Reset Your Password – OTP Verification Code", `
@@ -341,9 +342,13 @@ const initiateReset = (req, res, next) => __awaiter(void 0, void 0, void 0, func
       Stay secure,
       Prime Finance Support Team
       support@primefinance.live | primefinance.live
-    `);
+      `);
         yield update(foundUser._id, "updates", updates);
-        return res.status(200).json({ status: "success", message: "OTP initiated successfully", data: true });
+        return res.status(200).json({
+            status: "success",
+            message: "OTP initiated successfully",
+            data: true
+        });
     }
     catch (err) {
         next(err);
