@@ -438,22 +438,15 @@ export const validateReset = async (
     
     if (!lastUpdate) throw new BadRequestError('No reset request found');
 
-    // Get time components for both dates
     const currentTime = new Date();
     const createdAt = new Date(lastUpdate.created_at);
     
-    // Calculate absolute time difference in milliseconds
+    // Calculate time difference in milliseconds
     const timeDiff = currentTime.getTime() - createdAt.getTime();
+    console.log(`Time difference: timeDiff: ${timeDiff}, 10min: ${10 * 60 * 1000}`);
 
-    // Break down milliseconds into time components
-    const seconds = Math.floor(timeDiff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-
-    console.log(`Time difference: ${hours}h ${minutes%60}m ${seconds%60}s`);
-
-    // Check if within 10 minute window
-    if (lastUpdate.pin !== pin || minutes > 10) {
+    // Check if PIN is correct and within 10-minute window
+    if (lastUpdate.pin !== pin || timeDiff > 10 * 60 * 1000) { // 10 minutes in milliseconds
       lastUpdate.status = "invalid";
       await update(foundUser._id, "updates", updates);
       throw new BadRequestError('Invalid or expired OTP');
