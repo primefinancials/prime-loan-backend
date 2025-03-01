@@ -39,25 +39,6 @@ function checkLoansAndSendEmails() {
         var _a;
         try {
             console.log('Checking loans and sending emails...');
-            const today = new Date();
-            const tomorrow = new Date();
-            tomorrow.setDate(today.getDate() + 1);
-            const formatDate = (date) => {
-                // Format the date as "DD MMM YYYY"
-                const options = {
-                    day: '2-digit',
-                    month: 'short',
-                    year: 'numeric',
-                };
-                return date.toLocaleDateString('en-US', options);
-            };
-            const todayStr = formatDate(today);
-            const tomorrowStr = formatDate(tomorrow);
-            const upcomingLoans = yield findLoan({
-                repayment_date: tomorrowStr,
-                outstanding: { $gt: 0 }, // Condition for outstanding > 0
-                status: "accepted"
-            }, "many");
             const overdueLoans = yield findLoan({
                 $expr: {
                     $and: [
@@ -72,15 +53,6 @@ function checkLoansAndSendEmails() {
                 },
                 status: "accepted"
             }, "many");
-            if (upcomingLoans && Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
-                console.log("In Upcoming Loans");
-                for (const loan of upcomingLoans) {
-                    const user = yield find({ _id: loan.userId }, "one");
-                    console.log({ loan });
-                    if (user && !Array.isArray(user))
-                        yield sendEmail(user.email, 'Loan Due Soon', `Your loan is due on ${loan.repayment_date}. Please make your payment.`);
-                }
-            }
             if (overdueLoans && Array.isArray(overdueLoans) && overdueLoans.length > 0) {
                 console.log("In Overdue Loans");
                 for (const loan of overdueLoans) {
@@ -161,6 +133,17 @@ function addOnePercentToOverdueLoan() {
             const today = new Date();
             const tomorrow = new Date();
             tomorrow.setDate(today.getDate() + 1);
+            const formatDate = (date) => {
+                // Format the date as "DD MMM YYYY"
+                const options = {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                };
+                return date.toLocaleDateString('en-US', options);
+            };
+            const todayStr = formatDate(today);
+            const tomorrowStr = formatDate(tomorrow);
             const overdueLoans = yield findLoan({
                 $expr: {
                     $and: [
@@ -174,6 +157,20 @@ function addOnePercentToOverdueLoan() {
                     ]
                 }
             }, "many");
+            const upcomingLoans = yield findLoan({
+                repayment_date: tomorrowStr,
+                outstanding: { $gt: 0 }, // Condition for outstanding > 0
+                status: "accepted"
+            }, "many");
+            if (upcomingLoans && Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
+                console.log("In Upcoming Loans");
+                for (const loan of upcomingLoans) {
+                    const user = yield find({ _id: loan.userId }, "one");
+                    console.log({ loan });
+                    if (user && !Array.isArray(user))
+                        yield sendEmail(user.email, 'Loan Due Soon', `Your loan is due on ${loan.repayment_date}. Please make your payment.`);
+                }
+            }
             if (overdueLoans && Array.isArray(overdueLoans) && overdueLoans.length > 0) {
                 console.log("In Overdue Loans");
                 for (const loan of overdueLoans) {
