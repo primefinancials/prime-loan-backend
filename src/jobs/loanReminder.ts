@@ -45,7 +45,8 @@ export async function checkLoansAndSendEmails() {
     const upcomingLoans = await findLoan(
       {
         repayment_date: tomorrowStr,
-        outstanding: { $gt: 0 } // Condition for outstanding > 0
+        outstanding: { $gt: 0 }, // Condition for outstanding > 0
+        status: "accepted"
       },
       "many"
     );    
@@ -56,18 +57,17 @@ export async function checkLoansAndSendEmails() {
           $and: [
             {
               $lte: [
-                { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } }, 
+                { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } },  // condition for repayment_date >= current_date
                 new Date()
               ]
             },
             { $gt: ["$outstanding", 0] } // Condition for outstanding > 0
           ]
-        }
+        },
+        status: "accepted"
       },
       "many"
     );    
-
-    console.log({ upcomingLoans, overdueLoans, tomorrowStr, todayStr });
 
     if(upcomingLoans && Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
       console.log("In Upcoming Loans");
@@ -86,7 +86,6 @@ export async function checkLoansAndSendEmails() {
           console.log({ loan });
 
           if(user && !Array.isArray(user)) {
-              await sendEmail(user.email, 'Loan Overdue', `Your loan was due on ${loan.repayment_date}. Please make the repayment immediately.`);
               const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
               console.log({ account, data: account.data.data })
           
@@ -98,7 +97,7 @@ export async function checkLoansAndSendEmails() {
                   const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
                   const ref =`Prime-Finance-${generateRandomString(9)}`;
 
-                  const amount = Number(user.user_metadata.wallet) >= Number(loan.repayment_amount)? Number(loan.repayment_amount) : Number(user.user_metadata.wallet);
+                  const amount = Number(user.user_metadata.wallet) >= Number(loan.outstanding)? Number(loan.outstanding) : Number(user.user_metadata.wallet);
           
                   const body = {
                       fromAccount: userAccountNumber,
@@ -153,7 +152,7 @@ export async function checkLoansAndSendEmails() {
                               bank: "Prime Finance - VFD",
                               receiver: accountNo,
                               account_number: accountNo,
-                              outstanding: 0.0,
+                              outstanding:  Number(loan.outstanding) - Number(amount),
                               session_id: ref,
                               status: transactionStatus,
                               message: response.data.status,
@@ -161,8 +160,6 @@ export async function checkLoansAndSendEmails() {
                       )
                   }
               }
-
-              await sendEmail(user.email, 'Loan Overdue', `Your loan was due on ${loan.repayment_date}. Please make the repayment immediately.`);
           }
       }
     }
@@ -201,6 +198,11 @@ export async function addOnePercentToOverdueLoan() {
         await updateLoan(loan._id, { 
           outstanding: loan.outstanding + (Number(loan.amount) * 0.01)
         });
+
+        const user = await find({ _id: loan.userId }, "one");
+
+        if(user && !Array.isArray(user))
+          await sendEmail(user.email, 'Loan Overdue', `Your loan was due on ${loan.repayment_date}. Please make the repayment immediately.`);
       }
     }
   } catch(error: any) {

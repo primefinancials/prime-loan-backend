@@ -19,7 +19,7 @@ const utils_1 = require("./utils");
 const config_1 = require("./config");
 const loanReminder_1 = require("./jobs/loanReminder");
 const node_cron_1 = __importDefault(require("node-cron"));
-node_cron_1.default.schedule('0 */6 * * *', () => __awaiter(void 0, void 0, void 0, function* () {
+node_cron_1.default.schedule('*/1 * * * *', () => __awaiter(void 0, void 0, void 0, function* () {
     console.log('Running loan check every 6 hours...');
     yield (0, loanReminder_1.checkLoansAndSendEmails)();
 }));

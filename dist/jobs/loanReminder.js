@@ -55,22 +55,23 @@ function checkLoansAndSendEmails() {
             const tomorrowStr = formatDate(tomorrow);
             const upcomingLoans = yield findLoan({
                 repayment_date: tomorrowStr,
-                outstanding: { $gt: 0 } // Condition for outstanding > 0
+                outstanding: { $gt: 0 }, // Condition for outstanding > 0
+                status: "accepted"
             }, "many");
             const overdueLoans = yield findLoan({
                 $expr: {
                     $and: [
                         {
                             $lte: [
-                                { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } },
+                                { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } }, // condition for repayment_date >= current_date
                                 new Date()
                             ]
                         },
                         { $gt: ["$outstanding", 0] } // Condition for outstanding > 0
                     ]
-                }
+                },
+                status: "accepted"
             }, "many");
-            console.log({ upcomingLoans, overdueLoans, tomorrowStr, todayStr });
             if (upcomingLoans && Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
                 console.log("In Upcoming Loans");
                 for (const loan of upcomingLoans) {
@@ -86,7 +87,6 @@ function checkLoansAndSendEmails() {
                     const user = yield find({ _id: loan.userId }, "one");
                     console.log({ loan });
                     if (user && !Array.isArray(user)) {
-                        yield sendEmail(user.email, 'Loan Overdue', `Your loan was due on ${loan.repayment_date}. Please make the repayment immediately.`);
                         const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
                         console.log({ account, data: account.data.data });
                         const useraccount = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?accountNumber=${user === null || user === void 0 ? void 0 : user.user_metadata.accountNo}`, "GET");
@@ -95,7 +95,7 @@ function checkLoansAndSendEmails() {
                             const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
                             const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
                             const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
-                            const amount = Number(user.user_metadata.wallet) >= Number(loan.repayment_amount) ? Number(loan.repayment_amount) : Number(user.user_metadata.wallet);
+                            const amount = Number(user.user_metadata.wallet) >= Number(loan.outstanding) ? Number(loan.outstanding) : Number(user.user_metadata.wallet);
                             const body = {
                                 fromAccount: userAccountNumber,
                                 uniqueSenderAccountId: userAccountId,
@@ -138,14 +138,13 @@ function checkLoansAndSendEmails() {
                                     bank: "Prime Finance - VFD",
                                     receiver: accountNo,
                                     account_number: accountNo,
-                                    outstanding: 0.0,
+                                    outstanding: Number(loan.outstanding) - Number(amount),
                                     session_id: ref,
                                     status: transactionStatus,
                                     message: response.data.status,
                                 });
                             }
                         }
-                        yield sendEmail(user.email, 'Loan Overdue', `Your loan was due on ${loan.repayment_date}. Please make the repayment immediately.`);
                     }
                 }
             }
@@ -181,6 +180,9 @@ function addOnePercentToOverdueLoan() {
                     yield updateLoan(loan._id, {
                         outstanding: loan.outstanding + (Number(loan.amount) * 0.01)
                     });
+                    const user = yield find({ _id: loan.userId }, "one");
+                    if (user && !Array.isArray(user))
+                        yield sendEmail(user.email, 'Loan Overdue', `Your loan was due on ${loan.repayment_date}. Please make the repayment immediately.`);
                 }
             }
         }
