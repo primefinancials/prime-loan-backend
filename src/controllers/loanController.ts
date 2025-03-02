@@ -350,6 +350,14 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
         const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
         const ref =`Prime-Finance-${generateRandomString(9)}`;
 
+        if(userAccountBalance) {
+          await update(
+            user._id,
+            "user_metadata.wallet",
+            String(userAccountBalance)
+          );
+        }
+
         const body = {
           fromAccount: userAccountNumber,
           uniqueSenderAccountId: userAccountId,

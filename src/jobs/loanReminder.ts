@@ -23,31 +23,51 @@ const { find: findLoan, update: updateLoan } = new LoanService();
 
 export async function checkLoansAndSendEmails() {
   try {
-    console.log('Checking loans and sending emails...');
+    console.log('Checking overdue loans');
 
-    const overdueLoans = await findLoan(
-      {
-        $expr: {
-          $and: [
-            {
-              $lte: [
-                { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } },  // condition for repayment_date >= current_date
-                new Date()
-              ]
-            },
-            { $gt: ["$outstanding", 0] } // Condition for outstanding > 0
-          ]
-        },
-        status: "accepted"
-      },
-      "many"
-    );  
+    const overdueLoans = await findLoan({ 
+      $expr: {
+        $and: [
+          {
+            $lt: [
+              { 
+                $dateFromString: { 
+                  dateString: "$repayment_date", 
+                  format: "%b %d, %Y", // Matches "Mar 02, 2025"
+                  timezone: "UTC"      // Optional: Align with your timezone
+                } 
+              },
+              { 
+                $dateFromParts: { // Get start of today (midnight)
+                  year: { $year: "$$NOW" },
+                  month: { $month: "$$NOW" },
+                  day: { $dayOfMonth: "$$NOW" },
+                  timezone: "UTC" // Match your timezone
+                } 
+              }
+            ]
+          },
+          { $gt: ["$outstanding", 0] },
+          { $eq: ["$status", "accepted"] }
+        ]
+      }
+     }, "many");
+
+     console.log({ overdueLoans })
+
+    // const overdueLoans = (loans && Array.isArray(loans) && loans.length > 0)? loans.map((loan) => {
+    //   const repayment_date = new Date(loan.repayment_date);
+    //   const todays_date = new Date();
+
+    //   console.log({ repayment_date, todays_date })
+
+    //   return(loan);
+    // }) : []
 
     if(overdueLoans && Array.isArray(overdueLoans) && overdueLoans.length > 0) {
       console.log("In Overdue Loans");
       for (const loan of overdueLoans) {
           const user = await find({ _id: loan.userId }, "one");
-          console.log({ loan });
 
           if(user && !Array.isArray(user)) {
               const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
@@ -126,6 +146,8 @@ export async function checkLoansAndSendEmails() {
               }
           }
       }
+
+      console.log({ overdueLoans, todays_date: new Date(new Date().toISOString()) })
     }
   } catch(error: any) {
     console.log({ error })
@@ -158,17 +180,23 @@ export async function addOnePercentToOverdueLoan() {
         $expr: {
           $and: [
             {
-              $lte: [
-                { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } }, 
-                new Date()
+              $lt: [ // Use $lt (less than) instead of $lte (less than or equal)
+                { 
+                  $dateFromString: { 
+                    dateString: "$repayment_date", 
+                    format: "%b %d, %Y" // Matches "Mar 02, 2025"
+                  } 
+                },
+                new Date(new Date().toISOString()) // Convert to UTC
               ]
             },
-            { $gt: ["$outstanding", 0] } // Condition for outstanding > 0
+            { $gt: ["$outstanding", 0] }, // Outstanding balance > 0
+            { $eq: ["$status", "accepted"] } // Status is "accepted"
           ]
         }
       },
       "many"
-    ); 
+    );
 
     const upcomingLoans = await findLoan(
       {
@@ -183,7 +211,6 @@ export async function addOnePercentToOverdueLoan() {
       console.log("In Upcoming Loans");
       for (const loan of upcomingLoans) {
           const user = await find({ _id: loan.userId }, "one");
-          console.log({ loan });
           if(user && !Array.isArray(user))
             await sendEmail(user.email, 'Loan Due Soon', `Your loan is due on ${loan.repayment_date}. Please make your payment.`);
       }
@@ -193,7 +220,7 @@ export async function addOnePercentToOverdueLoan() {
       console.log("In Overdue Loans");
       for (const loan of overdueLoans) {
         await updateLoan(loan._id, { 
-          outstanding: loan.outstanding + (Number(loan.amount) * 0.01)
+          outstanding: Number(loan.outstanding) + (Number(loan.amount) * 0.01)
         });
 
         const user = await find({ _id: loan.userId }, "one");

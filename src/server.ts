@@ -7,16 +7,14 @@ import { checkLoansAndSendEmails, addOnePercentToOverdueLoan } from "./jobs/loan
 import cron from 'node-cron';
 
 cron.schedule('*/1 * * * *', async () => {
-  console.log('Running loan check every 6 hours...');
+  console.log('Running loan check...');
   await checkLoansAndSendEmails();
 });
 
-cron.schedule('0 0 * * *', async () => {
-  console.log('Running loan check once a day...');
-  await addOnePercentToOverdueLoan();
-});
-
-console.log('Cron job scheduled to check loans daily at midnight.');
+// cron.schedule('0 0 * * *', async () => {
+//   console.log('Running loan check once a day...');
+//   await addOnePercentToOverdueLoan();
+// });
 
 const startApp = async () => {
   const app = express();

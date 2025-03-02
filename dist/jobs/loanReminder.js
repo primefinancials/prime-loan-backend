@@ -38,26 +38,45 @@ function checkLoansAndSendEmails() {
     return __awaiter(this, void 0, void 0, function* () {
         var _a;
         try {
-            console.log('Checking loans and sending emails...');
+            console.log('Checking overdue loans');
             const overdueLoans = yield findLoan({
                 $expr: {
                     $and: [
                         {
-                            $lte: [
-                                { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } }, // condition for repayment_date >= current_date
-                                new Date()
+                            $lt: [
+                                {
+                                    $dateFromString: {
+                                        dateString: "$repayment_date",
+                                        format: "%b %d, %Y", // Matches "Mar 02, 2025"
+                                        timezone: "UTC" // Optional: Align with your timezone
+                                    }
+                                },
+                                {
+                                    $dateFromParts: {
+                                        year: { $year: "$$NOW" },
+                                        month: { $month: "$$NOW" },
+                                        day: { $dayOfMonth: "$$NOW" },
+                                        timezone: "UTC" // Match your timezone
+                                    }
+                                }
                             ]
                         },
-                        { $gt: ["$outstanding", 0] } // Condition for outstanding > 0
+                        { $gt: ["$outstanding", 0] },
+                        { $eq: ["$status", "accepted"] }
                     ]
-                },
-                status: "accepted"
+                }
             }, "many");
+            console.log({ overdueLoans });
+            // const overdueLoans = (loans && Array.isArray(loans) && loans.length > 0)? loans.map((loan) => {
+            //   const repayment_date = new Date(loan.repayment_date);
+            //   const todays_date = new Date();
+            //   console.log({ repayment_date, todays_date })
+            //   return(loan);
+            // }) : []
             if (overdueLoans && Array.isArray(overdueLoans) && overdueLoans.length > 0) {
                 console.log("In Overdue Loans");
                 for (const loan of overdueLoans) {
                     const user = yield find({ _id: loan.userId }, "one");
-                    console.log({ loan });
                     if (user && !Array.isArray(user)) {
                         const account = yield (0, httpClient_1.httpClient)(`/wallet2/account/enquiry?`, "GET");
                         console.log({ account, data: account.data.data });
@@ -119,6 +138,7 @@ function checkLoansAndSendEmails() {
                         }
                     }
                 }
+                console.log({ overdueLoans, todays_date: new Date(new Date().toISOString()) });
             }
         }
         catch (error) {
@@ -148,12 +168,18 @@ function addOnePercentToOverdueLoan() {
                 $expr: {
                     $and: [
                         {
-                            $lte: [
-                                { $dateFromString: { dateString: "$repayment_date", format: "%d %b %Y", onError: null, onNull: null } },
-                                new Date()
+                            $lt: [
+                                {
+                                    $dateFromString: {
+                                        dateString: "$repayment_date",
+                                        format: "%b %d, %Y" // Matches "Mar 02, 2025"
+                                    }
+                                },
+                                new Date(new Date().toISOString()) // Convert to UTC
                             ]
                         },
-                        { $gt: ["$outstanding", 0] } // Condition for outstanding > 0
+                        { $gt: ["$outstanding", 0] }, // Outstanding balance > 0
+                        { $eq: ["$status", "accepted"] } // Status is "accepted"
                     ]
                 }
             }, "many");
@@ -166,7 +192,6 @@ function addOnePercentToOverdueLoan() {
                 console.log("In Upcoming Loans");
                 for (const loan of upcomingLoans) {
                     const user = yield find({ _id: loan.userId }, "one");
-                    console.log({ loan });
                     if (user && !Array.isArray(user))
                         yield sendEmail(user.email, 'Loan Due Soon', `Your loan is due on ${loan.repayment_date}. Please make your payment.`);
                 }
@@ -175,7 +200,7 @@ function addOnePercentToOverdueLoan() {
                 console.log("In Overdue Loans");
                 for (const loan of overdueLoans) {
                     yield updateLoan(loan._id, {
-                        outstanding: loan.outstanding + (Number(loan.amount) * 0.01)
+                        outstanding: Number(loan.outstanding) + (Number(loan.amount) * 0.01)
                     });
                     const user = yield find({ _id: loan.userId }, "one");
                     if (user && !Array.isArray(user))

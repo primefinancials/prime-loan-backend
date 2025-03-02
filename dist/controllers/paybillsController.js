@@ -89,6 +89,9 @@ const payBill = (req, res, next) => __awaiter(void 0, void 0, void 0, function* 
             const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
             const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
             const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
+            if (userAccountBalance) {
+                yield update(user._id, "user_metadata.wallet", String(userAccountBalance));
+            }
             const body = {
                 fromAccount: userAccountNumber,
                 uniqueSenderAccountId: userAccountId,
