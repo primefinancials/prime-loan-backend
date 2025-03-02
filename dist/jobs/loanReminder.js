@@ -172,22 +172,43 @@ function addOnePercentToOverdueLoan() {
                                 {
                                     $dateFromString: {
                                         dateString: "$repayment_date",
-                                        format: "%b %d, %Y" // Matches "Mar 02, 2025"
+                                        format: "%b %d, %Y", // Matches "Mar 02, 2025"
+                                        timezone: "UTC" // Optional: Align with your timezone
                                     }
                                 },
-                                new Date(new Date().toISOString()) // Convert to UTC
+                                {
+                                    $dateFromParts: {
+                                        year: { $year: "$$NOW" },
+                                        month: { $month: "$$NOW" },
+                                        day: { $dayOfMonth: "$$NOW" },
+                                        timezone: "UTC" // Match your timezone
+                                    }
+                                }
                             ]
                         },
-                        { $gt: ["$outstanding", 0] }, // Outstanding balance > 0
-                        { $eq: ["$status", "accepted"] } // Status is "accepted"
+                        { $gt: ["$outstanding", 0] },
+                        { $eq: ["$status", "accepted"] }
                     ]
                 }
+            }, "many");
+            const dueLoans = yield findLoan({
+                repayment_date: todayStr,
+                outstanding: { $gt: 0 }, // Condition for outstanding > 0
+                status: "accepted"
             }, "many");
             const upcomingLoans = yield findLoan({
                 repayment_date: tomorrowStr,
                 outstanding: { $gt: 0 }, // Condition for outstanding > 0
                 status: "accepted"
             }, "many");
+            if (dueLoans && Array.isArray(dueLoans) && dueLoans.length > 0) {
+                console.log("In Upcoming Loans");
+                for (const loan of dueLoans) {
+                    const user = yield find({ _id: loan.userId }, "one");
+                    if (user && !Array.isArray(user))
+                        yield sendEmail(user.email, 'Loan is Due Today', `Your loan is due on Today. Please make your payment.`);
+                }
+            }
             if (upcomingLoans && Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
                 console.log("In Upcoming Loans");
                 for (const loan of upcomingLoans) {
@@ -217,7 +238,7 @@ function sendEmail(to, subject, text) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const info = yield transporter.sendMail({
-                from: "brad@primefinance.live", // Must match Mailgun's verified domain
+                from: "primefinance@primefinance.live", // Must match Mailgun's verified domain
                 to,
                 subject,
                 text,

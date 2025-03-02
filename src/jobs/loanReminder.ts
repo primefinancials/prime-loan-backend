@@ -180,20 +180,37 @@ export async function addOnePercentToOverdueLoan() {
         $expr: {
           $and: [
             {
-              $lt: [ // Use $lt (less than) instead of $lte (less than or equal)
+              $lt: [
                 { 
                   $dateFromString: { 
                     dateString: "$repayment_date", 
-                    format: "%b %d, %Y" // Matches "Mar 02, 2025"
+                    format: "%b %d, %Y", // Matches "Mar 02, 2025"
+                    timezone: "UTC"      // Optional: Align with your timezone
                   } 
                 },
-                new Date(new Date().toISOString()) // Convert to UTC
+                { 
+                  $dateFromParts: { // Get start of today (midnight)
+                    year: { $year: "$$NOW" },
+                    month: { $month: "$$NOW" },
+                    day: { $dayOfMonth: "$$NOW" },
+                    timezone: "UTC" // Match your timezone
+                  } 
+                }
               ]
             },
-            { $gt: ["$outstanding", 0] }, // Outstanding balance > 0
-            { $eq: ["$status", "accepted"] } // Status is "accepted"
+            { $gt: ["$outstanding", 0] },
+            { $eq: ["$status", "accepted"] }
           ]
         }
+      },
+      "many"
+    );
+
+    const dueLoans = await findLoan(
+      {
+        repayment_date: todayStr,
+        outstanding: { $gt: 0 }, // Condition for outstanding > 0
+        status: "accepted"
       },
       "many"
     );
@@ -206,6 +223,15 @@ export async function addOnePercentToOverdueLoan() {
       },
       "many"
     );   
+
+    if(dueLoans && Array.isArray(dueLoans) && dueLoans.length > 0) {
+      console.log("In Upcoming Loans");
+      for (const loan of dueLoans) {
+          const user = await find({ _id: loan.userId }, "one");
+          if(user && !Array.isArray(user))
+            await sendEmail(user.email, 'Loan is Due Today', `Your loan is due on Today. Please make your payment.`);
+      }
+    }
 
     if(upcomingLoans && Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
       console.log("In Upcoming Loans");
@@ -237,7 +263,7 @@ export async function addOnePercentToOverdueLoan() {
 export async function sendEmail(to: string, subject: string, text: string) {
   try {
     const info = await transporter.sendMail({
-      from: "brad@primefinance.live", // Must match Mailgun's verified domain
+      from: "primefinance@primefinance.live", // Must match Mailgun's verified domain
       to,
       subject,
       text,

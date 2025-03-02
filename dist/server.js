@@ -19,14 +19,14 @@ const utils_1 = require("./utils");
 const config_1 = require("./config");
 const loanReminder_1 = require("./jobs/loanReminder");
 const node_cron_1 = __importDefault(require("node-cron"));
-node_cron_1.default.schedule('*/1 * * * *', () => __awaiter(void 0, void 0, void 0, function* () {
+node_cron_1.default.schedule('*/30 * * * *', () => __awaiter(void 0, void 0, void 0, function* () {
     console.log('Running loan check...');
     yield (0, loanReminder_1.checkLoansAndSendEmails)();
 }));
-// cron.schedule('0 0 * * *', async () => {
-//   console.log('Running loan check once a day...');
-//   await addOnePercentToOverdueLoan();
-// });
+node_cron_1.default.schedule('0 0 * * *', () => __awaiter(void 0, void 0, void 0, function* () {
+    console.log('Running loan check once a day...');
+    yield (0, loanReminder_1.addOnePercentToOverdueLoan)();
+}));
 const startApp = () => __awaiter(void 0, void 0, void 0, function* () {
     const app = (0, express_1.default)();
     yield (0, utils_1.connectToDB)();
