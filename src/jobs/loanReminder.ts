@@ -72,7 +72,7 @@ export async function checkLoansAndSendEmails() {
                   const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
                   const ref =`Prime-Finance-${generateRandomString(9)}`;
 
-                  const amount = Number(user.user_metadata.wallet) >= Number(loan.outstanding)? (Number(loan.outstanding) + Number(loan.amount) * 0.01) : Number(user.user_metadata.wallet);
+                  const amount = Number(user.user_metadata.wallet) >= Number(loan.outstanding)? Number(loan.outstanding) : Number(user.user_metadata.wallet);
           
                   const body = {
                       fromAccount: userAccountNumber,
