@@ -67,12 +67,6 @@ function checkLoansAndSendEmails() {
                 }
             }, "many");
             console.log({ overdueLoans });
-            // const overdueLoans = (loans && Array.isArray(loans) && loans.length > 0)? loans.map((loan) => {
-            //   const repayment_date = new Date(loan.repayment_date);
-            //   const todays_date = new Date();
-            //   console.log({ repayment_date, todays_date })
-            //   return(loan);
-            // }) : []
             if (overdueLoans && Array.isArray(overdueLoans) && overdueLoans.length > 0) {
                 console.log("In Overdue Loans");
                 for (const loan of overdueLoans) {
@@ -86,7 +80,7 @@ function checkLoansAndSendEmails() {
                             const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
                             const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
                             const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
-                            const amount = Number(user.user_metadata.wallet) >= Number(loan.outstanding) ? Number(loan.outstanding) : Number(user.user_metadata.wallet);
+                            const amount = Number(user.user_metadata.wallet) >= Number(loan.outstanding) ? (Number(loan.outstanding) + Number(loan.amount) * 0.01) : Number(user.user_metadata.wallet);
                             const body = {
                                 fromAccount: userAccountNumber,
                                 uniqueSenderAccountId: userAccountId,

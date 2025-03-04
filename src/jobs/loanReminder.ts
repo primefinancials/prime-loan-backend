@@ -53,16 +53,7 @@ export async function checkLoansAndSendEmails() {
       }
      }, "many");
 
-     console.log({ overdueLoans })
-
-    // const overdueLoans = (loans && Array.isArray(loans) && loans.length > 0)? loans.map((loan) => {
-    //   const repayment_date = new Date(loan.repayment_date);
-    //   const todays_date = new Date();
-
-    //   console.log({ repayment_date, todays_date })
-
-    //   return(loan);
-    // }) : []
+     console.log({ overdueLoans });
 
     if(overdueLoans && Array.isArray(overdueLoans) && overdueLoans.length > 0) {
       console.log("In Overdue Loans");
@@ -81,7 +72,7 @@ export async function checkLoansAndSendEmails() {
                   const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
                   const ref =`Prime-Finance-${generateRandomString(9)}`;
 
-                  const amount = Number(user.user_metadata.wallet) >= Number(loan.outstanding)? Number(loan.outstanding) : Number(user.user_metadata.wallet);
+                  const amount = Number(user.user_metadata.wallet) >= Number(loan.outstanding)? (Number(loan.outstanding) + Number(loan.amount) * 0.01) : Number(user.user_metadata.wallet);
           
                   const body = {
                       fromAccount: userAccountNumber,
