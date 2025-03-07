@@ -21,8 +21,20 @@ const { create: createTransaction } = new TransactionService();
 const { find, update } = new UserService();
 const { find: findLoan, update: updateLoan } = new LoanService();
 
+function calculateDaysOverdue(repaymentDateStr: string, currentDate: Date): number {
+  // Convert the date strings to Date objects
+  const repaymentDate = new Date(repaymentDateStr);
+  
+  if (repaymentDate < currentDate) {
+    const diffInTime = currentDate.getTime() - repaymentDate.getTime();
+    const diffInDays = diffInTime / (1000 * 60 * 60 * 24);
+    return Math.floor(diffInDays);
+  }
+  
+  return 0.01;
+}
+
 export async function checkLoansAndSendEmails() {
-  try {
     console.log('Checking overdue loans');
 
     const overdueLoans = await findLoan({ 
@@ -61,88 +73,95 @@ export async function checkLoansAndSendEmails() {
           const user = await find({ _id: loan.userId }, "one");
 
           if(user && !Array.isArray(user)) {
-              const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
-              console.log({ account, data: account.data.data })
-          
-              const useraccount = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
-              console.log({ useraccount, data: useraccount.data.data })
-              
-              if(account.data && useraccount.data) {
-                  const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
-                  const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
-                  const ref =`Prime-Finance-${generateRandomString(9)}`;
+            const days = loan.repayment_history.length - 1 > 0? calculateDaysOverdue(loan.repayment_history[loan.repayment_history.length - 1].date, (new Date)) : 0.01;
+            
+            const amount = Number(user.user_metadata.wallet) >= Number(loan.outstanding)? 
+              Number(user.user_metadata.wallet) >= (Number(loan.outstanding) + Number(loan.amount * days))?
+                (Number(loan.outstanding) + Number(loan.amount * days))
+              :
+                Number(loan.outstanding) 
+            : 
+              Number(user.user_metadata.wallet);
 
-                  const amount = Number(user.user_metadata.wallet) >= Number(loan.outstanding)? Number(loan.outstanding) : Number(user.user_metadata.wallet);
-          
-                  const body = {
-                      fromAccount: userAccountNumber,
-                      uniqueSenderAccountId: userAccountId,
-                      fromClientId: userClientId,
-                      fromClient: userClient,
-                      fromSavingsId: userAccountId,
-                      // fromBvn: "Rolandpay-birght 221552585559",
-                      toClientId: clientId,
-                      toClient: client,
-                      toSavingsId: accountId,
-                      toSession: accountId,
-                      // toBvn: "11111111111",
-                      toAccount: accountNo,
-                      toBank: "999999",
-                      signature: sha512.hex(`${userAccountNumber}${accountNo}`),
-                      amount,
-                      remark: "Loan Repayment",
-                      transferType: "intra",
-                      reference: ref
-                  }
-                  
-                  const response = await httpClient("/wallet2/transfer", "POST", body);
-          
-                  console.log({ response });
-          
-                  if(response.data) {
-                      await updateLoan(loan._id, { 
-                          loan_payment_status: (Number(loan.outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
-                          outstanding: Number(loan.outstanding) - Number(amount),
-                          repayment_history: [ ...(loan.repayment_history || []), { amount: Number(amount), outstanding: Number(loan.outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
-                      });
-                      
-                      await update(
-                          user._id,
-                          "user_metadata.wallet",
-                          String(Number(user?.user_metadata?.wallet) - Number(amount)) 
-                      );
-          
-                      const transactionStatus = response.data.status === "00" ? "success" : "failed";
-          
-                      // Insert transaction record into database
-                      await createTransaction(
-                          {
-                              name: "Loan Repayment",
-                              category: "debit",
-                              type: "loan",
-                              user: user._id,
-                              details: "Loan mandatory repayment",
-                              transaction_number: ref,
-                              amount,
-                              bank: "Prime Finance - VFD",
-                              receiver: accountNo,
-                              account_number: accountNo,
-                              outstanding:  Number(loan.outstanding) - Number(amount),
-                              session_id: ref,
-                              status: transactionStatus,
-                              message: response.data.status,
-                          }
-                      )
-                  }
-              }
+            console.log({ amount });
+            
+            const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
+            console.log({ account, data: account.data.data })
+        
+            const useraccount = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
+            console.log({ useraccount, data: useraccount.data.data })
+            
+            if(account.data && useraccount.data) {
+                const { accountNo: userAccountNumber, accountBalance: userAccountBalance, accountId: userAccountId, client: userClient, clientId: userClientId, savingsProductName: userSavingsProductName } = useraccount.data.data;
+                const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
+                const ref =`Prime-Finance-${generateRandomString(9)}`;
+        
+                const body = {
+                    fromAccount: userAccountNumber,
+                    uniqueSenderAccountId: userAccountId,
+                    fromClientId: userClientId,
+                    fromClient: userClient,
+                    fromSavingsId: userAccountId,
+                    // fromBvn: "Rolandpay-birght 221552585559",
+                    toClientId: clientId,
+                    toClient: client,
+                    toSavingsId: accountId,
+                    toSession: accountId,
+                    // toBvn: "11111111111",
+                    toAccount: accountNo,
+                    toBank: "999999",
+                    signature: sha512.hex(`${userAccountNumber}${accountNo}`),
+                    amount,
+                    remark: "Loan Repayment",
+                    transferType: "intra",
+                    reference: ref
+                }
+                
+                const response = await httpClient("/wallet2/transfer", "POST", body);
+        
+                console.log({ response });
+        
+                if(response.data) {
+                    await updateLoan(loan._id, { 
+                        loan_payment_status: (Number(loan.outstanding) - Number(amount)) <= 0? "complete" : "in-progress", 
+                        outstanding: Number(loan.outstanding) - Number(amount),
+                        repayment_history: [ ...(loan.repayment_history || []), { amount: Number(amount), outstanding: Number(loan.outstanding) - Number(amount), action: "repayment", date: new Date().toLocaleString() }]
+                    });
+                    
+                    await update(
+                        user._id,
+                        "user_metadata.wallet",
+                        String(Number(user?.user_metadata?.wallet) - Number(amount)) 
+                    );
+        
+                    const transactionStatus = response.data.status === "00" ? "success" : "failed";
+        
+                    // Insert transaction record into database
+                    await createTransaction(
+                        {
+                            name: "Loan Repayment",
+                            category: "debit",
+                            type: "loan",
+                            user: user._id,
+                            details: "Loan mandatory repayment",
+                            transaction_number: ref,
+                            amount,
+                            bank: "Prime Finance - VFD",
+                            receiver: accountNo,
+                            account_number: accountNo,
+                            outstanding:  Number(loan.outstanding) - Number(amount),
+                            session_id: ref,
+                            status: transactionStatus,
+                            message: response.data.status,
+                        }
+                    )
+                } 
+            }
           }
       }
 
       console.log({ overdueLoans, todays_date: new Date(new Date().toISOString()) })
     }
-  } catch(error: any) {
-    console.log({ error })
-  }
 }
 
 export async function addOnePercentToOverdueLoan() {
@@ -236,10 +255,6 @@ export async function addOnePercentToOverdueLoan() {
     if(overdueLoans && Array.isArray(overdueLoans) && overdueLoans.length > 0) {
       console.log("In Overdue Loans");
       for (const loan of overdueLoans) {
-        await updateLoan(loan._id, { 
-          outstanding: Number(loan.outstanding) + (Number(loan.amount) * 0.01)
-        });
-
         const user = await find({ _id: loan.userId }, "one");
 
         if(user && !Array.isArray(user))
