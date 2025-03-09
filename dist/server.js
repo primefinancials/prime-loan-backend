@@ -23,10 +23,6 @@ node_cron_1.default.schedule('*/1 * * * *', () => __awaiter(void 0, void 0, void
     console.log('Running loan check...');
     yield (0, loanReminder_1.checkLoansAndSendEmails)();
 }));
-node_cron_1.default.schedule('0 */23 * * *', () => __awaiter(void 0, void 0, void 0, function* () {
-    console.log('Running loan check every 23 hours...');
-    yield (0, loanReminder_1.addOnePercentToOverdueLoan)();
-}));
 const startApp = () => __awaiter(void 0, void 0, void 0, function* () {
     const app = (0, express_1.default)();
     yield (0, utils_1.connectToDB)();

@@ -89,6 +89,7 @@ const LoanApplicationSchema = new mongoose_1.Schema({
     loan_payment_status: { type: String, required: true },
     credit_score: CreditScoreSchema,
     repayment_history: [RepaymentHistorySchema],
+    lastInterestAdded: { type: String, required: false },
 }, { timestamps: true });
 // Create the LoanApplication model
 const LoanApplicationModel = (0, mongoose_1.model)('loans', LoanApplicationSchema);

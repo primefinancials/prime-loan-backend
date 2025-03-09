@@ -57,7 +57,9 @@ export async function checkLoansAndSendEmails() {
       }
     }, "many");
 
-    if (!overdueLoans || !Array.isArray(overdueLoans) || overdueLoans.length > 0) {
+    console.log({ overdueLoans })
+
+    if (!overdueLoans || !Array.isArray(overdueLoans) || overdueLoans.length <= 0) {
       console.log("No overdue loans found.");
       return;
     }
