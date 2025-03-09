@@ -92,6 +92,7 @@ export interface LoanApplication {
     date: string;
     action: string;
   }[];
+  lastInterestAdded: string;
 }
 
 export interface CREATELOAN {
@@ -137,6 +138,7 @@ export interface UPDATELOAN {
   duration?: number;
   amount?: number;
   status?: LOANSTATUS; // Loan status
+  lastInterestAdded?: string;
   repayment_history?: {
     amount: number;
     outstanding: number;

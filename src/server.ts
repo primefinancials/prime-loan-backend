@@ -3,17 +3,12 @@ import express from "express";
 import http from "http";
 import { connectToDB } from "./utils";
 import { PORT } from "./config";
-import { checkLoansAndSendEmails, addOnePercentToOverdueLoan } from "./jobs/loanReminder";
+import { checkLoansAndSendEmails } from "./jobs/loanReminder";
 import cron from 'node-cron';
 
 cron.schedule('*/1 * * * *', async () => {
   console.log('Running loan check...');
   await checkLoansAndSendEmails();
-});
-
-cron.schedule('0 */23 * * *', async () => {
-  console.log('Running loan check every 23 hours...');
-  await addOnePercentToOverdueLoan();
 });
 
 const startApp = async () => {
