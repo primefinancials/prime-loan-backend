@@ -12,6 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.sendMessageForLoan = void 0;
 exports.checkLoansAndSendEmails = checkLoansAndSendEmails;
 exports.sendEmail = sendEmail;
 const nodemailer_1 = __importDefault(require("nodemailer"));
@@ -165,14 +166,15 @@ function addOnePercentToOverdueLoan(loan) {
             const newOutstanding = Number(loan.outstanding) + overdueFee;
             yield updateLoan(loan._id, {
                 outstanding: newOutstanding,
-                lastInterestAdded: today // Update last interest added date
-            });
-            yield updateLoan(loan._id, {
+                lastInterestAdded: today, // Update last interest added date
                 repayment_history: [
                     ...(loan.repayment_history || []),
                     { amount: overdueFee, outstanding: newOutstanding, action: "overdue_fee", date: new Date().toISOString() }
                 ]
             });
+            const user = yield find({ _id: loan.userId }, "one");
+            if (user && !Array.isArray(user))
+                yield sendEmail(user.email, 'Your Loan is Overdue', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} was due on ${loan.repayment_date}. Please make the payment immediately to avoid any futher late fees and penalties.`);
             console.log(`Loan ${loan._id}: 1% overdue fee added successfully.`);
         }
         catch (error) {
@@ -180,6 +182,49 @@ function addOnePercentToOverdueLoan(loan) {
         }
     });
 }
+const sendMessageForLoan = () => __awaiter(void 0, void 0, void 0, function* () {
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+    const formatDate = (date) => {
+        // Format the date as "DD MMM YYYY"
+        const options = {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+        };
+        return date.toLocaleDateString('en-US', options);
+    };
+    const todayStr = formatDate(today);
+    const tomorrowStr = formatDate(tomorrow);
+    const dueLoans = yield findLoan({
+        repayment_date: todayStr,
+        outstanding: { $gt: 0 }, // Condition for outstanding > 0
+        status: "accepted"
+    }, "many");
+    if (dueLoans && Array.isArray(dueLoans) && dueLoans.length > 0) {
+        console.log("In Upcoming Loans");
+        for (const loan of dueLoans) {
+            const user = yield find({ _id: loan.userId }, "one");
+            if (user && !Array.isArray(user))
+                yield sendEmail(user.email, 'Your Loan is Due Today', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} is due Today. Please make the payment immediately to avoid any futher late fees and penalties.`);
+        }
+    }
+    const upcomingLoans = yield findLoan({
+        repayment_date: tomorrowStr,
+        outstanding: { $gt: 0 }, // Condition for outstanding > 0
+        status: "accepted"
+    }, "many");
+    if (upcomingLoans && Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
+        console.log("In Upcoming Loans");
+        for (const loan of upcomingLoans) {
+            const user = yield find({ _id: loan.userId }, "one");
+            if (user && !Array.isArray(user))
+                yield sendEmail(user.email, 'Your Loan will be Due Tomorrow', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} will be due tomorrow. Please make the payment immediately to avoid any futher late fees and penalties.`);
+        }
+    }
+});
+exports.sendMessageForLoan = sendMessageForLoan;
 function sendEmail(to, subject, text) {
     return __awaiter(this, void 0, void 0, function* () {
         try {

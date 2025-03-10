@@ -3,12 +3,17 @@ import express from "express";
 import http from "http";
 import { connectToDB } from "./utils";
 import { PORT } from "./config";
-import { checkLoansAndSendEmails } from "./jobs/loanReminder";
+import { checkLoansAndSendEmails, sendMessageForLoan } from "./jobs/loanReminder";
 import cron from 'node-cron';
 
 cron.schedule('*/1 * * * *', async () => {
   console.log('Running loan check...');
   await checkLoansAndSendEmails();
+});
+
+cron.schedule('* */23 * * *', async () => {
+  console.log('Running send email...');
+  await sendMessageForLoan();
 });
 
 const startApp = async () => {
