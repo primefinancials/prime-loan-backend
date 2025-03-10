@@ -21,6 +21,7 @@ const config_1 = require("../config");
 const generateRef_1 = require("../utils/generateRef");
 const httpClient_1 = require("../utils/httpClient");
 const js_sha512_1 = require("js-sha512");
+const mongoose_1 = __importDefault(require("mongoose"));
 console.log({ EMAIL_USERNAME: config_1.EMAIL_USERNAME, EMAIL_PASSWORD: config_1.EMAIL_PASSWORD });
 const transporter = nodemailer_1.default.createTransport({
     host: "smtp.mailgun.org",
@@ -155,30 +156,36 @@ function checkLoansAndSendEmails() {
 }
 function addOnePercentToOverdueLoan(loan) {
     return __awaiter(this, void 0, void 0, function* () {
+        const session = yield mongoose_1.default.startSession();
         try {
-            const today = new Date().toISOString().split("T")[0]; // Get YYYY-MM-DD format
-            const lastInterestDate = loan.lastInterestAdded ? loan.lastInterestAdded.split("T")[0] : null;
-            if (lastInterestDate === today) {
-                console.log(`Loan ${loan._id}: Interest already added today.`);
-                return;
-            }
-            const overdueFee = Number(loan.amount) * 0.01;
-            const newOutstanding = Number(loan.outstanding) + overdueFee;
-            yield updateLoan(loan._id, {
-                outstanding: newOutstanding,
-                lastInterestAdded: today, // Update last interest added date
-                repayment_history: [
-                    ...(loan.repayment_history || []),
-                    { amount: overdueFee, outstanding: newOutstanding, action: "overdue_fee", date: new Date().toISOString() }
-                ]
-            });
-            const user = yield find({ _id: loan.userId }, "one");
-            if (user && !Array.isArray(user))
-                yield sendEmail(user.email, 'Your Loan is Overdue', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} was due on ${loan.repayment_date}. Please make the payment immediately to avoid any futher late fees and penalties.`);
-            console.log(`Loan ${loan._id}: 1% overdue fee added successfully.`);
+            yield session.withTransaction(() => __awaiter(this, void 0, void 0, function* () {
+                const today = new Date().toISOString().split("T")[0]; // Get YYYY-MM-DD format
+                const lastInterestDate = loan.lastInterestAdded ? loan.lastInterestAdded.split("T")[0] : null;
+                if (lastInterestDate === today) {
+                    console.log(`Loan ${loan._id}: Interest already added today.`);
+                    return;
+                }
+                const overdueFee = Number(loan.amount) * 0.01;
+                const newOutstanding = Number(loan.outstanding) + overdueFee;
+                yield updateLoan(loan._id, {
+                    outstanding: newOutstanding,
+                    lastInterestAdded: today, // Update last interest added date
+                    repayment_history: [
+                        ...(loan.repayment_history || []),
+                        { amount: overdueFee, outstanding: newOutstanding, action: "overdue_fee", date: new Date().toISOString() }
+                    ]
+                });
+                const user = yield find({ _id: loan.userId }, "one");
+                if (user && !Array.isArray(user))
+                    yield sendEmail(user.email, 'Your Loan is Overdue', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} was due on ${loan.repayment_date}. Please make the payment immediately to avoid any futher late fees and penalties.`);
+                console.log(`Loan ${loan._id}: 1% overdue fee added successfully.`);
+            }));
         }
         catch (error) {
             console.error(`Loan ${loan._id}: Error adding overdue fee -`, error);
+        }
+        finally {
+            yield session.endSession();
         }
     });
 }

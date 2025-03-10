@@ -5,6 +5,7 @@ import { generateRandomString } from '../utils/generateRef';
 import { httpClient } from '../utils/httpClient';
 import { sha512 } from 'js-sha512';
 import { LoanApplication } from '../interfaces';
+import mongoose from 'mongoose';
 
 console.log({ EMAIL_USERNAME, EMAIL_PASSWORD })
 
@@ -152,35 +153,41 @@ export async function checkLoansAndSendEmails() {
 }
 
 async function addOnePercentToOverdueLoan(loan: LoanApplication) {
+  const session = await mongoose.startSession();
+
   try {
-    const today = new Date().toISOString().split("T")[0]; // Get YYYY-MM-DD format
-    const lastInterestDate = loan.lastInterestAdded ? loan.lastInterestAdded.split("T")[0] : null;
+    await session.withTransaction(async () => {
+      const today = new Date().toISOString().split("T")[0]; // Get YYYY-MM-DD format
+      const lastInterestDate = loan.lastInterestAdded ? loan.lastInterestAdded.split("T")[0] : null;
 
-    if (lastInterestDate === today) {
-      console.log(`Loan ${loan._id}: Interest already added today.`);
-      return;
-    }
+      if (lastInterestDate === today) {
+        console.log(`Loan ${loan._id}: Interest already added today.`);
+        return;
+      }
 
-    const overdueFee = Number(loan.amount) * 0.01;
-    const newOutstanding = Number(loan.outstanding) + overdueFee;
+      const overdueFee = Number(loan.amount) * 0.01;
+      const newOutstanding = Number(loan.outstanding) + overdueFee;
 
-    await updateLoan(loan._id, { 
-      outstanding: newOutstanding,
-      lastInterestAdded: today, // Update last interest added date
-      repayment_history: [
-        ...(loan.repayment_history || []), 
-        { amount: overdueFee, outstanding: newOutstanding, action: "overdue_fee", date: new Date().toISOString() }
-      ]
-    });
+      await updateLoan(loan._id, { 
+        outstanding: newOutstanding,
+        lastInterestAdded: today, // Update last interest added date
+        repayment_history: [
+          ...(loan.repayment_history || []), 
+          { amount: overdueFee, outstanding: newOutstanding, action: "overdue_fee", date: new Date().toISOString() }
+        ]
+      });
 
-    const user = await find({ _id: loan.userId }, "one");
- 
-    if(user && !Array.isArray(user))
-      await sendEmail(user.email, 'Your Loan is Overdue', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} was due on ${loan.repayment_date}. Please make the payment immediately to avoid any futher late fees and penalties.`);
+      const user = await find({ _id: loan.userId }, "one");
+  
+      if(user && !Array.isArray(user))
+        await sendEmail(user.email, 'Your Loan is Overdue', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} was due on ${loan.repayment_date}. Please make the payment immediately to avoid any futher late fees and penalties.`);
 
-    console.log(`Loan ${loan._id}: 1% overdue fee added successfully.`);
+      console.log(`Loan ${loan._id}: 1% overdue fee added successfully.`);
+    })
   } catch (error) {
     console.error(`Loan ${loan._id}: Error adding overdue fee -`, error);
+  } finally {
+    await session.endSession();
   }
 }
 
