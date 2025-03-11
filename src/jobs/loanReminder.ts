@@ -67,82 +67,82 @@ export async function checkLoansAndSendEmails() {
 
     for (const loan of overdueLoans) {
       try {
-        // const user = await find({ _id: loan.userId }, "one");
-        // if (!user || Array.isArray(user)) throw new Error(`User not found for loan ${loan._id}`);
-
-        // const userAccountRes = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
-        // if (!userAccountRes.data) throw new Error(`User account not found for loan ${loan._id}`);
-
-        // const userAccountData = userAccountRes.data.data;
-        // const userBalance = Number(userAccountData.accountBalance);
-
-        // const adminAccountRes = await httpClient(`/wallet2/account/enquiry?`, "GET");
-        // if (!adminAccountRes.data) throw new Error("Admin account not found");
-
-        // const adminAccountData = adminAccountRes.data.data;
-        // const ref = `Prime-Finance-${generateRandomString(9)}`;
-
         // Add overdue fee before repayment attempt
         await addOnePercentToOverdueLoan(loan);
 
-        // const deductionAmount = userBalance >= loan.outstanding ? loan.outstanding : userBalance;
-        // const remainingOutstanding = loan.outstanding - deductionAmount;
+        const user = await find({ _id: loan.userId }, "one");
+        if (!user || Array.isArray(user)) throw new Error(`User not found for loan ${loan._id}`);
 
-        // if (deductionAmount > 0) {
-        //   const transferBody = {
-        //     fromAccount: userAccountData.accountNo,
-        //     uniqueSenderAccountId: userAccountData.accountId,
-        //     fromClientId: userAccountData.clientId,
-        //     fromClient: userAccountData.client,
-        //     fromSavingsId: userAccountData.accountId,
-        //     toClientId: adminAccountData.clientId,
-        //     toClient: adminAccountData.client,
-        //     toSavingsId: adminAccountData.accountId,
-        //     toSession: adminAccountData.accountId,
-        //     toAccount: adminAccountData.accountNo,
-        //     toBank: "999999",
-        //     signature: sha512.hex(`${userAccountData.accountNo}${adminAccountData.accountNo}`),
-        //     amount: deductionAmount,
-        //     remark: "Loan Repayment",
-        //     transferType: "intra",
-        //     reference: ref
-        //   };
+        const userAccountRes = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
+        if (!userAccountRes.data) throw new Error(`User account not found for loan ${loan._id}`);
 
-        //   const transferRes = await httpClient("/wallet2/transfer", "POST", transferBody);
-        //   const transactionStatus = transferRes.data?.status === "00" ? "success" : "failed";
+        const userAccountData = userAccountRes.data.data;
+        const userBalance = Number(userAccountData.accountBalance);
 
-        //   if (transferRes.data) {
-        //     await updateLoan(loan._id, { 
-        //       loan_payment_status: remainingOutstanding <= 0 ? "complete" : "in-progress", 
-        //       outstanding: remainingOutstanding,
-        //       repayment_history: [
-        //         ...(loan.repayment_history || []), 
-        //         { amount: deductionAmount, outstanding: remainingOutstanding, action: "repayment", date: new Date().toISOString() }
-        //       ]
-        //     });
+        const adminAccountRes = await httpClient(`/wallet2/account/enquiry?`, "GET");
+        if (!adminAccountRes.data) throw new Error("Admin account not found");
 
-        //     await update(user._id, "user_metadata.wallet", String(userBalance - deductionAmount));
+        const adminAccountData = adminAccountRes.data.data;
+        const ref = `Prime-Finance-${generateRandomString(9)}`;
 
-        //     await createTransaction({
-        //       name: "Loan Repayment",
-        //       category: "debit",
-        //       type: "loan",
-        //       user: user._id,
-        //       details: "Loan mandatory repayment",
-        //       transaction_number: ref,
-        //       amount: deductionAmount,
-        //       bank: "Prime Finance - VFD",
-        //       receiver: adminAccountData.accountNo,
-        //       account_number: adminAccountData.accountNo,
-        //       outstanding: remainingOutstanding,
-        //       session_id: ref,
-        //       status: transactionStatus,
-        //       message: transferRes.data?.status || "Unknown",
-        //     });
+        const deductionAmount = userBalance >= loan.outstanding ? loan.outstanding : userBalance;
+        const remainingOutstanding = loan.outstanding - deductionAmount;
 
-        //     console.log(`Loan ${loan._id}: Repayment of ${deductionAmount} successful.`);
-        //   }
-        // }
+        if (deductionAmount > 0) {
+          const transferBody = {
+            fromAccount: userAccountData.accountNo,
+            uniqueSenderAccountId: userAccountData.accountId,
+            fromClientId: userAccountData.clientId,
+            fromClient: userAccountData.client,
+            fromSavingsId: userAccountData.accountId,
+            toClientId: adminAccountData.clientId,
+            toClient: adminAccountData.client,
+            toSavingsId: adminAccountData.accountId,
+            toSession: adminAccountData.accountId,
+            toAccount: adminAccountData.accountNo,
+            toBank: "999999",
+            signature: sha512.hex(`${userAccountData.accountNo}${adminAccountData.accountNo}`),
+            amount: deductionAmount,
+            remark: "Loan Repayment",
+            transferType: "intra",
+            reference: ref
+          };
+
+          const transferRes = await httpClient("/wallet2/transfer", "POST", transferBody);
+          const transactionStatus = transferRes.data?.status === "00" ? "success" : "failed";
+
+          if (transferRes.data) {
+            await updateLoan(loan._id, { 
+              loan_payment_status: remainingOutstanding <= 0 ? "complete" : "in-progress", 
+              outstanding: remainingOutstanding,
+              repayment_history: [
+                ...(loan.repayment_history || []), 
+                { amount: deductionAmount, outstanding: remainingOutstanding, action: "repayment", date: new Date().toISOString() }
+              ]
+            });
+
+            await update(user._id, "user_metadata.wallet", String(userBalance - deductionAmount));
+
+            await createTransaction({
+              name: "Loan Repayment",
+              category: "debit",
+              type: "loan",
+              user: user._id,
+              details: "Loan mandatory repayment",
+              transaction_number: ref,
+              amount: deductionAmount,
+              bank: "Prime Finance - VFD",
+              receiver: adminAccountData.accountNo,
+              account_number: adminAccountData.accountNo,
+              outstanding: remainingOutstanding,
+              session_id: ref,
+              status: transactionStatus,
+              message: transferRes.data?.status || "Unknown",
+            });
+
+            console.log(`Loan ${loan._id}: Repayment of ${deductionAmount} successful.`);
+          }
+        }
       } catch (loanError) {
         console.error(`Loan ${loan._id}: Skipping due to error -`, loanError);
       }
