@@ -67,9 +67,6 @@ export async function checkLoansAndSendEmails() {
 
     for (const loan of overdueLoans) {
       try {
-        // Add overdue fee before repayment attempt
-        await addOnePercentToOverdueLoan(loan);
-
         const user = await find({ _id: loan.userId }, "one");
         if (!user || Array.isArray(user)) throw new Error(`User not found for loan ${loan._id}`);
 
@@ -84,6 +81,9 @@ export async function checkLoansAndSendEmails() {
 
         const adminAccountData = adminAccountRes.data.data;
         const ref = `Prime-Finance-${generateRandomString(9)}`;
+
+        // Add overdue fee before repayment attempt
+        await addOnePercentToOverdueLoan(loan);
 
         const deductionAmount = userBalance >= loan.outstanding ? loan.outstanding : userBalance;
         const remainingOutstanding = loan.outstanding - deductionAmount;
@@ -160,8 +160,6 @@ async function addOnePercentToOverdueLoan(loan: LoanApplication) {
       const today = new Date().toISOString().split("T")[0]; // Get YYYY-MM-DD format
       const lastInterestDate = loan.lastInterestAdded ? loan.lastInterestAdded.split("T")[0] : null;
 
-      console.log({ lastInterestDate, today })
-
       if (lastInterestDate === today) {
         console.log(`Loan ${loan._id}: Interest already added today.`);
         return;
@@ -178,8 +176,6 @@ async function addOnePercentToOverdueLoan(loan: LoanApplication) {
           { amount: overdueFee, outstanding: newOutstanding, action: "overdue_fee", date: new Date().toISOString() }
         ]
       });
-
-      console.log({ newOutstanding, overdueFee });
 
       const user = await find({ _id: loan.userId }, "one");
   

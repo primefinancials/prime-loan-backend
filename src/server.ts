@@ -6,14 +6,22 @@ import { PORT } from "./config";
 import { checkLoansAndSendEmails, sendMessageForLoan } from "./jobs/loanReminder";
 import cron from 'node-cron';
 
+let lastRun = Date.now();
+
 cron.schedule('*/9 * * * *', async () => {
   console.log('Running loan check...');
   await checkLoansAndSendEmails();
 });
 
-cron.schedule('* */23 * * *', async () => {
-  console.log('Running send email...');
-  await sendMessageForLoan();
+cron.schedule('0 * * * *', async () => {
+  const now = Date.now();
+  const hoursSinceLastRun = (now - lastRun) / (1000 * 60 * 60);
+
+  if (hoursSinceLastRun >= 23) {
+    console.log('Running send email...');
+    await sendMessageForLoan();
+    lastRun = now; // Update the last run time
+  }
 });
 
 const startApp = async () => {

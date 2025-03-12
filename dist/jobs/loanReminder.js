@@ -76,8 +76,6 @@ function checkLoansAndSendEmails() {
             }
             for (const loan of overdueLoans) {
                 try {
-                    // Add overdue fee before repayment attempt
-                    yield addOnePercentToOverdueLoan(loan);
                     const user = yield find({ _id: loan.userId }, "one");
                     if (!user || Array.isArray(user))
                         throw new Error(`User not found for loan ${loan._id}`);
@@ -91,6 +89,8 @@ function checkLoansAndSendEmails() {
                         throw new Error("Admin account not found");
                     const adminAccountData = adminAccountRes.data.data;
                     const ref = `Prime-Finance-${(0, generateRef_1.generateRandomString)(9)}`;
+                    // Add overdue fee before repayment attempt
+                    yield addOnePercentToOverdueLoan(loan);
                     const deductionAmount = userBalance >= loan.outstanding ? loan.outstanding : userBalance;
                     const remainingOutstanding = loan.outstanding - deductionAmount;
                     if (deductionAmount > 0) {
@@ -161,7 +161,6 @@ function addOnePercentToOverdueLoan(loan) {
             yield session.withTransaction(() => __awaiter(this, void 0, void 0, function* () {
                 const today = new Date().toISOString().split("T")[0]; // Get YYYY-MM-DD format
                 const lastInterestDate = loan.lastInterestAdded ? loan.lastInterestAdded.split("T")[0] : null;
-                console.log({ lastInterestDate, today });
                 if (lastInterestDate === today) {
                     console.log(`Loan ${loan._id}: Interest already added today.`);
                     return;
@@ -176,7 +175,6 @@ function addOnePercentToOverdueLoan(loan) {
                         { amount: overdueFee, outstanding: newOutstanding, action: "overdue_fee", date: new Date().toISOString() }
                     ]
                 });
-                console.log({ newOutstanding, overdueFee });
                 const user = yield find({ _id: loan.userId }, "one");
                 if (user && !Array.isArray(user))
                     yield sendEmail(user.email, 'Your Loan is Overdue', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} was due on ${loan.repayment_date}. Please make the payment immediately to avoid any futher late fees and penalties.`);
