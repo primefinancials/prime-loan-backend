@@ -361,6 +361,7 @@ const rejectLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, functio
             });
         }
         const loan = yield updateLoan(transactionId, {
+            outstanding: 0,
             status: "rejected"
         });
         res.status(200).json({ status: "success", data: loan });

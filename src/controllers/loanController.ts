@@ -467,6 +467,7 @@ export const rejectLoan = async (req: ProtectedRequest, res: Response, next: Nex
       }
 
       const loan = await updateLoan(transactionId, {
+        outstanding: 0,
         status: "rejected"
       });
   
