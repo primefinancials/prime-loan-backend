@@ -11,7 +11,7 @@ const DefaultCorsOptions = {
     /**
      * The allowed origin(s) for the request. Use '*' to allow all origins.
      */
-    origin: ['*', 'http://localhost:5173', 'https://prime-finance-admin.netlify.app', 'https://admin.primefinance.live'],
+    origin: ['*', 'http://localhost:5173', 'http://localhost:8081', 'https://prime-finance-admin.netlify.app', 'https://admin.primefinance.live'],
     /**
      * The allowed HTTP methods for the request.
      */
