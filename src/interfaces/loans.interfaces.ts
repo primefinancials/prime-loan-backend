@@ -129,7 +129,7 @@ export interface CREATELOAN {
   repayment_date: string; // Repayment date in string format
   loan_date: string; // Loan date in string format
   loan_payment_status: LOANPAYMENTSTATUS;
-  credit_score: ICreditScore
+  credit_score?: ICreditScore
 }
 
 export interface UPDATELOAN {

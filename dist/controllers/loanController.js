@@ -140,11 +140,11 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
         if (!user || !user._id) {
             throw new exceptions_1.NotFoundError("User not found.");
         }
-        const credit = yield httpRequest(bvn);
-        console.log({ credit });
-        if (credit.error) {
-            throw new exceptions_1.BadRequestError(credit.error);
-        }
+        // const credit = await httpRequest(bvn);
+        // console.log({ credit });
+        // if(credit.error) {
+        //   throw new BadRequestError(credit.error);
+        // }
         const loan = yield createLoan({
             first_name,
             last_name,
@@ -176,23 +176,23 @@ const createClientLoan = (req, res, next) => __awaiter(void 0, void 0, void 0, f
             repayment_date,
             acknowledgment,
             loan_payment_status: "not-started",
-            credit_score: {
-                loanId: credit._id,
-                lastReported: "",
-                creditorName: credit.name,
-                totalDebt: credit.score.totalBorrowed,
-                accountype: "",
-                outstandingBalance: credit.score.totalOutstanding,
-                activeLoan: credit.score.totalNoOfActiveLoans,
-                loansTaken: credit.score.totalNoOfLoans,
-                income: 0,
-                repaymentHistory: credit.score.totalNoOfPerformingLoans,
-                openedDate: credit.score.totalNoOfActiveLoans,
-                lengthOfCreditHistory: credit.score.totalNoOfLoans,
-                remarks: "",
-                creditors: credit.score.creditors,
-                loan_details: credit.score.loanPerformance,
-            }
+            // credit_score: {
+            //   loanId: credit._id,
+            //   lastReported: "",
+            //   creditorName: credit.name,
+            //   totalDebt: credit.score.totalBorrowed,
+            //   accountype: "",
+            //   outstandingBalance: credit.score.totalOutstanding,
+            //   activeLoan: credit.score.totalNoOfActiveLoans,
+            //   loansTaken: credit.score.totalNoOfLoans,
+            //   income: 0,
+            //   repaymentHistory: credit.score.totalNoOfPerformingLoans,
+            //   openedDate: credit.score.totalNoOfActiveLoans,
+            //   lengthOfCreditHistory: credit.score.totalNoOfLoans,
+            //   remarks: "",
+            //   creditors: credit.score.creditors,
+            //   loan_details: credit.score.loanPerformance,
+            // }
         });
         if (!loan)
             throw new exceptions_1.NotFoundError("Loan not created");
