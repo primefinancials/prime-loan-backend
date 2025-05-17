@@ -1,5 +1,6 @@
 import '../config/envConfig';
 import { ConnectOptions } from 'mongoose';
+import { CABLETV, METERTYPE, MOBILENETWORKS, BONUSTYPE } from '../interfaces';
 
 const PORT = process.env.PORT || 3000;
 export const customerKey = process.env.CUSTOMER_KEY!;
@@ -38,6 +39,72 @@ const EMAIL_PASSWORD = process.env.EMAIL_PASSWORD;
 const EMAIL_HOST = process.env.EMAIL_HOST;
 const EMAIL_PORT_NUMBER = process.env.EMAIL_PORT_NUMBER;
 const EMAIL_INTERVAL = process.env.EMAIL_INTERVAL;
+
+export const CLUB_KONNECT_API_KEY = process.env.CLUB_KONNECT_API_KEY;
+export const CLUB_KONNECT_API_USER_ID = process.env.CLUB_KONNECT_API_USER_ID;
+export const CLUB_KONNECT_API_URL = process.env.CLUB_KONNECT_API_URL;
+export const APIAUTH = `?UserID=${CLUB_KONNECT_API_USER_ID}&APIKey=${CLUB_KONNECT_API_KEY}`;
+
+export const CLUB_KONNECT_API_URLs = {
+  check_wallet_balance: () => `${CLUB_KONNECT_API_URL}/APIWalletBalanceV1.asp${APIAUTH}`,
+
+  query_transaction: (OrderID: number) => `${CLUB_KONNECT_API_URL}/APIQueryV1.asp${APIAUTH}&OrderID=${OrderID}`,
+  cancel_transaction: (OrderID: number) => `${CLUB_KONNECT_API_URL}/APICancelV1.asp${APIAUTH}&OrderID=${OrderID}`,
+
+  buy_airtime: (Amount: number, MobileNumber: number, MobileNetwork: MOBILENETWORKS, BOnusType?: BONUSTYPE) => 
+    `${CLUB_KONNECT_API_URL}/APIAirtimeV1.asp${APIAUTH}&Amount=${Amount}&MobileNumber=${MobileNumber}&MobileNetwork=${MobileNetwork}${BOnusType ? `&BonusType=${BOnusType}` : ''}`
+  ,
+
+  data_plans: () => `${CLUB_KONNECT_API_URL}/APIDatabundlePlansV2.asp?UserID=${CLUB_KONNECT_API_USER_ID}`,
+  buy_data: (DataPlan: number, MobileNumber: number, MobileNetwork: MOBILENETWORKS) => 
+    `${CLUB_KONNECT_API_URL}/APIDatabundleV1.asp${APIAUTH}&DataPlan=${DataPlan}&MobileNumber=${MobileNumber}&MobileNetwork=${MobileNetwork}`
+  ,
+
+  tv_packages: () => `${CLUB_KONNECT_API_URL}/APICableTVPackagesV2.asp`,
+  verify_tv_no: (CableTV: CABLETV, SmartCardNo: number) =>
+    `${CLUB_KONNECT_API_URL}/APIVerifyCableTVV1.0.asp${APIAUTH}&CableTV=${CableTV}&SmartCardNo=${SmartCardNo}`
+  ,
+  buy_tv: (CableTV: CABLETV, Package: string, SmartCardNo: number, PhoneNo: number) =>
+    `${CLUB_KONNECT_API_URL}/APICableTVV1.asp${APIAUTH}&CableTV=${CableTV}&Package=${Package}&SmartCardNo=${SmartCardNo}&PhoneNo=${PhoneNo}`
+  ,
+
+  power_subscriptions: () => `${CLUB_KONNECT_API_URL}/APIElectricityDiscosV1.asp`,
+  verify_power_no: (ElectricCompany: string, meterno: number) =>
+    `${CLUB_KONNECT_API_URL}/APIVerifyElectricityV1.asp${APIAUTH}&ElectricCompany=${ElectricCompany}&meterno=${meterno}`
+  ,
+  buy_power: (ElectricCompany: string, MeterType: METERTYPE, MeterNo: number, Amount: number, PhoneNo: number) =>
+    `${CLUB_KONNECT_API_URL}/APIElectricityV1.asp${APIAUTH}&ElectricCompany=${ElectricCompany}&MeterType=${MeterType}&MeterNo=${MeterNo}&Amount=${Amount}&PhoneNo=${PhoneNo}`
+  ,
+
+  betting_platforms: () => `${CLUB_KONNECT_API_URL}/APIBettingCompaniesV2.asp`,
+  verify_betting_no: (BettingCompany: string, CustomerID: number) =>
+    `${CLUB_KONNECT_API_URL}/APIVerifyElectricityV1.asp${APIAUTH}&BettingCompany=${BettingCompany}&CustomerID=${CustomerID}`
+  ,
+  buy_betting: (BettingCompany: string, CustomerID: number, Amount: number) =>
+    `${CLUB_KONNECT_API_URL}/APIElectricityV1.asp${APIAUTH}&BettingCompany=${BettingCompany}&CustomerID=${CustomerID}&Amount=${Amount}`
+  ,
+
+  internet_plans: (MobileNetwork: "smile-direct" | "spectranet") => `${CLUB_KONNECT_API_URL}/${MobileNetwork == "smile-direct"? "APISmilePackagesV2" : "APISpectranetPackagesV2"}.asp`,
+  verify_smile_no: (MobileNetwork: "smile-direct", MobileNumber: number) =>
+    `${CLUB_KONNECT_API_URL}/APIVerifySmileV1.asp${APIAUTH}&MobileNetwork=${MobileNetwork}&MobileNumber=${MobileNumber}`
+  ,
+  buy_internet: (MobileNetwork: "smile-direct" | "spectranet", DataPlan: string, MobileNumber: number) =>
+    `${CLUB_KONNECT_API_URL}/${MobileNetwork == "smile-direct"? "APIElectricityV1": "APISpectranetV1"}.asp${APIAUTH}&MobileNetwork=${MobileNetwork}&DataPlan=${DataPlan}&MobileNumber=${MobileNumber}`
+  ,
+
+  waec_types: () => `${CLUB_KONNECT_API_URL}/APIWAECPackagesV2.asp`,
+  buy_waec: (ExamType: string, PhoneNo: number) =>
+    `${CLUB_KONNECT_API_URL}/APIWAECV1.asp${APIAUTH}&ExamType=${ExamType}&PhoneNo=${PhoneNo}`
+  ,
+
+  jamb_types: () => `${CLUB_KONNECT_API_URL}/APIJAMBPackagesV2.asp`,
+  verify_jamb_no: (ExamType: string, ProfileID: number) =>
+    `${CLUB_KONNECT_API_URL}/APIVerifyJAMBV1.asp${APIAUTH}&ExamType=${ExamType}&ProfileID=${ProfileID}`
+  ,
+  buy_jamb: (ExamType: string, PhoneNo: number) =>
+    `${CLUB_KONNECT_API_URL}/APIJAMBV1.asp${APIAUTH}&ExamType=${ExamType}&PhoneNo=${PhoneNo}`
+  ,
+};
 
 export {
   PORT,

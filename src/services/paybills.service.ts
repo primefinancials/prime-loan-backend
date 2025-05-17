@@ -1,0 +1,184 @@
+import axios from "axios";
+import { CLUB_KONNECT_API_URLs } from "../config";
+import { APIError } from "../exceptions";
+import { 
+    StatusCode, 
+    StatusDescriptions, 
+    QueryResponse, 
+    WalletBalance, 
+    MOBILENETWORKS, 
+    BONUSTYPE, 
+    CABLETV, 
+    METERTYPE,
+    QueryTransactionResponse,
+    VerifySmileResponse,
+    WAECCheckerResponse,
+    JAMBCheckerResponse,
+    VerifyCableTVResponse,
+    VerifyElectricityMeterResponse,
+    ElectricityPurchaseResponse,
+    VerifyBettingCustomerResponse,
+    VerifyJAMBProfileResponse,
+    MobileNetwork,
+    TV_ID_Interface,
+    ElectricCompanyData,
+    BettingCompanyData,
+    InternetNetworkData,
+    ExamTypeData
+} from "../interfaces";
+
+export class PaybillsService {
+    private handleResponse<T>(response: { data: T & { statuscode?: string; status?: StatusCode } }): T {
+        if (response.data && response.data.status && response.data.status !== StatusCode.ORDER_RECEIVED) {
+            throw new APIError(Number(response.data.statuscode), StatusDescriptions[response.data.status as StatusCode] || "Unknown error");
+        }
+
+        return { ...response.data, status: response.data.status as StatusCode };
+    };
+
+    public async CheckWalletBalance(): Promise<WalletBalance> {
+        const response = await axios.get<WalletBalance>(CLUB_KONNECT_API_URLs.check_wallet_balance());
+
+        return response.data;
+    };
+
+    public async QueryTransaction(orderId: number): Promise<QueryTransactionResponse> {
+        const response = await axios.get<QueryTransactionResponse>(
+          CLUB_KONNECT_API_URLs.query_transaction(orderId)
+        );
+        return this.handleResponse(response);
+    };
+
+    public async CancelTransaction(orderId: number): Promise<QueryResponse> {
+        const response = await axios.get<QueryResponse>(CLUB_KONNECT_API_URLs.cancel_transaction(orderId));
+
+        return this.handleResponse(response);
+    };
+
+    public async BuyAirtime(
+        amount: number,
+        mobileNumber: number,
+        mobileNetwork: MOBILENETWORKS,
+        bonusType?: BONUSTYPE
+    ): Promise<QueryResponse> {
+        const response = await axios.get<QueryResponse>(
+          CLUB_KONNECT_API_URLs.buy_airtime(amount, mobileNumber, mobileNetwork, bonusType)
+        );
+
+        return this.handleResponse(response);
+    }; 
+
+    public async GetDataPlans(): Promise<MobileNetwork> {
+        const response = await axios.get<MobileNetwork>(CLUB_KONNECT_API_URLs.data_plans());
+
+        return response.data;
+    };
+
+    public async BuyData(dataPlan: number, mobileNumber: number, mobileNetwork: MOBILENETWORKS): Promise<QueryResponse> {
+        const response = await axios.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_data(dataPlan, mobileNumber, mobileNetwork));
+
+        return this.handleResponse(response);
+    };
+
+    public async GetTvPackages(): Promise<TV_ID_Interface> {
+        const response = await axios.get<TV_ID_Interface>(CLUB_KONNECT_API_URLs.tv_packages());
+
+        return response.data;
+    };
+
+    public async VerifyTvNumber(cableTV: CABLETV, smartCardNo: number): Promise<VerifyCableTVResponse> {
+        const response = await axios.get<VerifyCableTVResponse>(CLUB_KONNECT_API_URLs.verify_tv_no(cableTV, smartCardNo));
+
+        return response.data;
+    };
+
+    public async BuyTv(cableTV: CABLETV, pkg: string, smartCardNo: number, phoneNo: number): Promise<QueryResponse> {
+        const response = await axios.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_tv(cableTV, pkg, smartCardNo, phoneNo));
+
+        return this.handleResponse(response);
+    };
+
+    public async GetPowerSubscriptions(): Promise<ElectricCompanyData> {
+        const response = await axios.get<ElectricCompanyData>(CLUB_KONNECT_API_URLs.power_subscriptions());
+
+        return response.data;
+    };
+
+    public async VerifyPowerNumber(electricCompany: string, meterNo: number): Promise<VerifyElectricityMeterResponse> {
+        const response = await axios.get<VerifyElectricityMeterResponse>(CLUB_KONNECT_API_URLs.verify_power_no(electricCompany, meterNo));
+
+        return response.data;
+    };
+
+    public async BuyPower(electricCompany: string, meterType: METERTYPE, meterNo: number, amount: number, phoneNo: number): Promise<ElectricityPurchaseResponse> {
+        const response = await axios.get<ElectricityPurchaseResponse>(CLUB_KONNECT_API_URLs.buy_power(electricCompany, meterType, meterNo, amount, phoneNo));
+
+        return this.handleResponse(response);
+    };
+
+    public async GetBettingPlatforms(): Promise<BettingCompanyData> {
+        const response = await axios.get<BettingCompanyData>(CLUB_KONNECT_API_URLs.betting_platforms());
+
+        return response.data;
+    }
+
+    public async VerifyBettingNumber(bettingCompany: string, customerId: number): Promise<VerifyBettingCustomerResponse> {
+        const response = await axios.get<VerifyBettingCustomerResponse>(CLUB_KONNECT_API_URLs.verify_betting_no(bettingCompany, customerId));
+
+        return response.data;
+    }
+
+    public async BuyBetting(bettingCompany: string, customerId: number, amount: number): Promise<QueryResponse> {
+        const response = await axios.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_betting(bettingCompany, customerId, amount));
+
+        return this.handleResponse(response);
+    }
+
+    public async GetInternetPlans(mobileNetwork: "smile-direct" | "spectranet"): Promise<InternetNetworkData> {
+        const response = await axios.get<InternetNetworkData>(CLUB_KONNECT_API_URLs.internet_plans(mobileNetwork));
+
+        return response.data;
+    }
+
+    public async VerifySmileNumber(mobileNumber: number): Promise<VerifySmileResponse> {
+        const response = await axios.get<VerifySmileResponse>(CLUB_KONNECT_API_URLs.verify_smile_no("smile-direct", mobileNumber));
+
+        return response.data;
+    }
+
+    public async BuyInternet(mobileNetwork: "smile-direct" | "spectranet", dataPlan: string, mobileNumber: number): Promise<QueryResponse> {
+        const response = await axios.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_internet(mobileNetwork, dataPlan, mobileNumber));
+
+        return this.handleResponse(response);
+    }
+
+    public async GetWaecTypes(): Promise<ExamTypeData> {
+        const response = await axios.get<ExamTypeData>(CLUB_KONNECT_API_URLs.waec_types());
+
+        return response.data;
+    }
+
+    public async BuyWaec(examType: string, phoneNo: number): Promise<WAECCheckerResponse> {
+        const response = await axios.get<WAECCheckerResponse>(CLUB_KONNECT_API_URLs.buy_waec(examType, phoneNo));
+
+        return this.handleResponse(response);
+    }
+
+    public async GetJambTypes(): Promise<ExamTypeData> {
+        const response = await axios.get<ExamTypeData>(CLUB_KONNECT_API_URLs.jamb_types());
+
+        return response.data;
+    }
+
+    public async VerifyJambNumber(examType: string, profileId: number): Promise<VerifyJAMBProfileResponse> {
+        const response = await axios.get<VerifyJAMBProfileResponse>(CLUB_KONNECT_API_URLs.verify_jamb_no(examType, profileId));
+
+        return response.data;
+    }
+
+    public async BuyJamb(examType: string, phoneNo: number): Promise<JAMBCheckerResponse> {
+        const response = await axios.get<JAMBCheckerResponse>(CLUB_KONNECT_API_URLs.buy_jamb(examType, phoneNo));
+
+        return this.handleResponse(response);
+    }
+}

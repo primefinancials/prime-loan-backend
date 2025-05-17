@@ -1,5 +1,5 @@
 export type TransactionType = "loan" | "paybills" | "transfer";
-export type TransactionCategory = "credit" | "debit" | "airtime" | "data" | "bettting, lottery and gaming";
+export type TransactionCategory = "credit" | "debit" | "airtime" | "data" | "betting" | "tv" | "power" | "internet" | "waec" | "jamb" ;
 export type TransactionStatus = "success" | "failed";
 
 export interface Transaction {
