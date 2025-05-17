@@ -13,7 +13,6 @@ export const dataSchema = Joi.object({
   dataPlan: Joi.string().required(),
   mobileNumber: Joi.string().required(),
   mobileNetwork: Joi.string().required(),
-  amount: Joi.number().positive().required()
 });
 
 // WAEC

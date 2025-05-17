@@ -91,7 +91,7 @@ export const buyAirtime = (req: Request, res: Response, next: NextFunction) => {
 };
 
 export const buyData = (req: Request, res: Response, next: NextFunction) => {
-  validateRequiredParams(req.body, ["dataPlan", "mobileNumber", "mobileNetwork", "amount"]);
+  validateRequiredParams(req.body, ["dataPlan", "mobileNumber", "mobileNetwork"]);
   return processTransaction(
     req,
     res,
