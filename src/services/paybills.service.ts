@@ -29,6 +29,11 @@ import {
 
 export class PaybillsService {
     private handleResponse<T>(response: { data: T & { statuscode?: string; status?: StatusCode } }): T {
+        console.log("Response:", response);
+        console.log("Response data:", response.data);
+        console.log("Response status code:", response.data.statuscode);
+        console.log("Response status:", response.data.status);
+
         if (response.data && response.data.status && response.data.status !== StatusCode.ORDER_RECEIVED) {
             throw new APIError(Number(response.data.statuscode), StatusDescriptions[response.data.status as StatusCode] || "Unknown error");
         }

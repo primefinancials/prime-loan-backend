@@ -67,6 +67,7 @@ const processTransaction = async (
 
     res.status(200).json({ status: "success", data: { ...response, transaction }, message: StatusDescriptions[response.status as StatusCode] });
   } catch (error) {
+    console.log({ error })
     next(error);
   }
 };
