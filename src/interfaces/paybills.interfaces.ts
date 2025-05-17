@@ -6,6 +6,7 @@ export type METERTYPE = "01" | "02";
 // Enum for all possible status codes
 export enum StatusCode {
     INVALID_CREDENTIALS = "INVALID_CREDENTIALS",
+    INVALID_CREDENTIALS3 = "INVALID_CREDENTIALS3",
     MISSING_CREDENTIALS = "MISSING_CREDENTIALS",
     MISSING_USERID = "MISSING_USERID",
     MISSING_APIKEY = "MISSING_APIKEY",
@@ -21,6 +22,7 @@ export enum StatusCode {
 // Optional: A map of status codes to their human-readable descriptions
 export const StatusDescriptions: Record<StatusCode, string> = {
     [StatusCode.INVALID_CREDENTIALS]: "The UserID and API key combination is not correct.",
+    [StatusCode.INVALID_CREDENTIALS3]: "The UserID and API key combination is not correct.",
     [StatusCode.MISSING_CREDENTIALS]: "The URL format is not valid.",
     [StatusCode.MISSING_USERID]: "Username field is empty.",
     [StatusCode.MISSING_APIKEY]: "API Key field is empty.",
