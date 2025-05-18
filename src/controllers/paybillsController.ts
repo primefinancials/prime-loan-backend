@@ -339,7 +339,11 @@ export const getDataPlans = async (req: Request, res: Response, next: NextFuncti
 export const getInternetPlans = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { mobileNetwork } = req.query;
-    if (!mobileNetwork) throw new Error("Missing mobileNetwork");
+    
+    // Validate mobileNetwork
+    if (typeof mobileNetwork !== "string" || !["smile-direct", "spectranet"].includes(mobileNetwork)) {
+      throw new Error("Invalid or missing mobileNetwork. Allowed values: 'smile-direct', 'spectranet'");
+    }
 
     const response = await paybillsService.GetInternetPlans(mobileNetwork as "smile-direct" | "spectranet");
     res.status(200).json({ status: "success", data: response });
