@@ -35,7 +35,7 @@ export const tvSchema = Joi.object({
 // Power
 export const powerSchema = Joi.object({
   electricCompany: Joi.string().required(),
-  meterType: Joi.string().valid("prepaid", "postpaid").required(),
+  meterType: Joi.string().valid("01", "02").required(),
   meterNo: Joi.string().required(),
   amount: Joi.number().positive().required(),
   phoneNo: Joi.string().required()
