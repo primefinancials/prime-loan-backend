@@ -27,6 +27,10 @@ import {
     ExamTypeData
 } from "../interfaces";
 
+function addEightPercent(value: number) {
+  return String(value + (value * 0.08));
+}
+
 export class PaybillsService {
     private handleResponse<T>(response: { data: T & { statuscode?: string; status?: StatusCode } }): T {
         console.log("Response:", response);
@@ -76,7 +80,26 @@ export class PaybillsService {
     public async GetDataPlans(): Promise<MobileNetwork> {
         const response = await axios.get<MobileNetwork>(CLUB_KONNECT_API_URLs.data_plans());
 
-        return response.data;
+        return ({
+            MOBILE_NETWORK: {
+                Airtel: [{
+                    ID: response.data.MOBILE_NETWORK.Airtel[0].ID,
+                    PRODUCT: response.data.MOBILE_NETWORK.Airtel[0].PRODUCT.map((atl) => ({ ...atl, PRODUCT_AMOUNT: addEightPercent(Number(atl.PRODUCT_AMOUNT)) }))
+                }],
+                Glo: [{
+                    ID: response.data.MOBILE_NETWORK.Glo[0].ID,
+                    PRODUCT: response.data.MOBILE_NETWORK.Glo[0].PRODUCT.map((atl) => ({ ...atl, PRODUCT_AMOUNT: addEightPercent(Number(atl.PRODUCT_AMOUNT)) }))
+                }],
+                m_9mobile: [{
+                    ID: response.data.MOBILE_NETWORK.m_9mobile[0].ID,
+                    PRODUCT: response.data.MOBILE_NETWORK.m_9mobile[0].PRODUCT.map((atl) => ({ ...atl, PRODUCT_AMOUNT: addEightPercent(Number(atl.PRODUCT_AMOUNT)) }))
+                }],
+                MTN: [{
+                    ID: response.data.MOBILE_NETWORK.MTN[0].ID,
+                    PRODUCT: response.data.MOBILE_NETWORK.MTN[0].PRODUCT.map((atl) => ({ ...atl, PRODUCT_AMOUNT: addEightPercent(Number(atl.PRODUCT_AMOUNT)) }))
+                }],
+            }
+        });
     };
 
     public async BuyData(dataPlan: number, mobileNumber: number, mobileNetwork: MOBILENETWORKS): Promise<QueryResponse> {
@@ -88,7 +111,26 @@ export class PaybillsService {
     public async GetTvPackages(): Promise<TV_ID_Interface> {
         const response = await axios.get<TV_ID_Interface>(CLUB_KONNECT_API_URLs.tv_packages());
 
-        return response.data;
+        return ({
+            TV_ID: {
+                DStv: [{
+                    ID: response.data.TV_ID.DStv[0].ID,
+                    PRODUCT: response.data.TV_ID.DStv[0].PRODUCT.map((atl) => ({ ...atl, PACKAGE_AMOUNT: addEightPercent(Number(atl.PACKAGE_AMOUNT)) }))
+                }],
+                GOtv: [{
+                    ID: response.data.TV_ID.GOtv[0].ID,
+                    PRODUCT: response.data.TV_ID.GOtv[0].PRODUCT.map((atl) => ({ ...atl, PACKAGE_AMOUNT: addEightPercent(Number(atl.PACKAGE_AMOUNT)) }))
+                }],
+                Showmax: [{
+                    ID: response.data.TV_ID.Showmax[0].ID,
+                    PRODUCT: response.data.TV_ID.Showmax[0].PRODUCT.map((atl) => ({ ...atl, PACKAGE_AMOUNT: addEightPercent(Number(atl.PACKAGE_AMOUNT)) }))
+                }],
+                Startimes: [{
+                    ID: response.data.TV_ID.Startimes[0].ID,
+                    PRODUCT: response.data.TV_ID.Startimes[0].PRODUCT.map((atl) => ({ ...atl, PACKAGE_AMOUNT: addEightPercent(Number(atl.PACKAGE_AMOUNT)) }))
+                }],
+            }
+        });
     };
 
     public async VerifyTvNumber(cableTV: CABLETV, smartCardNo: number): Promise<VerifyCableTVResponse> {
