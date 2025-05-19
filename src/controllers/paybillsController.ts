@@ -4,10 +4,107 @@ import { UserService, TransactionService } from "../services";
 import { validateRequiredParams } from "../utils/validateParams";
 import { StatusDescriptions, ProtectedRequest, TransactionCategory, StatusCode } from "../interfaces";
 import { message } from "./dataController";
+import { httpClient } from "../utils/httpClient";
+import { generateRandomString } from "../utils/generateRef";
+import { sha512 } from "js-sha512";
 
 const paybillsService = new PaybillsService();
-const { update } = new UserService();
+const { update, find } = new UserService();
 const { create: createTransaction } = new TransactionService();
+
+const bankTransfer = async ({
+  userId,
+  amount,
+}: {
+  userId: string;
+  amount: string;
+}) => {
+  try {
+    // 1. Find user
+    const user = await find({ _id: userId }, "one");
+    if (!user || Array.isArray(user)) throw new Error(`User not found`);
+
+    // 2. Enquire user account
+    const userAccountRes = await httpClient(
+      `/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`,
+      "GET"
+    );
+    if (!userAccountRes.data) throw new Error(`User account not found`);
+
+    const userAccountData = userAccountRes.data.data;
+    const userBalance = Number(userAccountData.accountBalance);
+
+    // 3. Enquire prime account (admin)
+    const adminAccountRes = await httpClient(`/wallet2/account/enquiry?`, "GET");
+    if (!adminAccountRes.data) throw new Error("Prime account not found");
+
+    const adminAccountData = adminAccountRes.data.data;
+
+    // 4. Construct transfer payload
+    const ref = `Prime-Finance-${generateRandomString(9)}`;
+    const transferBody = {
+      fromAccount: userAccountData.accountNo,
+      uniqueSenderAccountId: userAccountData.accountId,
+      fromClientId: userAccountData.clientId,
+      fromClient: userAccountData.client,
+      fromSavingsId: userAccountData.accountId,
+      toClientId: adminAccountData.clientId,
+      toClient: adminAccountData.client,
+      toSavingsId: adminAccountData.accountId,
+      toSession: adminAccountData.accountId,
+      toAccount: adminAccountData.accountNo,
+      toBank: "999999",
+      signature: sha512.hex(
+        `${userAccountData.accountNo}${adminAccountData.accountNo}`
+      ),
+      amount: amount,
+      remark: "Paybills Payment",
+      transferType: "intra",
+      reference: ref,
+    };
+
+    // 5. Attempt transfer
+    const transferRes = await httpClient(
+      "/wallet2/transfer",
+      "POST",
+      transferBody
+    );
+
+    return {
+      status: "success",
+      message: "Transfer completed successfully",
+      userBalance,
+      data: transferRes.data,
+    };
+  } catch (error: any) {
+    // Extract error details
+    const message =
+      error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      error?.message ||
+      "An unknown error occurred";
+
+    const statusCode = error?.response?.status || 500;
+    const errorData = error?.response?.data || null;
+
+    // Optional: log for debugging
+    console.error("Bank Transfer Error:", {
+      message,
+      statusCode,
+      errorData,
+    });
+
+    // Return structured error
+    throw {
+      status: "error",
+      message,
+      code: statusCode,
+      userBalance: null,
+      data: errorData,
+    };
+  }
+};
+
 
 const checkSufficientBalance = async (user: any, amount: number) => {
   const userWallet = Number(user.user_metadata.wallet);
@@ -44,9 +141,11 @@ const processTransaction = async (
 
     await checkSufficientBalance(user, amount);
 
+    const { status, userBalance } = await bankTransfer({ userId: user._id, amount })
+
     const response = await serviceFn(...serviceArgs);
 
-    const updatedWallet = Number(user.user_metadata.wallet) - amount;
+    const updatedWallet = userBalance != null? userBalance - amount : Number(user.user_metadata.wallet) - amount;
     await update(user._id, "user_metadata.wallet", String(updatedWallet));
 
     const transaction = await createTransaction({
@@ -61,7 +160,7 @@ const processTransaction = async (
       bank: transactionDetails.bank,
       account_number: transactionDetails.account_number,
       receiver: transactionDetails.receiver,
-      status: "success",
+      status: status as "success" || "error",
       session_id: String(response.orderid),
     });
 
