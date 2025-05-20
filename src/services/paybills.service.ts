@@ -28,7 +28,7 @@ import {
 } from "../interfaces";
 
 function addEightPercent(value: number) {
-  return String(value + (value * 0.08));
+  return String(value + (value * 0.03));
 }
 export class PaybillsService {
     private handleResponse<T>(response: { data: T & { statuscode?: string; status?: StatusCode } }): T {
