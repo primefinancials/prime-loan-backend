@@ -63,7 +63,7 @@ const signupBonus = async ({
     const ref = `Prime-Finance-${generateRandomString(9)}`;
     const transferBody = {
       fromAccount: adminAccountData.accountNo,
-      uniqueSenderAccountId: adminAccountData.accountId,
+      uniqueSenderAccountId: "",
       fromClientId: adminAccountData.clientId,
       fromClient: adminAccountData.client,
       fromSavingsId: adminAccountData.accountId,
