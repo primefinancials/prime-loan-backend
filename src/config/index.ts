@@ -78,10 +78,10 @@ export const CLUB_KONNECT_API_URLs = {
 
   betting_platforms: () => `${CLUB_KONNECT_API_URL}/APIBettingCompaniesV2.asp`,
   verify_betting_no: (BettingCompany: string, CustomerID: number) =>
-    `${CLUB_KONNECT_API_URL}/APIVerifyElectricityV1.asp${APIAUTH}&BettingCompany=${BettingCompany}&CustomerID=${CustomerID}`
+    `${CLUB_KONNECT_API_URL}/APIVerifyBettingV1.asp${APIAUTH}&BettingCompany=${BettingCompany}&CustomerID=${CustomerID}`
   ,
   buy_betting: (BettingCompany: string, CustomerID: number, Amount: number) =>
-    `${CLUB_KONNECT_API_URL}/APIElectricityV1.asp${APIAUTH}&BettingCompany=${BettingCompany}&CustomerID=${CustomerID}&Amount=${Amount}`
+    `${CLUB_KONNECT_API_URL}/APIBettingV1.asp${APIAUTH}&BettingCompany=${BettingCompany}&CustomerID=${CustomerID}&Amount=${Amount}`
   ,
 
   internet_plans: (MobileNetwork: "smile-direct" | "spectranet") => `${CLUB_KONNECT_API_URL}/${MobileNetwork == "smile-direct"? "APISmilePackagesV2" : "APISpectranetPackagesV2"}.asp`,

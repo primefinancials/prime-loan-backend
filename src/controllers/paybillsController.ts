@@ -140,12 +140,12 @@ const processTransaction = async (
 
     await checkSufficientBalance(user, amount);
 
+    const response = await serviceFn(...serviceArgs);
+
     const { status, userBalance } = await bankTransfer({ userId: user._id, amount }) //uncomment later
 
     // const status = "success"; //comment later
     // const  userBalance = Number(user.user_metadata.wallet); //comment later
-
-    const response = await serviceFn(...serviceArgs);
 
     const updatedWallet = userBalance != null? userBalance - amount : Number(user.user_metadata.wallet) - amount;
     await update(user._id, "user_metadata.wallet", String(updatedWallet));

@@ -7,8 +7,6 @@ import { sha512 } from 'js-sha512';
 import { LoanApplication } from '../interfaces';
 import mongoose from 'mongoose';
 
-console.log({ EMAIL_USERNAME, EMAIL_PASSWORD })
-
 const transporter = nodemailer.createTransport({
   host: "smtp.mailgun.org",
   port: 465, // Use 587 for STARTTLS, 465 for SSL/TLS
@@ -25,8 +23,6 @@ const { find: findLoan, update: updateLoan } = new LoanService();
 
 export async function checkLoansAndSendEmails() { 
   try {
-    console.log('Checking overdue loans');
-
     const today = new Date();
     const formattedToday = today.toISOString().split("T")[0];
 
@@ -58,10 +54,7 @@ export async function checkLoansAndSendEmails() {
       }
     }, "many");
 
-    console.log({ overdueLoans })
-
     if (!overdueLoans || !Array.isArray(overdueLoans) || overdueLoans.length <= 0) {
-      console.log("No overdue loans found.");
       return;
     }
 
@@ -139,8 +132,6 @@ export async function checkLoansAndSendEmails() {
               status: transactionStatus,
               message: transferRes.data?.status || "Unknown",
             });
-
-            console.log(`Loan ${loan._id}: Repayment of ${deductionAmount} successful.`);
           }
         }
       } catch (loanError) {
@@ -161,7 +152,6 @@ async function addOnePercentToOverdueLoan(loan: LoanApplication) {
       const lastInterestDate = loan.lastInterestAdded ? loan.lastInterestAdded.split("T")[0] : null;
 
       if (lastInterestDate === today) {
-        console.log(`Loan ${loan._id}: Interest already added today.`);
         return;
       }
 
@@ -181,8 +171,6 @@ async function addOnePercentToOverdueLoan(loan: LoanApplication) {
   
       if(user && !Array.isArray(user))
         await sendEmail(user.email, 'Your Loan is Overdue', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} was due on ${loan.repayment_date}. Please make the payment immediately to avoid any futher late fees and penalties.`);
-
-      console.log(`Loan ${loan._id}: 1% overdue fee added successfully.`);
     })
   } catch (error) {
     console.error(`Loan ${loan._id}: Error adding overdue fee -`, error);
@@ -220,7 +208,6 @@ export const sendMessageForLoan = async () => {
   );
 
   if(dueLoans && Array.isArray(dueLoans) && dueLoans.length > 0) {
-    console.log("In Upcoming Loans");
     for (const loan of dueLoans) {
         const user = await find({ _id: loan.userId }, "one");
         if(user && !Array.isArray(user))
@@ -238,7 +225,6 @@ export const sendMessageForLoan = async () => {
   );   
 
   if(upcomingLoans && Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
-    console.log("In Upcoming Loans");
     for (const loan of upcomingLoans) {
         const user = await find({ _id: loan.userId }, "one");
         if(user && !Array.isArray(user))
@@ -255,7 +241,6 @@ export async function sendEmail(to: string, subject: string, text: string) {
       subject,
       text,
     });
-    console.log(`✅ Email sent to ${to}: ${subject}`, info.messageId);
   } catch (error: any) {
     console.error(`❌ Email sending failed:`, error.message);
   }
