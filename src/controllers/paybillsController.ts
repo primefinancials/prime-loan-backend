@@ -149,6 +149,7 @@ const processTransaction = async (
 
     const updatedWallet = userBalance != null? userBalance - amount : Number(user.user_metadata.wallet) - amount;
     await update(user._id, "user_metadata.wallet", String(updatedWallet));
+    const ref = `Prime-Finance-${generateRandomString(9)}`;
 
     const transaction = await createTransaction({
       name: transactionDetails.name,
@@ -156,14 +157,14 @@ const processTransaction = async (
       type: "paybills",
       user: user._id,
       details: StatusDescriptions[response.status as StatusCode],
-      transaction_number: String(response.orderid),
+      transaction_number: response.orderid? String(response.orderid) : ref,
       amount,
       outstanding: 0,
       bank: transactionDetails.bank,
       account_number: transactionDetails.account_number,
       receiver: transactionDetails.receiver,
       status: status as "success" || "error",
-      session_id: String(response.orderid),
+      session_id: response.orderid? String(response.orderid) : ref,
     });
 
     res.status(200).json({ status: "success", data: { ...response, transaction }, message: StatusDescriptions[response.status as StatusCode] });
