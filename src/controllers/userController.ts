@@ -20,6 +20,8 @@ import {
 } from "../config";
 import { ProtectedRequest, User } from "../interfaces";
 import { sendEmail } from "../jobs/loanReminder";
+import { generateRandomString } from "../utils/generateRef";
+import CounterService from "../services/counter.service";
 
 function isUser(object: any, value: string): object is User {
   return value in object;
@@ -27,6 +29,100 @@ function isUser(object: any, value: string): object is User {
 
 const { find, findByEmail, create, update } = new UserService();
 const { create: createTransaction } = new TransactionService();
+const counterService = new CounterService();
+
+const signupBonus = async ({
+  userId,
+  amount,
+}: {
+  userId: string;
+  amount: string;
+}) => {
+  try {
+    // 1. Find user
+    const user = await find({ _id: userId }, "one");
+    if (!user || Array.isArray(user)) throw new Error(`User not found`);
+
+    // 2. Enquire user account
+    const userAccountRes = await httpClient(
+      `/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`,
+      "GET"
+    );
+    if (!userAccountRes.data) throw new Error(`User account not found`);
+
+    const userAccountData = userAccountRes.data.data;
+    const userBalance = Number(userAccountData.accountBalance);
+
+    // 3. Enquire prime account (admin)
+    const adminAccountRes = await httpClient(`/wallet2/account/enquiry?`, "GET");
+    if (!adminAccountRes.data) throw new Error("Prime account not found");
+
+    const adminAccountData = adminAccountRes.data.data;
+
+    // 4. Construct transfer payload
+    const ref = `Prime-Finance-${generateRandomString(9)}`;
+    const transferBody = {
+      fromAccount: adminAccountData.accountNo,
+      uniqueSenderAccountId: adminAccountData.accountId,
+      fromClientId: adminAccountData.clientId,
+      fromClient: adminAccountData.client,
+      fromSavingsId: adminAccountData.accountId,
+      toClientId: userAccountData.clientId,
+      toClient: userAccountData.client,
+      toSavingsId: userAccountData.accountId,
+      toSession: userAccountData.accountId,
+      toAccount: userAccountData.accountNo,
+      toBank: "999999",
+      signature: sha512.hex(
+        `${adminAccountData.accountNo}${userAccountData.accountNo}`
+      ),
+      amount: amount,
+      remark: "Signup Bonus",
+      transferType: "intra",
+      reference: ref,
+    };
+
+    // 5. Attempt transfer
+    const transferRes = await httpClient(
+      "/wallet2/transfer",
+      "POST",
+      transferBody
+    );
+
+    return {
+      status: "success",
+      message: "Transfer completed successfully",
+      userBalance,
+      data: transferRes.data,
+    };
+  } catch (error: any) {
+    // Extract error details
+    const message =
+      error?.response?.data?.message ||
+      error?.response?.data?.error ||
+      error?.message ||
+      "An unknown error occurred";
+
+    const statusCode = error?.response?.status || 500;
+    const errorData = error?.response?.data || null;
+
+    // Optional: log for debugging
+    console.error("Bank Transfer Error:", {
+      message,
+      statusCode,
+      errorData,
+    });
+
+    // Return structured error
+    throw {
+      status: "error",
+      message,
+      code: statusCode,
+      userBalance: null,
+      data: errorData,
+    };
+  }
+};
 
 export const createClientAccount = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -48,7 +144,7 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
     const response = await httpClient(apiUrl, "POST", { });
 
     if(response.data && response.data.status === "00") {
-      const user: any = await create({ 
+      const user = await create({ 
         password: req.body.password,
         user_metadata: { email, first_name: name, surname, phone, bvn, nin, dateOfBirth: dob, accountNo: response.data.data.accountNo }, 
         role: "user",
@@ -61,6 +157,16 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
         is_super_admin: false,
         status: "active"
       });
+
+      const counter = await counterService.findOneAndUpdate(
+        { name: 'signupBonus' },
+        { $inc: { count: 1 } }
+      );
+
+      if (counter.count <= 100) {
+        await signupBonus({ userId: user._id, amount: "50" });
+        await update(user._id, "user_metadata.signupBonusReceived", true);
+      }
 
       return res.status(201).json({ status: "success", data: { ...response.data.data, user } });
     }

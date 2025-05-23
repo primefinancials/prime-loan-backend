@@ -105,7 +105,6 @@ const bankTransfer = async ({
   }
 };
 
-
 const checkSufficientBalance = async (user: any, amount: number) => {
   const userWallet = Number(user.user_metadata.wallet);
   if (userWallet < amount) {
@@ -141,10 +140,10 @@ const processTransaction = async (
 
     await checkSufficientBalance(user, amount);
 
-    // const { status, userBalance } = await bankTransfer({ userId: user._id, amount }) //uncomment later
+    const { status, userBalance } = await bankTransfer({ userId: user._id, amount }) //uncomment later
 
-    const status = "success"; //comment later
-    const  userBalance = Number(user.user_metadata.wallet); //comment later
+    // const status = "success"; //comment later
+    // const  userBalance = Number(user.user_metadata.wallet); //comment later
 
     const response = await serviceFn(...serviceArgs);
 

@@ -50,6 +50,7 @@ const userSchema = new Schema<User>(
       first_name: { type: String, required: false },
       dateOfBirth: { type: String, required: false },
       email_verified: { type: Boolean, required: false },
+      signupBonusReceived: { type: Boolean, required: false },
       phone_verified: { type: Boolean, required: false },
       accountNo: { type: String, required: false },
       address: { type: String, required: false },
