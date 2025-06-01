@@ -193,13 +193,13 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       throw new NotFoundError("User not found.");
     }
 
-    // const credit = await httpRequest(bvn);
+    const credit = await httpRequest(bvn); 
 
-    // console.log({ credit });
+    console.log({ credit });
 
-    // if(credit.error) {
-    //   throw new BadRequestError(credit.error);
-    // }
+    if(credit.error) {
+      throw new BadRequestError(credit.error);
+    }
 
     const loan = await createLoan({
       first_name,
