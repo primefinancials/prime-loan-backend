@@ -232,23 +232,23 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       repayment_date,
       acknowledgment,
       loan_payment_status: "not-started",
-      // credit_score: {
-      //   loanId: credit._id,
-      //   lastReported: "",
-      //   creditorName: credit.name,
-      //   totalDebt: credit.score.totalBorrowed,
-      //   accountype: "",
-      //   outstandingBalance: credit.score.totalOutstanding,
-      //   activeLoan: credit.score.totalNoOfActiveLoans,
-      //   loansTaken: credit.score.totalNoOfLoans,
-      //   income: 0,
-      //   repaymentHistory: credit.score.totalNoOfPerformingLoans,
-      //   openedDate: credit.score.totalNoOfActiveLoans,
-      //   lengthOfCreditHistory: credit.score.totalNoOfLoans,
-      //   remarks: "",
-      //   creditors: credit.score.creditors,
-      //   loan_details: credit.score.loanPerformance,
-      // }
+      credit_score: {
+        loanId: credit._id,
+        lastReported: "",
+        creditorName: credit.name,
+        totalDebt: credit.score.totalBorrowed,
+        accountype: "",
+        outstandingBalance: credit.score.totalOutstanding,
+        activeLoan: credit.score.totalNoOfActiveLoans,
+        loansTaken: credit.score.totalNoOfLoans,
+        income: 0,
+        repaymentHistory: credit.score.totalNoOfPerformingLoans,
+        openedDate: credit.score.totalNoOfActiveLoans,
+        lengthOfCreditHistory: credit.score.totalNoOfLoans,
+        remarks: "",
+        creditors: credit.score.creditors,
+        loan_details: credit.score.loanPerformance,
+      }
     });
 
     if(!loan) throw new NotFoundError("Loan not created");
