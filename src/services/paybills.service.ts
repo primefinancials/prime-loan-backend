@@ -37,8 +37,6 @@ export class PaybillsService {
         console.log("Response status code:", response.data.statuscode);
         console.log("Response status:", response.data.status);
 
-        
-
         if (response.data && response.data.status && response.data.status !== StatusCode.ORDER_RECEIVED) {
             throw new APIError(Number(response.data.statuscode), StatusDescriptions[response.data.status as StatusCode] || "System busy, try again later");
         }
