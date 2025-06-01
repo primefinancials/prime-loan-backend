@@ -18,7 +18,7 @@ const DefaultCorsOptions: CorsOptions = {
         'https://prime-finance-admin.netlify.app', 
         'https://admin.primefinance.live',
         'https://primefinance.live',
-        'https://prime-loan-web-init.vercel.app/login'
+        'https://prime-loan-web-init.vercel.app'
     ],
     /**
      * The allowed HTTP methods for the request.
