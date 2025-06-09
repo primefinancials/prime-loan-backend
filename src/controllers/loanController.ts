@@ -90,10 +90,10 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
     }
     
     const account = await httpClient(`/wallet2/account/enquiry?`, "GET");
-    console.log({ account })
+    // console.log({ account })
 
     const useraccount = await httpClient(`/wallet2/account/enquiry?accountNumber=${user?.user_metadata.accountNo}`, "GET");
-    console.log({ useraccount })
+    // console.log({ useraccount })
     
     if(account.data && useraccount.data) {
       const { accountNo, accountBalance, accountId, client, clientId, savingsProductName } = account.data.data;
@@ -193,13 +193,13 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       throw new NotFoundError("User not found.");
     }
 
-    const credit = await httpRequest(bvn); 
+    // const credit = await httpRequest(bvn); 
 
-    console.log({ credit });
+    // console.log({ credit });
 
-    if(credit.error) {
-      throw new BadRequestError(credit.error);
-    }
+    // if(credit.error) {
+    //   throw new BadRequestError(credit.error);
+    // }
 
     const loan = await createLoan({
       first_name,
@@ -232,23 +232,23 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       repayment_date,
       acknowledgment,
       loan_payment_status: "not-started",
-      credit_score: {
-        loanId: credit._id,
-        lastReported: "",
-        creditorName: credit.name,
-        totalDebt: credit.score.totalBorrowed,
-        accountype: "",
-        outstandingBalance: credit.score.totalOutstanding,
-        activeLoan: credit.score.totalNoOfActiveLoans,
-        loansTaken: credit.score.totalNoOfLoans,
-        income: 0,
-        repaymentHistory: credit.score.totalNoOfPerformingLoans,
-        openedDate: credit.score.totalNoOfActiveLoans,
-        lengthOfCreditHistory: credit.score.totalNoOfLoans,
-        remarks: "",
-        creditors: credit.score.creditors,
-        loan_details: credit.score.loanPerformance,
-      }
+      // credit_score: {
+      //   loanId: credit._id,
+      //   lastReported: "",
+      //   creditorName: credit.name,
+      //   totalDebt: credit.score.totalBorrowed,
+      //   accountype: "",
+      //   outstandingBalance: credit.score.totalOutstanding,
+      //   activeLoan: credit.score.totalNoOfActiveLoans,
+      //   loansTaken: credit.score.totalNoOfLoans,
+      //   income: 0,
+      //   repaymentHistory: credit.score.totalNoOfPerformingLoans,
+      //   openedDate: credit.score.totalNoOfActiveLoans,
+      //   lengthOfCreditHistory: credit.score.totalNoOfLoans,
+      //   remarks: "",
+      //   creditors: credit.score.creditors,
+      //   loan_details: credit.score.loanPerformance,
+      // }
     });
 
     if(!loan) throw new NotFoundError("Loan not created");

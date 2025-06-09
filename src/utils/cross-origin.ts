@@ -1,4 +1,4 @@
-import cors, { CorsOptions, } from 'cors';
+import cors, { CorsOptions } from 'cors';
 
 
 type CrossOrigin = Partial<typeof DefaultCorsOptions>;
