@@ -92,6 +92,7 @@ const LoanApplicationSchema: Schema = new Schema(
     repayment_date: { type: String, required: true },
     loan_date: { type: String, required: true },
     loan_payment_status: { type: String, required: true },
+    credit_message: { type: String, required: true },
     credit_score: CreditScoreSchema,
     repayment_history: [RepaymentHistorySchema],
     lastInterestAdded: { type: String, required: false },

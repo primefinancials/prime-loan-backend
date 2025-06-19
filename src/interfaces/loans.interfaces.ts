@@ -3,14 +3,14 @@ export type LOANTYPE = "request" | "repay";
 export type LOANSTATUS = "pending" | "rejected" | "accepted";
 export type LOANPAYMENTSTATUS = "complete" | "in-progress" | "not-started";
 
-interface Subscriber {
+export interface Subscriber {
   Subscriber_ID: string;
   Name: string;
   Phone: string;
   Address: string;
 }
 
-interface LoanDetails {
+export interface LoanDetails {
   loanProvider: string;
   accountNumber: string;
   loanAmount: number;
@@ -30,7 +30,7 @@ interface LoanDetails {
 }
 
 
-interface ICreditScore {
+export interface ICreditScore {
   loanId: string;
   lastReported: string;
   creditorName: string;
@@ -85,7 +85,8 @@ export interface LoanApplication {
   repayment_date: string; // Repayment date in string format
   loan_date: string; // Loan date in string format
   loan_payment_status: LOANPAYMENTSTATUS;
-  credit_score: ICreditScore
+  credit_message: string;
+  credit_score: ICreditScore | null;
   repayment_history: {
     amount: number;
     outstanding: number;
@@ -129,7 +130,8 @@ export interface CREATELOAN {
   repayment_date: string; // Repayment date in string format
   loan_date: string; // Loan date in string format
   loan_payment_status: LOANPAYMENTSTATUS;
-  credit_score?: ICreditScore
+  credit_message: string;
+  credit_score: ICreditScore | null;
 }
 
 export interface UPDATELOAN {

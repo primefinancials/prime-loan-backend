@@ -3,7 +3,7 @@ import { validateRequiredParams } from "../utils/validateParams";
 import { httpClient } from "../utils/httpClient";
 import { generateRandomString } from "../utils/generateRef";
 import { sha512 } from "js-sha512";
-import { ProtectedRequest } from "../interfaces";
+import { ProtectedRequest, Subscriber, LoanDetails, ICreditScore } from "../interfaces";
 import { UserService, TransactionService, LoanService } from "../services";
 import { BadRequestError, NotFoundError } from "../exceptions";
 import axios, { AxiosRequestConfig } from "axios";
@@ -14,31 +14,93 @@ const { find, findByEmail, create, update } = new UserService();
 const { create: createTransaction } = new TransactionService();
 const { update: updateLoan, findById: findLoanById, find: findLoan, create: createLoan } = new LoanService();
 
+function convertToCreditScore(rawData: any): ICreditScore | null {
+  if(rawData.error) return null;
+
+  const profile = rawData?.data?.profile || {};
+  const creditHistories = rawData?.data?.credit_history || [];
+
+  const firstCredit = creditHistories[0]?.history[0] || {};
+
+  const loan_details: LoanDetails[] = creditHistories.flatMap((ch: any) => {
+    return ch.history.map((h: any) => ({
+      loanProvider: ch.institution || "Unknown",
+      accountNumber: "N/A",
+      loanAmount: h.repayment_amount || 0,
+      outstandingBalance: 0,
+      status: h.loan_status || "",
+      performanceStatus: h.performance_status || "",
+      overdueAmount: 0,
+      type: "N/A",
+      loanDuration: `${h.tenor || 0} months`,
+      repaymentFrequency: h.repayment_frequency || "",
+      repaymentBehavior: h.repayment_schedule?.[0]?.status || "",
+      paymentProfile: h.repayment_schedule?.[0]?.status || "",
+      dateAccountOpened: formatDate(h.date_opened),
+      lastUpdatedAt: formatDate(h.closed_date),
+      loanCount: ch.history.length,
+      monthlyInstallmentAmt: h.repayment_amount || 0
+    }));
+  });
+
+  const creditors: Subscriber[] = creditHistories.map((ch: any) => ({
+    Subscriber_ID: ch.institution,
+    Name: ch.institution,
+    Phone: "",
+    Address: ""
+  }));
+
+  const totalDebt = loan_details.reduce((sum, loan) => sum + loan.loanAmount, 0);
+
+  return {
+    loanId: "N/A",
+    lastReported: rawData.timestamp || new Date().toISOString(),
+    creditorName: creditHistories[0]?.institution || "Unknown",
+    totalDebt: totalDebt.toString(),
+    accountype: "N/A",
+    outstandingBalance: 0,
+    activeLoan: loan_details.filter(loan => loan.status === "open").length,
+    loansTaken: loan_details.length,
+    income: 0,
+    repaymentHistory: loan_details[0]?.repaymentBehavior || "",
+    openedDate: loan_details[0]?.dateAccountOpened || "",
+    lengthOfCreditHistory: "0 years",
+    remarks: loan_details[0]?.performanceStatus ? `Loan is ${loan_details[0].performanceStatus}` : "",
+    creditors,
+    loan_details
+  };
+}
+
+// Helper: Convert DD-MM-YYYY to ISO format
+function formatDate(dateStr: string): string {
+  const [day, month, year] = dateStr?.split("-") || [];
+  if (!day || !month || !year) return "";
+  return new Date(`${year}-${month}-${day}`).toISOString();
+}
+
+
 const httpRequest = async (bvn: string) => {
-  const url = `https://api.creditchek.africa/v1/credit/creditRegistry-premium?bvn=${bvn}`;
-  const accessToken = `M9/lR4xLUzwA+k4lnVWL40j98i96FtJmmPAfAQBktaL2BfhpEHqWIrmqORGzodK1`;
+  const url = `https://api.withmono.com/v3/lookup/credit-history/all`;
 
   const headers = {
-    "Content-Type": "application/json",
-    "token": accessToken,
+    "accept": "application/json",
+    "content-type": "application/json",
+    "mono-sec-key": "live_sk_axio44pdonk6lb6rdhxa",
   };
 
   const options: AxiosRequestConfig = {
     url,
-    method: "GET",
-    headers
+    method: "POST",
+    headers,
+    data: { bvn }
   };
 
   try {
     const response = await axios(options);
 
-    console.log({ response })
-
     if (![200, 202].includes(response.status)) {
         throw new Error(`Client creation failed: ${response.data.message}`);
     }
-
-    console.log({ httpClient: "passed" })
 
     return response.data.data;
   } catch (error: any) {
@@ -48,7 +110,7 @@ const httpRequest = async (bvn: string) => {
     ) {
       return ({ error: "Unable to create loan cause credit check can't be performed at this time" });
     } else {
-      return ({ error });
+      return ({ error: error.response.data });
     }
   }
 };
@@ -193,13 +255,9 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       throw new NotFoundError("User not found.");
     }
 
-    // const credit = await httpRequest(bvn); 
+    const credit = await httpRequest(bvn); 
 
-    // console.log({ credit });
-
-    // if(credit.error) {
-    //   throw new BadRequestError(credit.error);
-    // }
+    console.log({ credit });
 
     const loan = await createLoan({
       first_name,
@@ -232,31 +290,16 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       repayment_date,
       acknowledgment,
       loan_payment_status: "not-started",
-      // credit_score: {
-      //   loanId: credit._id,
-      //   lastReported: "",
-      //   creditorName: credit.name,
-      //   totalDebt: credit.score.totalBorrowed,
-      //   accountype: "",
-      //   outstandingBalance: credit.score.totalOutstanding,
-      //   activeLoan: credit.score.totalNoOfActiveLoans,
-      //   loansTaken: credit.score.totalNoOfLoans,
-      //   income: 0,
-      //   repaymentHistory: credit.score.totalNoOfPerformingLoans,
-      //   openedDate: credit.score.totalNoOfActiveLoans,
-      //   lengthOfCreditHistory: credit.score.totalNoOfLoans,
-      //   remarks: "",
-      //   creditors: credit.score.creditors,
-      //   loan_details: credit.score.loanPerformance,
-      // }
+      credit_message: credit?.error?.message || "available",
+      credit_score: convertToCreditScore(credit)
     });
 
     if(!loan) throw new NotFoundError("Loan not created");
 
     res.status(200).json({ status: "success", data: loan });
   } catch (error: any) {
-    console.log("Error getting loan transaction status:", error);
-    next(error);
+    console.log("Error getting loan transaction status:", error.error);
+    next(error.error);
   }
 };
 
