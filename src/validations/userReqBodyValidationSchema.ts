@@ -151,3 +151,28 @@ export const changePasswordSchema = Joi.object({
       "string.min": "New password must be at least 8 characters long",
     }),
 });
+
+export const linkedAccountSchema = Joi.object({
+  id: Joi.string().required(),
+  name: Joi.string().required(),
+  email: Joi.string().email().required(),
+  ref: Joi.string().required(),
+  bank: Joi.string().required(),
+  account_number: Joi.string().required(),
+});
+
+export const initiateAccountLinking = Joi.object({
+  customer: Joi.object({
+    name: Joi.string().required(),
+    email: Joi.string().email().required(),
+  }).required(),
+  meta: Joi.object({
+    ref: Joi.string().required(),
+  }).required(),
+  scope: Joi.string().valid("auth").required(),
+  redirect_url: Joi.string().uri().required(),
+});
+
+export const confirmAccountLinking = Joi.object({
+  code: Joi.string().required(),
+});

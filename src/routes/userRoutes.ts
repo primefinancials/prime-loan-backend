@@ -19,7 +19,12 @@ import {
     ActivateAndDeactivateUser,
     initiateReset,
     validateReset,
-    updatePasswordOrPin
+    updatePasswordOrPin,
+    initializeLinking,
+    confirmLinking,
+    accountDetails,
+    linkAccount,
+    unlinkAccount
 } from "../controllers/userController";
 import { validateReqBody, verifyJwtRest } from "../middlewares";
 import { 
@@ -31,7 +36,10 @@ import {
     changePasswordSchema,
     walletAlertsSchema,
     activateAdminReqBodySchema,
-    activateUserReqBodySchema
+    activateUserReqBodySchema,
+    linkedAccountSchema,
+    initiateAccountLinking,
+    confirmAccountLinking
 } from "../validations";
 
 const router = express.Router();
@@ -56,5 +64,10 @@ router.get("/logout", verifyJwtRest(), logout);
 router.get("/bank-listing", verifyJwtRest(), bankListing);
 router.post("/transfer", verifyJwtRest(), validateReqBody(transferSchema), transfer);
 router.post("/wallet-alert", validateReqBody(walletAlertsSchema), walletAlerts);
+router.post("/initiate-linking", verifyJwtRest(), validateReqBody(initiateAccountLinking), initializeLinking);
+router.post("/confirm-linking", verifyJwtRest(), validateReqBody(confirmAccountLinking), confirmLinking);
+router.post("/link-account", verifyJwtRest(), validateReqBody(linkedAccountSchema), linkAccount);
+router.post("/unlink-account/:id", verifyJwtRest(), unlinkAccount);
+router.get("/account-details/:id", verifyJwtRest(), accountDetails);
 
 export default router;

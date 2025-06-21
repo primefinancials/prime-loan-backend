@@ -6,6 +6,7 @@ import { httpClient } from '../utils/httpClient';
 import { sha512 } from 'js-sha512';
 import { LoanApplication } from '../interfaces';
 import mongoose from 'mongoose';
+import axios, { AxiosRequestConfig } from 'axios';
 
 const transporter = nodemailer.createTransport({
   host: "smtp.mailgun.org",
@@ -133,7 +134,7 @@ export async function checkLoansAndSendEmails() {
               message: transferRes.data?.status || "Unknown",
             });
           }
-        }
+        } 
       } catch (loanError) {
         console.error(`Loan ${loan._id}: Skipping due to error -`, loanError);
       }

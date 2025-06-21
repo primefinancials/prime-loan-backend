@@ -2,11 +2,24 @@ import { Schema, model, SchemaTypes } from 'mongoose';
 import { User, Update } from '../interfaces';
 
 const updateSchema = new Schema<Update>({
-  pin: { type: Number, required: true }, // Optional
+  pin: { type: Number, required: true },
   type: { type: String, enum: ["pin", "password"], required: true },
   status: { type: String, enum: ["validated", "invalid", "awaiting_validation"], required: true },
   created_at: { type: String, required: true },
 });
+
+// Define the schema for linked accounts
+const linkedAccountSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    email: { type: String, required: true },
+    ref: { type: String, required: true },
+    bank: { type: String, required: true },
+    account_number: { type: String, required: true },
+  },
+  { _id: false } // Prevent Mongoose from adding an extra _id field to each subdocument
+);
 
 const userSchema = new Schema<User>(
   {
@@ -19,13 +32,10 @@ const userSchema = new Schema<User>(
       validate: {
         validator: async function (email: string) {
           const self = this as any;
-
-          // Regex to validate email format
           if (!/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(email)) {
             throw new Error("Invalid email address");
           }
-
-          return true; // Validation passed
+          return true;
         },
         message: (props: any) => props.reason.message || "Invalid email",
       },
@@ -64,6 +74,7 @@ const userSchema = new Schema<User>(
         required: false,
       },
     },
+    linked_accounts: { type: [linkedAccountSchema], default: [] }, // <-- added here
     updates: { type: [updateSchema], default: [] },
     is_super_admin: { type: Boolean, required: false, default: null },
   },
@@ -72,7 +83,6 @@ const userSchema = new Schema<User>(
 
 const User = model<User>('users', userSchema);
 
-// Sync indexes with the database
 (async () => {
   await User.syncIndexes();
 })();

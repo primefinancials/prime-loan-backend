@@ -47,6 +47,14 @@ export interface User {
   };
   is_super_admin?: boolean;
   updates: Update[]; // Array of update objects
+  linked_accounts?: {
+    id: string;
+    name: string;
+    email: string;
+    ref: string;
+    bank: string;
+    account_number: string;
+  }[]
 }
   
 export interface CREATEUSER {
@@ -112,4 +120,12 @@ export interface UPDATEUSER {
     verified_address?: "verified" | "pending" | "unverified";
   };
   updates?: Update[]; // Array of update objects
+  linked_accounts?: {
+    id: string;
+    name: string;
+    email: string;
+    ref: string;
+    bank: string;
+    account_number: string;
+  }[]
 }

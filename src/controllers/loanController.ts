@@ -246,7 +246,8 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       percentage,
       loan_date,
       repayment_date,
-      acknowledgment
+      acknowledgment,
+      debit_account
     } = req.body;
 
     const { user }= req;
@@ -291,7 +292,8 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       acknowledgment,
       loan_payment_status: "not-started",
       credit_message: credit?.error?.message || "available",
-      credit_score: convertToCreditScore(credit)
+      credit_score: convertToCreditScore(credit),
+      debit_account
     });
 
     if(!loan) throw new NotFoundError("Loan not created");

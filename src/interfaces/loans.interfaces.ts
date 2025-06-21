@@ -94,6 +94,7 @@ export interface LoanApplication {
     action: string;
   }[];
   lastInterestAdded: string;
+  debit_account: string;
 }
 
 export interface CREATELOAN {
@@ -132,6 +133,7 @@ export interface CREATELOAN {
   loan_payment_status: LOANPAYMENTSTATUS;
   credit_message: string;
   credit_score: ICreditScore | null;
+  debit_account: string;
 }
 
 export interface UPDATELOAN {

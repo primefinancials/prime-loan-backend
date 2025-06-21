@@ -96,6 +96,7 @@ const LoanApplicationSchema: Schema = new Schema(
     credit_score: CreditScoreSchema,
     repayment_history: [RepaymentHistorySchema],
     lastInterestAdded: { type: String, required: false },
+    debit_account: { type: String, required: true },
   },
   { timestamps: true }
 );

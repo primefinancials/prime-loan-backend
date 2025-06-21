@@ -9,6 +9,7 @@ import { encryptPassword } from "../utils";
 import { getCurrentTimestamp } from "../utils/convertDate";
 import { decodePassword } from "../utils";
 import JWT from "jsonwebtoken";
+import axios, { AxiosRequestConfig } from "axios";
 import {
   ACCESS_TOKEN_EXPIRES_IN,
   COOKIE_VALIDITY,
@@ -878,9 +879,169 @@ export const walletAlerts = async (req: Request, res: Response) => {
     return res.status(200).json({ status: "Success", data });
   } catch (error: any) {
     console.error("Error handling wallet alerts:", error);
-    res.status(400).json({ status: 400, message: error.message });
+    res.status(400).json({ status: "error", message: error.message });
   }
 };
 
+export const initializeLinking =  async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  const url = `https://api.withmono.com/v2/accounts/initiate`;
+
+  const headers = {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "mono-sec-key": "live_sk_axio44pdonk6lb6rdhxa",
+  };
+
+  const options: AxiosRequestConfig = {
+    url,
+    method: "POST",
+    headers,
+    data: { ...req.body }
+  };
+
+  try {
+    const response = await axios(options);
+
+    if (![200, 202].includes(response.status)) {
+        throw new Error(`initialize link: ${response.data.message}`);
+    }
+
+    res.status(200).json({ status: "success", data: response.data.data });
+  } catch (error: any) {
+    console.log({ error });
+    next(error);
+  }
+}
+
+export const confirmLinking =  async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  const url = `https://api.withmono.com/v2/accounts/auth`;
+
+  const headers = {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "mono-sec-key": "live_sk_axio44pdonk6lb6rdhxa",
+  };
+
+  const options: AxiosRequestConfig = {
+    url,
+    method: "POST",
+    headers,
+    data: { ...req.body }
+  };
+
+  try {
+    const response = await axios(options);
+
+    if (![200, 202].includes(response.status)) {
+        throw new Error(`confirm link: ${response.data.message}`);
+    }
+
+    res.status(200).json({ status: "success", data: response.data.data });
+  } catch (error: any) {
+    console.log({ error });
+    next(error);
+  }
+}
+
+export const accountDetails =  async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ message: "Account ID is required" });
+  }
+
+  const url = `https://api.withmono.com/v2/accounts/${id}`;
+
+  const headers = {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "mono-sec-key": "live_sk_axio44pdonk6lb6rdhxa",
+  };
+
+  const options: AxiosRequestConfig = {
+    url,
+    method: "GET",
+    headers,
+  };
+
+  try {
+    const response = await axios(options);
+
+    if (![200, 202].includes(response.status)) {
+        throw new Error(`account details: ${response.data.message}`);
+    }
+
+    res.status(200).json({ status: "success", data: response.data.data });
+  } catch (error: any) {
+    console.log({ error });
+    next(error);
+  }
+}
+
+export const linkAccount =  async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  try {
+    const { user } = req;
+
+    if (!user) {
+      throw new UnauthorizedError("Unauthorized! Please log in as a user to continue");
+    }
+
+    const updatedUser = await update(user._id, "linked_accounts", [...(user?.linked_accounts || []), ...req.body]);
+
+    console.log({ updatedUser });
+
+    return res.status(200).json({ status: "success", data: { user: updatedUser } });
+  } catch (error: any) {
+    console.log({ error });
+    next(error);
+  }
+}
+
+export const unlinkAccount =  async (req: ProtectedRequest, res: Response, next: NextFunction) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ message: "Account ID is required" });
+  }
+
+  const url = `https://api.withmono.com/v2/accounts/${id}/unlink`;
+
+  const headers = {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "mono-sec-key": "live_sk_axio44pdonk6lb6rdhxa",
+  };
+
+  const options: AxiosRequestConfig = {
+    url,
+    method: "POST",
+    headers,
+  };
+
+  try {
+    const response = await axios(options);
+
+    if (![200, 202].includes(response.status)) {
+        throw new Error(`unlinking account: ${response.data.message}`);
+    }
+
+    const { user } = req;
+
+    if (!user) {
+      throw new UnauthorizedError("Unauthorized! Please log in as a user to continue");
+    }
+
+    const linked_accounts = (user?.linked_accounts || []).map((la) => la.id !== req.params.id)
+
+    const updatedUser = await update(user._id, "linked_accounts", linked_accounts);
+
+    console.log({ updatedUser });
+
+    return res.status(200).json({ status: "success", data: { user: updatedUser } });
+  } catch (error: any) {
+    console.log({ error });
+    next(error);
+  }
+}
 
 
