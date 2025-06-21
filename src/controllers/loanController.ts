@@ -293,7 +293,7 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       loan_payment_status: "not-started",
       credit_message: credit?.error?.message || "available",
       credit_score: convertToCreditScore(credit),
-      debit_account
+      debit_account: debit_account || "N/A"
     });
 
     if(!loan) throw new NotFoundError("Loan not created");

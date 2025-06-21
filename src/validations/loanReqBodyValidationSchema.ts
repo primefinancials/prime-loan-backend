@@ -18,7 +18,7 @@ export const createClientLoanSchema = Joi.object({
   bvn: Joi.string().length(11).required().label("BVN"),
   phone: Joi.string().required().label("Phone Number"),
   address: Joi.string().required().label("Address"),
-  debit_account: Joi.string().required().label("Link Debit Mandate"),
+  // debit_account: Joi.string().required().label("Link Debit Mandate"),
   company: Joi.string().required().label("Company"),
   company_address: Joi.string().required().label("Company Address"),
   annual_income: Joi.string().required().label("Annual Income"),
