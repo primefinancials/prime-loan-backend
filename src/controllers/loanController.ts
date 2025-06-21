@@ -22,33 +22,39 @@ function convertToCreditScore(rawData: any): ICreditScore | null {
 
   const firstCredit = creditHistories[0]?.history[0] || {};
 
+  console.log({ profile, creditHistories, firstCredit })
+
   const loan_details: LoanDetails[] = creditHistories.flatMap((ch: any) => {
-    return ch.history.map((h: any) => ({
-      loanProvider: ch.institution || "Unknown",
-      accountNumber: "N/A",
-      loanAmount: h.repayment_amount || 0,
-      outstandingBalance: 0,
-      status: h.loan_status || "",
-      performanceStatus: h.performance_status || "",
-      overdueAmount: 0,
-      type: "N/A",
-      loanDuration: `${h.tenor || 0} months`,
-      repaymentFrequency: h.repayment_frequency || "",
-      repaymentBehavior: h.repayment_schedule?.[0]?.status || "",
-      paymentProfile: h.repayment_schedule?.[0]?.status || "",
-      dateAccountOpened: formatDate(h.date_opened),
-      lastUpdatedAt: formatDate(h.closed_date),
-      loanCount: ch.history.length,
-      monthlyInstallmentAmt: h.repayment_amount || 0
-    }));
-  });
+    console.log({ ch });
+    return ch.history.map((h: any) => {
+      console.log({ h })
+      return ({
+        loanProvider: ch.institution || "Unknown",
+        accountNumber: "N/A",
+        loanAmount: h.repayment_amount || 0,
+        outstandingBalance: 0,
+        status: h.loan_status || "",
+        performanceStatus: h.performance_status || "",
+        overdueAmount: 0,
+        type: "N/A",
+        loanDuration: `${h.tenor || 0} months`,
+        repaymentFrequency: h.repayment_frequency || "",
+        repaymentBehavior: h.repayment_schedule?.[0]?.status || "",
+        paymentProfile: h.repayment_schedule?.[0]?.status || "",
+        dateAccountOpened: formatDate(h.date_opened),
+        lastUpdatedAt: formatDate(h.closed_date),
+        loanCount: ch.history.length,
+        monthlyInstallmentAmt: h.repayment_amount || 0
+      });
+    });
+  })
 
   const creditors: Subscriber[] = creditHistories.map((ch: any) => ({
     Subscriber_ID: ch.institution,
     Name: ch.institution,
     Phone: "",
     Address: ""
-  }));
+  }))
 
   const totalDebt = loan_details.reduce((sum, loan) => sum + loan.loanAmount, 0);
 
