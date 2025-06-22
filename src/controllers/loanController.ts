@@ -27,25 +27,28 @@ function convertToCreditScore(rawData: any): ICreditScore | null {
   const loan_details: LoanDetails[] = creditHistories.flatMap((ch: any) => {
     console.log({ ch });
     return ch.history.map((h: any) => {
-      console.log({ h })
-      return ({
+      const repaymentAmount = isNaN(Number(h.repayment_amount)) ? 0 : Number(h.repayment_amount);
+
+      console.log({ h });
+
+      return {
         loanProvider: ch.institution || "Unknown",
         accountNumber: "N/A",
-        loanAmount: h.repayment_amount || 0,
+        loanAmount: repaymentAmount,
         outstandingBalance: 0,
         status: h.loan_status || "",
         performanceStatus: h.performance_status || "",
         overdueAmount: 0,
         type: "N/A",
-        loanDuration: `${h.tenor || 0 } months`,
+        loanDuration: `${h.tenor || 0} months`,
         repaymentFrequency: h.repayment_frequency || "",
         repaymentBehavior: h.repayment_schedule?.[0]?.status || "",
         paymentProfile: h.repayment_schedule?.[0]?.status || "",
         dateAccountOpened: formatDate(h.date_opened),
         lastUpdatedAt: formatDate(h.closed_date),
         loanCount: ch.history.length,
-        monthlyInstallmentAmt: h.repayment_amount || 0
-      });
+        monthlyInstallmentAmt: repaymentAmount
+      };
     });
   })
 
