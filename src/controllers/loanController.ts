@@ -17,8 +17,8 @@ const { update: updateLoan, findById: findLoanById, find: findLoan, create: crea
 function convertToCreditScore(rawData: any): ICreditScore | null {
   if(rawData.error) return null;
 
-  const profile = rawData?.data?.profile || {};
-  const creditHistories = rawData?.data?.credit_history || [];
+  const profile = rawData?.profile || {};
+  const creditHistories = rawData?.credit_history || [];
 
   const firstCredit = creditHistories[0]?.history[0] || {};
 
@@ -487,11 +487,11 @@ export const repayLoan = async (req: ProtectedRequest, res: Response, next: Next
 
 export const rejectLoan = async (req: ProtectedRequest, res: Response, next: NextFunction) => {
     try {
-      const { transactionId }= req.body;
+      const { transactionId, reason }= req.body;
       // Validate required parameters
       validateRequiredParams(
-          { transactionId }, 
-          [ "transactionId" ]
+          { transactionId, reason }, 
+          [ "transactionId", "reason" ]
       );
 
       const foundLoan = await findLoanById(transactionId);
@@ -519,6 +519,7 @@ export const rejectLoan = async (req: ProtectedRequest, res: Response, next: Nex
 
       const loan = await updateLoan(transactionId, {
         outstanding: 0,
+        rejectionReason: reason,
         status: "rejected"
       });
   

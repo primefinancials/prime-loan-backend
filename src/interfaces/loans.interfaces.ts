@@ -94,6 +94,7 @@ export interface LoanApplication {
     action: string;
   }[];
   lastInterestAdded: string;
+  rejectionReason?: string;
   debit_account: string;
 }
 
@@ -143,6 +144,7 @@ export interface UPDATELOAN {
   amount?: number;
   status?: LOANSTATUS; // Loan status
   lastInterestAdded?: string;
+  rejectionReason?: string;
   repayment_history?: {
     amount: number;
     outstanding: number;

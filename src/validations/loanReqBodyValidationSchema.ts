@@ -55,6 +55,7 @@ export const updateLoanAmountSchema = Joi.object({
 
 export const rejectLoanSchema = Joi.object({
   transactionId: Joi.string().required().label("Transaction ID"),
+  reason: Joi.string().required().label("Reason For Rejection"),
 });
 
 export const loanTransactionStatusSchema = Joi.object({
