@@ -37,7 +37,7 @@ function convertToCreditScore(rawData: any): ICreditScore | null {
         performanceStatus: h.performance_status || "",
         overdueAmount: 0,
         type: "N/A",
-        loanDuration: `${h.tenor || 0} months`,
+        loanDuration: `${h.tenor || 0 } months`,
         repaymentFrequency: h.repayment_frequency || "",
         repaymentBehavior: h.repayment_schedule?.[0]?.status || "",
         paymentProfile: h.repayment_schedule?.[0]?.status || "",
@@ -79,9 +79,13 @@ function convertToCreditScore(rawData: any): ICreditScore | null {
 
 // Helper: Convert DD-MM-YYYY to ISO format
 function formatDate(dateStr: string): string {
-  const [day, month, year] = dateStr?.split("-") || [];
-  if (!day || !month || !year) return "";
-  return new Date(`${year}-${month}-${day}`).toISOString();
+  if(dateStr) {
+    const [day, month, year] = dateStr?.split("-") || [];
+    if (!day || !month || !year) return "";
+    return new Date(`${year}-${month}-${day}`).toISOString();
+  }
+
+  return new Date().toISOString();
 }
 
 
