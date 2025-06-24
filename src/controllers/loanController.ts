@@ -91,7 +91,6 @@ function formatDate(dateStr: string): string {
   return new Date().toISOString();
 }
 
-
 const httpRequest = async (bvn: string) => {
   const url = `https://api.withmono.com/v3/lookup/credit-history/all`;
 
@@ -210,11 +209,18 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
         : (amount * loan_per) / 100;
         const total = Number(Number(amount) + Number(fee + percentage));
 
+        const loanDate = new Date();
+
+        const repaymentDate = new Date(loanDate);
+        repaymentDate.setDate(loanDate.getDate() + Number(duration)); // Add duration in days
+
         const loan = await updateLoan(transactionId, {
           ...(duration? { duration } : { }),
           ...(amount? { amount } : { }),
           outstanding: total,
-          status: "accepted"
+          status: "accepted",
+          loan_date: loanDate.toISOString(), 
+          repayment_date: repaymentDate.toISOString()
         });
 
         res.status(response.status).json({ status: "success", data: response.data.data });

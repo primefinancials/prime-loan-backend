@@ -142,6 +142,8 @@ export interface UPDATELOAN {
   outstanding?: number;
   duration?: number;
   amount?: number;
+  repayment_date?: string; // Repayment date in string format
+  loan_date?: string; // Loan date in string format
   status?: LOANSTATUS; // Loan status
   lastInterestAdded?: string;
   rejectionReason?: string;
