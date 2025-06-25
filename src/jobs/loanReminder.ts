@@ -6,7 +6,6 @@ import { httpClient } from '../utils/httpClient';
 import { sha512 } from 'js-sha512';
 import { LoanApplication } from '../interfaces';
 import mongoose from 'mongoose';
-import axios, { AxiosRequestConfig } from 'axios';
 
 const transporter = nodemailer.createTransport({
   host: "smtp.mailgun.org",
@@ -25,35 +24,25 @@ const { find: findLoan, update: updateLoan } = new LoanService();
 export async function checkLoansAndSendEmails() { 
   try {
     const today = new Date();
-    const formattedToday = today.toISOString().split("T")[0];
+    const todayISO = new Date().toISOString().split("T")[0]; // e.g. "2025-06-26"
+    const todaySlash = new Intl.DateTimeFormat('en-GB').format(new Date()); // e.g. "26/06/2025"
+    const todayText = new Intl.DateTimeFormat('en-US', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()); // "Jun 26, 2025"
 
-    const overdueLoans = await findLoan({ 
-      $expr: {
-        $and: [
-          {
-            $lt: [
-              { 
-                $dateFromString: { 
-                  dateString: "$repayment_date", 
-                  format: "%b %d, %Y",
-                  timezone: "UTC"
-                } 
-              },
-              { 
-                $dateFromParts: { 
-                  year: { $year: "$$NOW" },
-                  month: { $month: "$$NOW" },
-                  day: { $dayOfMonth: "$$NOW" },
-                  timezone: "UTC"
-                } 
-              }
-            ]
-          },
-          { $gt: ["$outstanding", 0] },
-          { $eq: ["$status", "accepted"] }
-        ]
-      }
+    const overdueLoans = await findLoan({
+      $and: [
+        { outstanding: { $gt: 0 } },
+        { status: "accepted" },
+        {
+          $or: [
+            { repayment_date: { $lt: todayISO } },
+            { repayment_date: { $lt: todaySlash } },
+            { repayment_date: { $lt: todayText } }
+          ]
+        }
+      ]
     }, "many");
+
+    console.log({ overdueLoans });
 
     if (!overdueLoans || !Array.isArray(overdueLoans) || overdueLoans.length <= 0) {
       return;
@@ -185,54 +174,75 @@ export const sendMessageForLoan = async () => {
   const tomorrow = new Date();
   tomorrow.setDate(today.getDate() + 1);
 
-  const formatDate = (date: Date) => {
-    // Format the date as "DD MMM YYYY"
-    const options: Intl.DateTimeFormatOptions = {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-    };
+  const toISODate = (date: Date) => date.toISOString().split("T")[0];
 
-    return date.toLocaleDateString('en-US', options);
+  const toSlashDate = (date: Date) => {
+    return date.toLocaleDateString("en-GB"); // "26/06/2025"
   };
 
-  const todayStr = formatDate(today);
-  const tomorrowStr = formatDate(tomorrow);
+  const toTextDate = (date: Date) => {
+    return date.toLocaleDateString("en-US", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }); // "Jun 26, 2025"
+  };
+
+  const todayFormats = [toISODate(today), toSlashDate(today), toTextDate(today)];
+  const tomorrowFormats = [toISODate(tomorrow), toSlashDate(tomorrow), toTextDate(tomorrow)];
+
+  const buildDateQuery = (formats: string[]) => ({
+    $or: formats.map(dateStr => ({ repayment_date: dateStr }))
+  });
 
   const dueLoans = await findLoan(
     {
-      repayment_date: todayStr,
-      outstanding: { $gt: 0 }, // Condition for outstanding > 0
+      ...buildDateQuery(todayFormats),
+      outstanding: { $gt: 0 },
       status: "accepted"
     },
     "many"
   );
 
-  if(dueLoans && Array.isArray(dueLoans) && dueLoans.length > 0) {
+  console.log({ dueLoans });
+
+  if (Array.isArray(dueLoans) && dueLoans.length > 0) {
     for (const loan of dueLoans) {
-        const user = await find({ _id: loan.userId }, "one");
-        if(user && !Array.isArray(user))
-          await sendEmail(user.email, 'Your Loan is Due Today', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} is due Today. Please make the payment immediately to avoid any futher late fees and penalties.`);
+      const user = await find({ _id: loan.userId }, "one");
+      if (user && !Array.isArray(user)) {
+        await sendEmail(
+          user.email,
+          'Your Loan is Due Today',
+          `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} is due Today. Please make the payment immediately to avoid any further late fees and penalties.`
+        );
+      }
     }
   }
 
   const upcomingLoans = await findLoan(
     {
-      repayment_date: tomorrowStr,
-      outstanding: { $gt: 0 }, // Condition for outstanding > 0
+      ...buildDateQuery(tomorrowFormats),
+      outstanding: { $gt: 0 },
       status: "accepted"
     },
     "many"
-  );   
+  );
 
-  if(upcomingLoans && Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
+  console.log({ upcomingLoans });
+
+  if (Array.isArray(upcomingLoans) && upcomingLoans.length > 0) {
     for (const loan of upcomingLoans) {
-        const user = await find({ _id: loan.userId }, "one");
-        if(user && !Array.isArray(user))
-          await sendEmail(user.email, 'Your Loan will be Due Tomorrow', `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} will be due tomorrow. Please make the payment immediately to avoid any futher late fees and penalties.`);
+      const user = await find({ _id: loan.userId }, "one");
+      if (user && !Array.isArray(user)) {
+        await sendEmail(
+          user.email,
+          'Your Loan will be Due Tomorrow',
+          `Dear ${user.user_metadata.first_name}, Your loan payment of ${loan.outstanding} will be due tomorrow. Please make the payment immediately to avoid any further late fees and penalties.`
+        );
+      }
     }
   }
-}
+};
 
 export async function sendEmail(to: string, subject: string, text: string) {
   try {
