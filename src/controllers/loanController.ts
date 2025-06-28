@@ -80,14 +80,6 @@ function convertToCreditScore(rawData: any): ICreditScore | null {
   };
 }
 
-const formatToDDMMYYYY = (isoString: string): string => {
-  const date = new Date(isoString);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are 0-indexed
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
-};
-
 // Helper: Convert DD-MM-YYYY to ISO format
 function formatDate(dateStr: string): string {
   if(dateStr) {
@@ -226,8 +218,8 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
           ...(amount ? { amount } : {}),
           outstanding: total,
           status: "accepted",
-          loan_date: formatToDDMMYYYY(loanDate.toISOString()),
-          repayment_date: formatToDDMMYYYY(repaymentDate.toISOString()),
+          loan_date: loanDate.toISOString(),
+          repayment_date: repaymentDate.toISOString(),
         });
 
         res.status(response.status).json({ status: "success", data: response.data.data });

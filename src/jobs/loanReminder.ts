@@ -28,18 +28,10 @@ export async function checkLoansAndSendEmails() {
     const todaySlash = new Intl.DateTimeFormat('en-GB').format(new Date()); // e.g. "26/06/2025"
     const todayText = new Intl.DateTimeFormat('en-US', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()); // "Jun 26, 2025"
 
-    const overdueLoans = await findLoan({
-      $and: [
-        { outstanding: { $gt: 0 } },
-        { status: "accepted" },
-        {
-          $or: [
-            { repayment_date: { $lt: todayISO } },
-            { repayment_date: { $lt: todaySlash } },
-            { repayment_date: { $lt: todayText } }
-          ]
-        }
-      ]
+    const overdueLoans = await findLoan({ 
+      outstanding: { $gt: 0 },
+      status: "accepted",
+      repayment_date: { $lt: new Date().toISOString() } 
     }, "many");
 
     console.log({ overdueLoans });
