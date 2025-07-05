@@ -1,7 +1,6 @@
-import { ApiResponse, Logger, } from 'exceptions';
 import { DB_URL, DB_OPTIONS, } from '../config';
 import mongoose, { disconnect, connect, } from 'mongoose';
-import { ErrorRequestHandler, NextFunction, Request, Response, } from 'express';
+import { NextFunction, Request, Response, } from 'express';
 
 mongoose.Promise = global.Promise;
 mongoose.set('strictQuery', false);
@@ -17,7 +16,7 @@ export function connectToDB() {
     .catch(error => {
       console.log({ DB_error: error })
       if (trialThreshold < 1) {
-        Logger.error('Unable to connect to database after several attempts\n');
+        console.error('Unable to connect to database after several attempts\n');
         connectError(error);
         disconnectDB();
       } else {
@@ -33,9 +32,7 @@ const connectSuccessful = () => {
 };
 
 const connectError = (error: any) => {
-  // Logger.error({error});
-  // console.log(`${chalk.italic.yellow('DB Connection')}: ${chalk.red('Error')}`);
-  // console.log(`${chalk.red(error)}`);
+  console.error('Database connection error:', error);
 };
 
 export const disconnectDB = async () => {
@@ -57,25 +54,4 @@ export const connectionStateCheck = () => (req: Request, res: Response) => {
     status: true,
     message: 'Prime-user-v1 health check passed ✅',
   });
-};
-
-export const requestErrorHandler = () => (
-  err: ErrorRequestHandler,
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  console.log({ err, })
-  if ((err as any)?.status === 429) return res.status(429).json({
-    message: 'Too many requests, please try again later.',
-    retryAfter: (err as any)?.headers['Retry-After'],
-  });
-  if (err instanceof ApiResponse) return err.send(res);
-
-  // @ts-expect-error
-  return res.status(err?.status || 500).json(['development', 'local'].includes(ENV) ? err : {});
-};
-
-export const pageNotFound = () => (req: Request, res: Response) => {
-  res.sendStatus(404);
 };

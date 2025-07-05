@@ -36,7 +36,7 @@ export class MongoLoanRepository implements ILoanRepository {
       outstanding: { $gt: 0 },
       status: 'accepted',
       repaymentDate: { $lt: today }
-    });
+    }).maxTimeMS(30000);
     return loans.map(loan => this.mapToEntity(loan));
   }
 
@@ -46,7 +46,7 @@ export class MongoLoanRepository implements ILoanRepository {
       repaymentDate: { $regex: `^${today}` },
       outstanding: { $gt: 0 },
       status: 'accepted'
-    });
+    }).maxTimeMS(30000);
     return loans.map(loan => this.mapToEntity(loan));
   }
 
@@ -59,7 +59,7 @@ export class MongoLoanRepository implements ILoanRepository {
       repaymentDate: { $regex: `^${tomorrowStr}` },
       outstanding: { $gt: 0 },
       status: 'accepted'
-    });
+    }).maxTimeMS(30000);
     return loans.map(loan => this.mapToEntity(loan));
   }
 
