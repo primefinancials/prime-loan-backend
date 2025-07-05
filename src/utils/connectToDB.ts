@@ -1,4 +1,4 @@
-import { ApiResponse, Logger, } from '../exceptions';
+import { ApiResponse, Logger, } from 'exceptions';
 import { DB_URL, DB_OPTIONS, } from '../config';
 import mongoose, { disconnect, connect, } from 'mongoose';
 import { ErrorRequestHandler, NextFunction, Request, Response, } from 'express';
