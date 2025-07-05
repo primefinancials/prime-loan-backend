@@ -23,11 +23,6 @@ const { find: findLoan, update: updateLoan } = new LoanService();
 
 export async function checkLoansAndSendEmails() { 
   try {
-    const today = new Date();
-    const todayISO = new Date().toISOString().split("T")[0]; // e.g. "2025-06-26"
-    const todaySlash = new Intl.DateTimeFormat('en-GB').format(new Date()); // e.g. "26/06/2025"
-    const todayText = new Intl.DateTimeFormat('en-US', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()); // "Jun 26, 2025"
-
     const overdueLoans = await findLoan({ 
       outstanding: { $gt: 0 },
       status: "accepted",
@@ -166,30 +161,9 @@ export const sendMessageForLoan = async () => {
   const tomorrow = new Date();
   tomorrow.setDate(today.getDate() + 1);
 
-  const toISODate = (date: Date) => date.toISOString().split("T")[0];
-
-  const toSlashDate = (date: Date) => {
-    return date.toLocaleDateString("en-GB"); // "26/06/2025"
-  };
-
-  const toTextDate = (date: Date) => {
-    return date.toLocaleDateString("en-US", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }); // "Jun 26, 2025"
-  };
-
-  const todayFormats = [toISODate(today), toSlashDate(today), toTextDate(today)];
-  const tomorrowFormats = [toISODate(tomorrow), toSlashDate(tomorrow), toTextDate(tomorrow)];
-
-  const buildDateQuery = (formats: string[]) => ({
-    $or: formats.map(dateStr => ({ repayment_date: dateStr }))
-  });
-
   const dueLoans = await findLoan(
     {
-      ...buildDateQuery(todayFormats),
+      repayment_date: new Date().toISOString(),
       outstanding: { $gt: 0 },
       status: "accepted"
     },
@@ -213,7 +187,7 @@ export const sendMessageForLoan = async () => {
 
   const upcomingLoans = await findLoan(
     {
-      ...buildDateQuery(tomorrowFormats),
+      repayment_date: tomorrow.toISOString(),
       outstanding: { $gt: 0 },
       status: "accepted"
     },
