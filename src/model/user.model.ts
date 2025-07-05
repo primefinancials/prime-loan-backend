@@ -28,17 +28,7 @@ const userSchema = new Schema<User>(
     email: {
       type: String,
       required: true,
-      unique: true,
-      validate: {
-        validator: async function (email: string) {
-          const self = this as any;
-          if (!/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(email)) {
-            throw new Error("Invalid email address");
-          }
-          return true;
-        },
-        message: (props: any) => props.reason.message || "Invalid email",
-      },
+      unique: true
     },
     password: { type: String, required: true },
     email_confirmed_at: { type: String, required: false },
