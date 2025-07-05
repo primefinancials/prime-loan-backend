@@ -47,4 +47,10 @@ export class InternalServerError extends AppError {
   }
 }
 
+export class APIError extends AppError {
+  constructor(statusCode: number, message: string) {
+    super(message, statusCode);
+  }
+}
+
 export { AppError }
