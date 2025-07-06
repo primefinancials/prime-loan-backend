@@ -1,7 +1,7 @@
 import axios, { AxiosRequestConfig } from "axios";
 import { customerKey, customerSecret, baseUrl } from "../config";
 import { generateBearerToken } from "./generateBearerToken";
-import { APIError } from "../exceptions";
+import { AppError as APIError } from "../shared/errors/AppError";
 
 export const httpClient = async (endpoint: string, method: string = "GET", body?: object) => {
   const url = `${baseUrl}${endpoint}`;
