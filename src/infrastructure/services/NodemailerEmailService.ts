@@ -6,7 +6,7 @@ export class NodemailerEmailService implements IEmailService {
   private transporter: nodemailer.Transporter;
 
   constructor() {
-    this.transporter = nodemailer.createTransporter({
+    this.transporter = nodemailer.createTransport({
       host: 'smtp.mailgun.org',
       port: 465,
       secure: true,
