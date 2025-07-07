@@ -123,7 +123,7 @@ export const walletAlertsSchema = Joi.object({
 });
 
 export const loginReqBodySchema = Joi.object({
-    password: Joi.string().min(8).required(),
+    password: Joi.string().min(6).required(),
     email: Joi.string().email(),
 });
 
