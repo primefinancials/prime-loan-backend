@@ -439,6 +439,12 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     foundUser.refresh_tokens = refreshTokens;
     await foundUser.save();
 
+    await sendEmail(
+      foundUser.email,
+      'Login Successful', 
+      `Dear ${foundUser.user_metadata.first_name}, There has been a new login on your account, if this wasn't you contact contact support at info@primefinance.live else you should ignore this mail.`
+    );
+
     return res
       .cookie("jwt", refreshToken, {
         httpOnly: true,
