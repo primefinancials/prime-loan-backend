@@ -172,7 +172,7 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
       await sendEmail(
         user.email,
         'Registration Successful',
-        `Dear ${user.user_metadata.first_name}, Your registration was successful. Welcome to Prime Finance!`
+        `Dear ${user.user_metadata.first_name}, \n Welcome to Prime Finance, Your registration was successful. \n Thank you for using Prime Finance!`
       );
 
       await sendEmail(
@@ -442,7 +442,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
     await sendEmail(
       foundUser.email,
       'Login Successful', 
-      `Dear ${foundUser.user_metadata.first_name}, There has been a new login on your account, if this wasn't you contact contact support at info@primefinance.live else you should ignore this mail.`
+      `Dear ${foundUser.user_metadata.first_name}, There has been a new login on your account, if this wasn't you contact contact support at info@primefinance.live else you should ignore this mail. \n Thank you for using Prime Finance!`
     );
 
     return res
