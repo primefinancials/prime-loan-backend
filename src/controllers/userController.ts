@@ -169,6 +169,18 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
         await update(user._id, "user_metadata.signupBonusReceived", true);
       }
 
+      await sendEmail(
+        user.email,
+        'Registration Successful',
+        `Dear ${user.user_metadata.first_name}, Your registration was successful. Welcome to Prime Finance!`
+      );
+
+      await sendEmail(
+        "info@primefinance.live, primefinancials68@gmail.com",
+        'New User Registered',
+        `New user ${user.user_metadata.first_name} ${user.user_metadata.surname}, just registered!`
+      );
+
       return res.status(201).json({ status: "success", data: { ...response.data.data, user } });
     }
 

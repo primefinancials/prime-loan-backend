@@ -213,7 +213,7 @@ export const sendMessageForLoan = async () => {
 export async function sendEmail(to: string, subject: string, text: string) {
   try {
     const info = await transporter.sendMail({
-      from: "primefinance@primefinance.live", // Must match Mailgun's verified domain
+      from: "info@primefinance.live", // Must match Mailgun's verified domain
       to,
       subject,
       text,
