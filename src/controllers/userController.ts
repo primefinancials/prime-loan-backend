@@ -795,14 +795,13 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
 
     const response = await httpClient(apiUrl, "POST", {
       fromAccount,
-      uniqueSenderAccountId: "",
+      uniqueSenderAccountId: toBank == '999999'? fromSavingsId : "",
       fromClientId,
       fromClient,
       fromSavingsId,
-      ...(toBank == '999999'? {} : { fromBvn, toBvn }),
+      ...(toBank == '999999'? {} : { fromBvn, toBvn, toKyc }),
       toClient,
       toSession,
-      toKyc,
       toAccount,
       toSavingsId,
       toBank,
