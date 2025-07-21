@@ -906,7 +906,7 @@ export const walletAlerts = async (req: Request, res: Response) => {
     await sendEmail(
       user.email,
       'Wallet Alert – Funds Credited',
-      `Dear ${user.user_metadata.first_name},\n\nYour wallet has been credited with ${body.amount} from ${body.originator_account_name}.\n\nTransaction Details:\n- Amount: ${body.amount}\n- Reference: ${body.reference}\n- Originator Account Name: ${body.originator_account_name}\n- Originator Account Number: ${body.originator_account_number}\n- Originator Bank: ${body.originator_bank}\n\nThank you for using Prime Finance!`
+      `Dear ${user.user_metadata.first_name},\n\nYour wallet has been credited with ${body.amount} from ${body.originator_account_name}.\n\nTransaction Details:\n- Amount: ${body.amount}\n- Reference: ${body.reference}\n- Originator Account Name: ${body.originator_account_name}\n- Originator Account Number: ${body.originator_account_number}\n\nThank you for using Prime Finance!`
     )
 
     return res.status(200).json({ status: "Success", data });
