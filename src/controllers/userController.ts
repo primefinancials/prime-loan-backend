@@ -829,27 +829,50 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
             "user_metadata.wallet",
             String(Number(beneficairy?.user_metadata?.wallet) + Number(amount))
           ); 
+
+          await createTransaction(
+            { 
+              name: "Deposit-" + reference, 
+              category: "credit",
+              type: "transfer",
+              user: beneficairy._id,
+              details: remark,
+              transaction_number: response.data.data.txnId || "no-txnId",
+              amount,
+              bank,
+              receiver: toClient,
+              account_number: toAccount, 
+              outstanding: 0.0,
+              session_id: response.data.data.sessionId || "no-sessionId",
+              status: "success"
+            },
+          );
+
+          await sendEmail(
+            user.email,
+            'Wallet Alert – Funds Credited',
+            `Dear ${beneficairy.user_metadata.first_name},\n\nYour wallet has been credited with ${amount} from ${user?.user_metadata?.first_name}.\n\nTransaction Details:\n- Amount: ${amount}\n- Reference: ${reference}\n- Originator Account Name: ${fromClient}\n- Originator Account Number: ${fromAccount}\n\nThank you for using Prime Finance!`
+          )
         }      
       }
 
       const transaction = await createTransaction(
-          { 
-            name: "Withdrawal-" + reference, 
-            category: "debit",
-            type: "transfer",
-            user: user._id,
-            details: remark,
-            transaction_number: response.data.data.txnId || "no-txnId",
-            amount,
-            bank,
-            receiver: toClient,
-            account_number: toAccount, 
-            outstanding: 0.0,
-            session_id: response.data.data.sessionId || "no-sessionId",
-            status: "success"
-          },
-        )
-      ;
+        { 
+          name: "Withdrawal-" + reference, 
+          category: "debit",
+          type: "transfer",
+          user: user._id,
+          details: remark,
+          transaction_number: response.data.data.txnId || "no-txnId",
+          amount,
+          bank,
+          receiver: toClient,
+          account_number: toAccount, 
+          outstanding: 0.0,
+          session_id: response.data.data.sessionId || "no-sessionId",
+          status: "success"
+        },
+      );
 
       await sendEmail(
         user.email,
