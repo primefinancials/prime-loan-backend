@@ -127,7 +127,7 @@ const signupBonus = async ({
 
 export const createClientAccount = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, name, surname, password, phone, bvn, nin, dob } = req.body;
+    const { email, name, surname, password, phone, bvn, nin, dob, pin } = req.body;
 
     const duplicateEmail = await findByEmail(email)
 
@@ -147,7 +147,7 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
     if(response.data && response.data.status === "00") {
       const user = await create({ 
         password: req.body.password,
-        user_metadata: { email, first_name: name, surname, phone, bvn, nin, dateOfBirth: dob, accountNo: response.data.data.accountNo }, 
+        user_metadata: { email, first_name: name, surname, phone, bvn, nin, dateOfBirth: dob, accountNo: response.data.data.accountNo, pin }, 
         role: "user",
         confirmation_sent_at: getCurrentTimestamp(),
         confirmed_at: "",
@@ -840,6 +840,12 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
         )
       ;
 
+      await sendEmail(
+        user.email,
+        'Withdrawal Successful',
+        `Dear ${user.user_metadata.first_name},\n\nYour withdrawal of ${amount} has been successfully processed.\n\nTransaction Details:\n- Amount: ${amount}\n- Reference: ${reference}\n- To Account: ${toAccount}\n- Bank: ${bank}\n\nThank you for using Prime Finance!`
+      )
+
       res.status(response.status).json({ status: "success", data: { ...response.data.data, transaction } });
     }
 
@@ -892,7 +898,11 @@ export const walletAlerts = async (req: Request, res: Response) => {
       },
     );
 
-    console.log({ data });
+    await sendEmail(
+      user.email,
+      'Wallet Alert – Funds Credited',
+      `Dear ${user.user_metadata.first_name},\n\nYour wallet has been credited with ${body.amount} from ${body.originator_account_name}.\n\nTransaction Details:\n- Amount: ${body.amount}\n- Reference: ${body.reference}\n- Originator Account Name: ${body.originator_account_name}\n- Originator Account Number: ${body.originator_account_number}\n- Originator Bank: ${body.originator_bank}\n\nThank you for using Prime Finance!`
+    )
 
     return res.status(200).json({ status: "Success", data });
   } catch (error: any) {

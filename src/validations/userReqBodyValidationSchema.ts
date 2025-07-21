@@ -27,6 +27,11 @@ export const createClientAccountSchema = Joi.object({
     "string.length": "BVN must be exactly 11 digits",
     "string.pattern.base": "BVN must contain only digits",
   }),
+  pin: Joi.string().length(4).pattern(/^\d+$/).required().messages({
+    "string.empty": "PIN is required",
+    "string.length": "PIN must be exactly 4 digits",
+    "string.pattern.base": "PIN must contain only digits",
+  }),
   nin: Joi.string().length(11).pattern(/^\d+$/).required().messages({
     "string.empty": "NIN is required",
     "string.length": "NIN must be exactly 11 digits",
