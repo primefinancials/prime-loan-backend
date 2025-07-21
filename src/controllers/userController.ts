@@ -847,6 +847,12 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
       )
 
       res.status(response.status).json({ status: "success", data: { ...response.data.data, transaction } });
+    } else {
+      await sendEmail(
+        user.email,
+        'Withdrawal Failed',
+        `Dear ${user.user_metadata.first_name},\n\nYour withdrawal of ${amount} has failed.\n\nReason: ${response.data.message} \n\nPlease try again or contact support if the issue persists.\n\nThank you for using Prime Finance!`
+      )
     }
 
     res.status(400).json({ status: "failed", message: response.data.message });
