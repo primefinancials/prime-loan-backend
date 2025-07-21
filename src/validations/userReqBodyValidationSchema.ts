@@ -80,6 +80,7 @@ export const transferSchema = Joi.object({
   fromBvn: Joi.string().required().messages({
     "string.empty": "From BVN is required",
   }),
+  toClientId: Joi.string(),
   toClient: Joi.string().required().messages({
     "string.empty": "To Client is required",
   }),
