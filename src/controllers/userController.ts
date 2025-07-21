@@ -810,7 +810,7 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
       signature: sha512.hex(`${fromAccount}${toAccount}`),
       amount,
       remark,
-      transferType: "inter",
+      transferType: toBank == '999999'? "intra" : "inter",
       reference
     });
 
