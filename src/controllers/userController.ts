@@ -821,7 +821,7 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
       );
 
       if (toBank == '999999') {
-        const beneficairy = await find({ user_metadata: { accountNo: toAccount } }, "one"); 
+        const beneficairy = await find({ "user_metadata.accountNo": toAccount }, "one"); 
 
         if(beneficairy && !Array.isArray(beneficairy) && beneficairy._id) {
           await update(
