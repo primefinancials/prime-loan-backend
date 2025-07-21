@@ -814,11 +814,23 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
     });
 
     if(response.data && response.data.status === "00") {
-      const data = await update(
+      await update(
         user._id,
         "user_metadata.wallet",
         String(Number(user?.user_metadata?.wallet) - Number(amount))
       );
+
+      if (toBank == '999999') {
+        const beneficairy = await find({ user_metadata: { accountNo: toAccount } }, "one"); 
+
+        if(beneficairy && !Array.isArray(beneficairy) && beneficairy._id) {
+          await update(
+            beneficairy._id,
+            "user_metadata.wallet",
+            String(Number(beneficairy?.user_metadata?.wallet) + Number(amount))
+          ); 
+        }      
+      }
 
       const transaction = await createTransaction(
           { 
