@@ -837,13 +837,13 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
               type: "transfer",
               user: beneficairy._id,
               details: remark,
-              transaction_number: response.data.data.txnId || "no-txnId",
+              transaction_number: `${response.data.data.txnId}-recieved` || "no-txnId",
               amount,
               bank,
               receiver: toClient,
               account_number: toAccount, 
               outstanding: 0.0,
-              session_id: response.data.data.sessionId || "no-sessionId",
+              session_id: `${response.data.data.sessionId}-recieved` || "no-sessionId",
               status: "success"
             },
           );
