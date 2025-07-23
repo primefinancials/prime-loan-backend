@@ -9,6 +9,7 @@ import { BadRequestError, NotFoundError } from "../exceptions";
 import axios, { AxiosRequestConfig } from "axios";
 import { APIError } from "../exceptions";
 import { date } from "joi";
+import { sendEmail } from "../jobs/loanReminder";
 
 const { find, findByEmail, create, update } = new UserService();
 const { create: createTransaction } = new TransactionService();
@@ -315,6 +316,18 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
     });
 
     if(!loan) throw new NotFoundError("Loan not created");
+
+    await sendEmail(
+      user.email,
+      "Loan Application Received",
+      `Dear ${user.user_metadata.first_name},\n\nYour loan application has been received. We will review it and get back to you shortly.\n\nThank you,\nPrime Finance`
+    )
+
+    await sendEmail(
+      "primefinancials68@gmail.com, info@primefinance.live",
+      "New Loan Created From User: " + user.user_metadata.first_name,
+      `A new loan has been created by ${user.user_metadata.first_name} ${user.user_metadata.surname}.\n\nDetails:\n- Amount: ${amount}\n- Category: ${category}\n- Type: ${type}\n- Status: ${status}\n- Duration: ${duration} days\n\nPlease review the application at your earliest convenience.`
+    )
 
     res.status(200).json({ status: "success", data: loan });
   } catch (error: any) {
