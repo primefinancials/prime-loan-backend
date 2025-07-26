@@ -143,10 +143,11 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
       });
     }
 
-    const user: any = await find({ _id: userId }, "one");
+    const user = await find({ _id: userId }, "one");
 
-    if (!user)
+    if (!user || Array.isArray(user) || !user._id) {
       throw new NotFoundError(`Invalid user ID provided`);
+    }
 
     const foundLoan = await findLoanById(transactionId);
 
@@ -222,6 +223,12 @@ export const createAndDisburseLoan = async (req: ProtectedRequest, res: Response
           loan_date: loanDate.toISOString(),
           repayment_date: repaymentDate.toISOString(),
         });
+
+        await sendEmail(
+          user.email,
+          "Loan Application Approved",
+          `Congratulations on your successful loan! 🎉 Repay on time and unlock access to higher limits—up to ₦200,000 on your next request.\n\nPrime Finance`
+        ) 
 
         res.status(response.status).json({ status: "success", data: response.data.data });
       }
