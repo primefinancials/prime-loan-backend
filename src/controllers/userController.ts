@@ -132,11 +132,15 @@ export const createClientAccount = async (req: Request, res: Response, next: Nex
     const duplicateEmail = await findByEmail(email)
 
     const duplicateNumber = await find({ user_metadata: { phone } }, "one")
+
+    const duplicateNIN = await find({ user_metadata: { nin } }, "one")
     
     if (duplicateEmail)
-      throw new ConflictError(`A user already exists with the email ${email}`)
+      throw new ConflictError(`A user already exists with the email: ${email}`)
     if (duplicateNumber)
-      throw new ConflictError(`A user already exists with the phone number ${phone}`)
+      throw new ConflictError(`A user already exists with the phone number: ${phone}`)
+    if (duplicateNIN)
+      throw new ConflictError(`A user already exists with the NIN: ${nin}`)
 
     req.body.password = encryptPassword(password);
 

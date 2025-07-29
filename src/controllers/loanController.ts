@@ -5,7 +5,7 @@ import { generateRandomString } from "../utils/generateRef";
 import { sha512 } from "js-sha512";
 import { ProtectedRequest, Subscriber, LoanDetails, ICreditScore } from "../interfaces";
 import { UserService, TransactionService, LoanService } from "../services";
-import { BadRequestError, NotFoundError } from "../exceptions";
+import { BadRequestError, ConflictError, NotFoundError } from "../exceptions";
 import axios, { AxiosRequestConfig } from "axios";
 import { APIError } from "../exceptions";
 import { date } from "joi";
@@ -282,9 +282,21 @@ export const createClientLoan = async (req: ProtectedRequest, res: Response, nex
       throw new NotFoundError("User not found.");
     }
 
-    const credit = await httpRequest(bvn); 
+    const loans_get = await findLoan(
+      { 
+        userId: user._id, 
+        status: { $in: ["pending", "active"] } 
+      }, 
+      "many"
+    );
 
-    console.log({ credit });
+    if (loans_get && Array.isArray(loans_get) && loans_get.length > 0) {
+      throw new ConflictError(
+        "Duplicate loan attempt. Wait for the current loan decision, or repay the existing one."
+      );
+    }
+
+    const credit = await httpRequest(bvn); 
 
     const loan = await createLoan({
       first_name,
