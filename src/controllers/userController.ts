@@ -852,11 +852,11 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
             },
           );
 
-          await sendEmail(
-            user.email,
-            'Wallet Alert – Funds Credited',
-            `Dear ${beneficairy.user_metadata.first_name},\n\nYour wallet has been credited with ${amount} from ${user?.user_metadata?.first_name}.\n\nTransaction Details:\n- Amount: ${amount}\n- Reference: ${reference}\n- Originator Account Name: ${fromClient}\n- Originator Account Number: ${fromAccount}\n\nThank you for using Prime Finance!`
-          )
+          // await sendEmail(
+          //   user.email,
+          //   'Wallet Alert – Funds Credited',
+          //   `Dear ${beneficairy.user_metadata.first_name},\n\nYour wallet has been credited with ${amount} from ${user?.user_metadata?.first_name}.\n\nTransaction Details:\n- Amount: ${amount}\n- Reference: ${reference}\n- Originator Account Name: ${fromClient}\n- Originator Account Number: ${fromAccount}\n\nThank you for using Prime Finance!`
+          // )
         }      
       }
 
@@ -878,11 +878,11 @@ export const transfer = async (req: ProtectedRequest, res: Response, next: NextF
         },
       );
 
-      await sendEmail(
-        user.email,
-        'Withdrawal Successful',
-        `Dear ${user.user_metadata.first_name},\n\nYour withdrawal of ${amount} has been successfully processed.\n\nTransaction Details:\n- Amount: ${amount}\n- Reference: ${reference}\n- To Account: ${toAccount}\n- Bank: ${bank}\n\nThank you for using Prime Finance!`
-      )
+      // await sendEmail(
+      //   user.email,
+      //   'Withdrawal Successful',
+      //   `Dear ${user.user_metadata.first_name},\n\nYour withdrawal of ${amount} has been successfully processed.\n\nTransaction Details:\n- Amount: ${amount}\n- Reference: ${reference}\n- To Account: ${toAccount}\n- Bank: ${bank}\n\nThank you for using Prime Finance!`
+      // )
 
       res.status(response.status).json({ status: "success", data: { ...response.data.data, transaction } });
     } else {
