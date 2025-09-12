@@ -8,21 +8,21 @@ import cron from 'node-cron';
 
 let lastRun = Date.now();
 
-cron.schedule('*/9 * * * *', async () => {
+cron.schedule('*/30 * * * *', async () => {
   console.log('Running loan check...');
   await checkLoansAndSendEmails();
 });
 
-cron.schedule('0 * * * *', async () => {
-  const now = Date.now();
-  const hoursSinceLastRun = (now - lastRun) / (1000 * 60 * 60);
+// cron.schedule('0 * * * *', async () => {
+//   const now = Date.now();
+//   const hoursSinceLastRun = (now - lastRun) / (1000 * 60 * 60);
 
-  if (hoursSinceLastRun >= 23) {
-    console.log('Running send email...');
-    await sendMessageForLoan();
-    lastRun = now; // Update the last run time
-  }
-});
+//   if (hoursSinceLastRun >= 23) {
+//     console.log('Running send email...');
+//     await sendMessageForLoan();
+//     lastRun = now; // Update the last run time
+//   }
+// });
 
 const startApp = async () => {
   const app = express();

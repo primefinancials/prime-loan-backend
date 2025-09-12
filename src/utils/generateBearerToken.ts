@@ -28,6 +28,7 @@ export const generateBearerToken = async (consumerKey: string, consumerSecret: s
     console.log({ auth: "passed" })
 
     if (response.status !== 200) {
+      console.log({ response });
       throw new Error(`Failed to generate access token: ${response.data.message}`);
     }
 
