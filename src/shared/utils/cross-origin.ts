@@ -1,54 +1,58 @@
-import cors, { CorsOptions } from "cors";
+import cors, { CorsOptions } from 'cors';
+
+
+type CrossOrigin = Partial<typeof DefaultCorsOptions>;
+
 
 /**
- * List of allowed origins for frontend apps.
- * DO NOT use '*' when credentials: true.
- */
-const allowedOrigins: string[] = [
-  "*",
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://localhost:8081",
-  "https://admin.primefinance.live",
-  "https://primefinance.live",
-  "https://prime-loan-web-init.vercel.app",
-];
-
-const commonHeaders = [
-  "Origin",
-  "X-Requested-With",
-  "Content-Type",
-  "Accept",
-  "x-csrf-token",
-  "Authorization",
-  "X-App-Platform",
-];
-
-/**
- * Default CORS configuration
+ * Default configuration options for cross-origin requests.
  */
 const DefaultCorsOptions: CorsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    // More explicit error message for easier debugging
-    return callback(
-      new Error(`CORS blocked: origin '${origin}' is not allowed.`)
-    );
-  },
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  credentials: false,
-  preflightContinue: false,
-  optionsSuccessStatus: 200,
-  maxAge: 60 * 60 * 24 * 30, // 30 days
-  allowedHeaders: commonHeaders,
-  exposedHeaders: commonHeaders,
+    /**
+     * The allowed origin(s) for the request. Use '*' to allow all origins.
+     */
+    origin: [
+        '*', 
+        'http://localhost:5173', 
+        'http://localhost:5174', 
+        'http://localhost:8081', 
+        'https://prime-finance-admin.netlify.app', 
+        'https://admin.primefinance.live',
+        'https://primefinance.live',
+        'https://prime-loan-web-init.vercel.app'
+    ],
+    /**
+     * The allowed HTTP methods for the request.
+     */
+    methods: 'PUT, GET, PATCH, DELETE, POST, OPTIONS',
+
+    /**
+     * Whether to continue with the preflight request if the initial request is successful.
+     */
+    preflightContinue: false,
+    /**
+     * The HTTP status code to use for successful OPTIONS requests.
+     */
+    optionsSuccessStatus: 200,
+    /**
+     * Whether to include credentials (such as cookies or authorization headers) with the request.
+     */
+    credentials: true,
+    /**
+     * The maximum age (in seconds) to cache the preflight response.
+     */
+    maxAge: 30 * 60 * 60 * 24 * 1000, // 30 days 
+    /**
+     * The headers that are exposed to the browser in the response.
+     */
+    exposedHeaders: 'Origin, X-Requested-With, Content-Type, Accept, x-csrf-token, Authorization, X-App-Platform',
+    /**
+     * The allowed headers for the request.
+     */
+    allowedHeaders: 'Origin, X-Requested-With, Content-Type, Accept, x-csrf-token, Authorization, X-App-Platform',
 };
 
-/**
- * Wrapper to apply CORS middleware
- */
-const crossOrigin = (options: CorsOptions = DefaultCorsOptions) => cors(options);
+
+const crossOrigin = (options: CrossOrigin = DefaultCorsOptions) => cors(options);
 
 export default crossOrigin;
