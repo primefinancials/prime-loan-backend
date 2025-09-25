@@ -38,7 +38,7 @@ const DefaultCorsOptions: CorsOptions = {
     );
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  credentials: true,
+  credentials: false,
   preflightContinue: false,
   optionsSuccessStatus: 200,
   maxAge: 60 * 60 * 24 * 30, // 30 days
