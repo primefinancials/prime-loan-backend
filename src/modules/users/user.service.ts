@@ -8,7 +8,7 @@ import { getCurrentTimestamp } from "../../shared/utils/convertDate";
 import { User as IUser } from "./user.interface";
 import { ACCESS_TOKEN_SECRET, REFRESH_TOKEN_SECRET } from "../../config";
 import { ACCESS_TOKEN_EXPIRES_IN, REFRESH_TOKEN_EXPIRES } from "../../constants";
-import JWT from "jsonwebtoken";
+import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import { LedgerService } from "../ledger/LedgerService";
 import { SavingsPlan } from "../savings/savings.plan.model";
 import Loan from "../loans/loan.model";
@@ -186,13 +186,17 @@ export class UserService {
         };
 
         // Create JWTs
-        const accessToken = JWT.sign(userToSign, String(ACCESS_TOKEN_SECRET), {
-            expiresIn: ACCESS_TOKEN_EXPIRES_IN,
-        });
+        const accessToken = jwt.sign(
+            { accountType: user.role, id: user._id },
+            ACCESS_TOKEN_SECRET as Secret,
+            { expiresIn: ACCESS_TOKEN_EXPIRES_IN } as SignOptions
+        );
 
-        const refreshToken = JWT.sign(userToSign, String(REFRESH_TOKEN_SECRET), {
-            expiresIn: REFRESH_TOKEN_EXPIRES,
-        });
+        const refreshToken = jwt.sign(
+            { accountType: user.role, id: user._id },
+            REFRESH_TOKEN_SECRET as Secret,
+            { expiresIn: REFRESH_TOKEN_EXPIRES } as SignOptions
+        );
 
         // Manage refresh tokens
         user.refresh_tokens.push(refreshToken);
