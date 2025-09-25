@@ -9,6 +9,7 @@ import userRoutes from "./routes/userRoutes";
 import adminRoutes from "./routes/adminRoutes";
 import { errHandler } from "./exceptions";
 import crossOrigin from "./shared/utils/cross-origin";
+import cors from "cors";
 
 export default function configureApp(app: Application): void {
   // Logger (dev only)
@@ -17,7 +18,7 @@ export default function configureApp(app: Application): void {
   }
 
   // Security & middleware
-  app.use(crossOrigin());
+  app.use("*", cors());
   app.use(helmet());
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
