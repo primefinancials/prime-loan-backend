@@ -41,6 +41,10 @@ export default function configureApp(app: Application): void {
     });
   });
 
+  app.get("/backoffice/debug", (_req, res) => {
+    res.json({ status: "ok", message: "Backoffice route works" });
+  });
+
   // Routes
   app.use("/api", userRoutes);
   app.use("/backoffice", adminRoutes);
