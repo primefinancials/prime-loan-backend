@@ -6,7 +6,6 @@
         "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
         "build": "tsc",
         "start": "node dist/server.js",
-        "start:v2": "node dist/app/server.js",
         "start:workers": "\"npm run workers:bill-payments\" \"npm run workers:transfers\" \"npm run workers:penalties\" \"npm run workers:savings\"",
         "workers:bill-payments": "node dist/workers/pollers/billPaymentsPoller.js",
         "workers:transfers": "node dist/workers/pollers/transfersPoller.js",

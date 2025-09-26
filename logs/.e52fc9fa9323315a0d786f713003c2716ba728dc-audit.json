@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 28
+    },
+    "auditLog": "C:\\Users\\ikchr\\Documents\\prime-loan-backend\\logs\\.e52fc9fa9323315a0d786f713003c2716ba728dc-audit.json",
+    "files": [
+        {
+            "date": 1758846108193,
+            "name": "C:\\Users\\ikchr\\Documents\\prime-loan-backend\\logs\\2025-09-26.log",
+            "hash": "a84b335cd2429a83d5c27acb78c4530368de95c76f4b397b346e2c73dc829cba"
+        }
+    ],
+    "hashType": "sha256"
+}
