@@ -26,7 +26,7 @@ export async function startApp() {
     const server = http.createServer(app);
 
     server
-      .listen(PORT, (): void => {
+      .listen(PORT, "0.0.0.0", (): void => {
         logger.info("Prime Finance server initiated");
       })
       .on("listening", () => {

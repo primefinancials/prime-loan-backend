@@ -2,7 +2,7 @@ import '../config/envConfig';
 import { ConnectOptions } from 'mongoose';
 import { CABLETV, METERTYPE, MOBILENETWORKS, BONUSTYPE } from '../modules/bill-payments/bill-payment.interface';
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 export const customerKey = process.env.CUSTOMER_KEY!;
 export const customerSecret = process.env.CUSTOMER_SECRET!;
 export const baseUrl = process.env.BASE_URL!;
