@@ -12,12 +12,13 @@ import crossOrigin from "./shared/utils/cross-origin";
 
 export default function configureApp(app: Application): void {
   // Logger (dev only)
-  if (process.env.ENV === "dev" || process.env.NODE_ENV === "development") {
+  if (process.env.NODE_ENV === "development") {
     app.use(morgan("dev"));
   }
 
   // Security & middleware
-  app.use(crossOrigin());
+  // app.use(crossOrigin());
+  app.options("*", crossOrigin());
   app.use(helmet());
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
