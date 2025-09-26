@@ -11,25 +11,12 @@ import { errHandler } from "./exceptions";
 import crossOrigin from "./shared/utils/cross-origin";
 
 export default function configureApp(app: Application): void {
-   app.get("/health", (_req: Request, res: Response) => {
-    res.status(200).json({
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      version: "2.0.0",
-    });
-  });
-
-  app.get("/backoffice/debug", (_req, res) => {
-    res.json({ status: "ok", message: "Backoffice route works" });
-  });
-
   // Logger (dev only)
-  if (process.env.NODE_ENV === "development") {
+  if (process.env.ENV === "dev" || process.env.NODE_ENV === "development") {
     app.use(morgan("dev"));
   }
 
   // Security & middleware
-  // app.use(crossOrigin());
   app.use(crossOrigin());
   app.use(helmet());
   app.use(express.json());
@@ -37,17 +24,21 @@ export default function configureApp(app: Application): void {
   app.use(cookieParser());
   app.use(compression());
 
-  app.use((req, _res, next) => {
-    console.log("Incoming request:", req.method, req.url);
-    next();
-  });
-
   // Swagger docs
   app.use(
     "/api-docs",
     swaggerUi.serve,
     swaggerUi.setup(specs, swaggerUiOptions)
   );
+
+  // Health check
+  app.get("/health", (_req: Request, res: Response) => {
+    res.status(200).json({
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      version: "2.0.0",
+    });
+  });
 
   // Routes
   app.use("/api", userRoutes);
