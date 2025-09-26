@@ -22,7 +22,7 @@ export default function configureApp(app: Application): void {
   app.get("/backoffice/debug", (_req, res) => {
     res.json({ status: "ok", message: "Backoffice route works" });
   });
-  
+
   // Logger (dev only)
   if (process.env.NODE_ENV === "development") {
     app.use(morgan("dev"));
@@ -36,6 +36,11 @@ export default function configureApp(app: Application): void {
   app.use(express.urlencoded({ extended: false }));
   app.use(cookieParser());
   app.use(compression());
+
+  app.use((req, _res, next) => {
+    console.log("Incoming request:", req.method, req.url);
+    next();
+  });
 
   // Swagger docs
   app.use(
