@@ -11,14 +11,13 @@ import { errHandler } from "./exceptions";
 import crossOrigin from "./shared/utils/cross-origin";
 
 export default function configureApp(app: Application): void {
-  app.use(crossOrigin());
-  
   // Logger (dev only)
   if (process.env.ENV === "dev" || process.env.NODE_ENV === "development") {
     app.use(morgan("dev"));
   }
 
   // Security & middleware
+  app.use(crossOrigin());
   app.use(helmet());
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
