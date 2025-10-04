@@ -445,18 +445,17 @@ export class UserService {
         const totalLoanOutstanding = activeLoans.reduce((sum, loan) => sum + (loan.outstanding || 0), 0);
         const totalSavings = savingsPlans.reduce((sum, plan) => sum + plan.principal, 0);
 
-        const [billPayments, savings, transfers, loans] = await Promise.all([
+        const [billPayments, savings, transfers] = await Promise.all([
             BillPaymentService.getUserBillPayments(user?._id || ""),
             SavingsService.getUserPlans(user?._id || ""),
             TransferService.transfers(user?._id || ""),
-            LoanService.listLoansForUser(user?._id || "")
         ]);
 
         // Normalize to unified activity format
         const activity: ActivityEvent[] = [];
 
         // Loans
-        loans.data.forEach((loan) => {
+        activeLoans.forEach((loan) => {
             activity.push({
                 type: "loan",
                 id: loan._id,
