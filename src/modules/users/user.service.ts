@@ -461,7 +461,7 @@ export class UserService {
                 id: loan._id,
                 amount: loan.amount,
                 status: loan.loan_payment_status,
-                date: new Date(loan.created_at),
+                date: new Date(loan.loan_date),
                 isUser: loan.userId == user?._id,
                 description: `Loan request of ₦${loan.amount} (${loan.status})`,
                 meta: { reason: loan.reason }

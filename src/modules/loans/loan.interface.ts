@@ -66,8 +66,8 @@ export interface ILoan extends Document {
   guarantor_2_phone?: string; // Nullable since it's empty in the data
   doi?: string; // Date of incorporation in string format
   tin?: string; // Tax Identification Number, nullable
-  created_at: string; // Timestamp of creation
-  updated_at: string;
+  createdAt: string; // Timestamp of creation
+  updatedAt: string;
   userId: string; // UUID of the user
   documentType?: string; // NIN_SLIP | NIN | NATIONAL_ID | DRIVERS_LICENSE | PASSPORT
   base64Image?: string; // ID doc
