@@ -427,21 +427,21 @@ export class UserService {
     /**
      * Get user financial summary
      */
-    static async getUserFinancialSummary(userId: string) {
+    static async getUserFinancialSummary(user: User | null) {
         const [walletBalance, activeLoans, savingsPlans] = await Promise.all([
-            LedgerService.getUserWalletBalance(userId),
+            LedgerService.getUserWalletBalance(user?._id || ""),
             Loan.find({ 
-                userId, 
+                userId: user?._id || "", 
                 loan_payment_status: { $in: ['in-progress', 'not-started'] } 
             }),
-            SavingsPlan.find({ userId, status: 'ACTIVE' })
+            SavingsPlan.find({ userId: user?._id || "", status: 'ACTIVE' })
         ]);
 
         const totalLoanOutstanding = activeLoans.reduce((sum, loan) => sum + (loan.outstanding || 0), 0);
         const totalSavings = savingsPlans.reduce((sum, plan) => sum + plan.principal, 0);
 
         return {
-            walletBalance,
+            walletBalance || user?.user_metadata?.wallet,
             totalLoanOutstanding,
             totalSavings,
             activeLoansCount: activeLoans.length,

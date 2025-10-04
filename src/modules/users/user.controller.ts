@@ -147,4 +147,23 @@ export class UserController {
       next(error);
     }
   }
+
+  /**
+   * User dashboard: aggregated platform statistics
+   */
+  static async getUserFinancialSummary(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const user = req.user;
+
+      const stats = await UserService.getUserFinancialSummary(user?._id || "");
+
+      res.status(200).json({
+        status: 'success',
+        data: stats
+      });
+    } catch (error) {
+      console.log('Dashboard Error: ', error)
+      next(error);
+    }
+  }
 }
