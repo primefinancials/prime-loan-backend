@@ -435,8 +435,8 @@ export class UserService {
         const [walletBalance, activeLoans, savingsPlans] = await Promise.all([
             LedgerService.getUserWalletBalance(user?._id || ""),
             Loan.find({ 
-            userId: user?._id || "", 
-            loan_payment_status: { $in: ["in-progress", "not-started"] } 
+                userId: user?._id || "", 
+                loan_payment_status: { $in: ["in-progress", "not-started"] } 
             }),
             SavingsPlan.find({ userId: user?._id || "", status: "ACTIVE" })
         ]);
@@ -510,7 +510,7 @@ export class UserService {
         activity.sort((a, b) => b.date.getTime() - a.date.getTime());
 
         return {
-            walletBalance: walletBalance || user?.user_metadata?.wallet,
+            walletBalance: user?.user_metadata?.wallet || walletBalance,
             totalLoanOutstanding,
             totalSavings,
             activeLoansCount: activeLoans.length,
@@ -525,6 +525,6 @@ export class UserService {
      */
     private static async getUserCreditScore(userId: string) {
         const user = await User.findById(userId);
-        return user?.user_metadata.creditScore || 0;
+        return user?.user_metadata.creditScore || 700;
     }
 }
