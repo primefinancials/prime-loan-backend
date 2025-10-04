@@ -441,12 +441,12 @@ export class UserService {
         const totalSavings = savingsPlans.reduce((sum, plan) => sum + plan.principal, 0);
 
         return {
-            walletBalance || user?.user_metadata?.wallet,
+            walletBalance: walletBalance || user?.user_metadata?.wallet,
             totalLoanOutstanding,
             totalSavings,
             activeLoansCount: activeLoans.length,
             activeSavingsCount: savingsPlans.length,
-            creditScore: await this.getUserCreditScore(userId)
+            creditScore: await this.getUserCreditScore(user?._id || "")
         };
     }
 
