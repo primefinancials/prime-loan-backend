@@ -108,6 +108,21 @@ router.post(
 
 /**
  * @swagger
+ * /api/users/financial-summary:
+ *   get:
+ *     summary: Get logged-in user financial summary
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User financial summary
+ */
+router.get("/users/financial-summary", verifyJwtRest(), UserController.getUserFinancialSummary as any);
+
+
+/**
+ * @swagger
  * /api/users/login:
  *   post:
  *     summary: User login

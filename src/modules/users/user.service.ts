@@ -12,6 +12,10 @@ import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import { LedgerService } from "../ledger/LedgerService";
 import { SavingsPlan } from "../savings/savings.plan.model";
 import Loan from "../loans/loan.model";
+import { BillPaymentService } from "../bill-payments/bill.payment.service";
+import { SavingsService } from "../savings/savings.service";
+import { LoanService } from "../loans/loan.service";
+import { ActivityEvent } from "./user.interface";
 
 export class UserService {
     private static vfdProvider = new VfdProvider();
@@ -431,14 +435,79 @@ export class UserService {
         const [walletBalance, activeLoans, savingsPlans] = await Promise.all([
             LedgerService.getUserWalletBalance(user?._id || ""),
             Loan.find({ 
-                userId: user?._id || "", 
-                loan_payment_status: { $in: ['in-progress', 'not-started'] } 
+            userId: user?._id || "", 
+            loan_payment_status: { $in: ["in-progress", "not-started"] } 
             }),
-            SavingsPlan.find({ userId: user?._id || "", status: 'ACTIVE' })
+            SavingsPlan.find({ userId: user?._id || "", status: "ACTIVE" })
         ]);
 
         const totalLoanOutstanding = activeLoans.reduce((sum, loan) => sum + (loan.outstanding || 0), 0);
         const totalSavings = savingsPlans.reduce((sum, plan) => sum + plan.principal, 0);
+
+        const [billPayments, savings, transfers, loans] = await Promise.all([
+            BillPaymentService.getUserBillPayments(user?._id || ""),
+            SavingsService.getUserPlans(user?._id || ""),
+            TransferService.transfers(user?._id || ""),
+            LoanService.listLoansForUser(user?._id || "")
+        ]);
+
+        // Normalize to unified activity format
+        const activity: ActivityEvent[] = [];
+
+        // Loans
+        loans.data.forEach((loan) => {
+            activity.push({
+                type: "loan",
+                id: loan._id,
+                amount: loan.amount,
+                status: loan.loan_payment_status,
+                date: new Date(loan.created_at),
+                description: `Loan request of ₦${loan.amount / 100} (${loan.status})`,
+                meta: { reason: loan.reason }
+            });
+        });
+
+        // Savings
+        savings.forEach((plan) => {
+            activity.push({
+                type: "savings",
+                id: plan._id,
+                amount: plan.principal,
+                status: plan.status,
+                date: new Date(plan.createdAt),
+                description: `Savings plan "${plan.planName}" started with ₦${plan.principal / 100}`,
+                meta: { planType: plan.planType }
+            });
+        });
+
+        // Bill payments
+        billPayments.billPayments.forEach((bill) => {
+            activity.push({
+                type: "bill_payment",
+                id: bill._id,
+                amount: bill.amount,
+                status: bill.status,
+                date: new Date(bill.createdAt),
+                description: `Bill payment of ₦${bill.amount / 100} (${bill.serviceType})`,
+                meta: { providerRef: bill.providerRef }
+            });
+        });
+
+        // Transfers
+        transfers.data.forEach((t) => {
+            activity.push({
+            type: "transfer",
+            id: t._id,
+            amount: t.amount,
+            status: t.status,
+            date: new Date(t.createdAt),
+            description: `Transfer of ₦${t.amount / 100} to ${t.toAccount}`,
+            meta: { beneficiary: t.beneficiaryName }
+            });
+        });
+
+        // Sort descending by date
+        activity.sort((a, b) => b.date.getTime() - a.date.getTime());
 
         return {
             walletBalance: walletBalance || user?.user_metadata?.wallet,
@@ -446,9 +515,10 @@ export class UserService {
             totalSavings,
             activeLoansCount: activeLoans.length,
             activeSavingsCount: savingsPlans.length,
-            creditScore: await this.getUserCreditScore(user?._id || "")
+            creditScore: await this.getUserCreditScore(user?._id || ""),
+            activity
         };
-    }
+        }
 
     /**
      * Get user credit score

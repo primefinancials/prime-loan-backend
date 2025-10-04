@@ -168,3 +168,14 @@ export interface UPDATEUSER {
     account_number: string;
   }[]
 }
+
+export interface ActivityEvent {
+  type: "loan" | "savings" | "bill_payment" | "transfer";
+  id: string;
+  amount?: number;
+  status: string;
+  date: Date;
+  description: string;
+  meta?: Record<string, any>;
+}
+
