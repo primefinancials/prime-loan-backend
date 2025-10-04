@@ -248,13 +248,7 @@ export class LoanController {
 
       res.status(200).json({
         status: "success",
-        data: {
-          id: loan._id,
-          status: loan.status,
-          loan_payment_status: loan.loan_payment_status,
-          outstanding: loan.outstanding,
-          repayment_date: loan.repayment_date,
-        },
+        data: loan,
       });
     } catch (error) {
       next(error);
