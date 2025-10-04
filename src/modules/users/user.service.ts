@@ -463,7 +463,7 @@ export class UserService {
                 status: loan.loan_payment_status,
                 date: new Date(loan.created_at),
                 isUser: loan.userId == user?._id,
-                description: `Loan request of ₦${loan.amount / 100} (${loan.status})`,
+                description: `Loan request of ₦${loan.amount} (${loan.status})`,
                 meta: { reason: loan.reason }
             });
         });
@@ -477,7 +477,7 @@ export class UserService {
                 status: plan.status,
                 date: new Date(plan.createdAt),
                 isUser: plan.userId == user?._id,
-                description: `Savings plan "${plan.planName}" started with ₦${plan.principal / 100}`,
+                description: `Savings plan "${plan.planName}" started with ₦${plan.principal}`,
                 meta: { planType: plan.planType }
             });
         });
@@ -490,7 +490,7 @@ export class UserService {
                 amount: bill.amount,
                 status: bill.status,
                 date: new Date(bill.createdAt),
-                description: `Bill payment of ₦${bill.amount / 100} (${bill.serviceType})`,
+                description: `Bill payment of ₦${bill.amount} (${bill.serviceType})`,
                 isUser: bill.userId == user?._id,
                 meta: { providerRef: bill.providerRef }
             });
@@ -504,8 +504,8 @@ export class UserService {
                 amount: t.amount,
                 status: t.status,
                 date: new Date(t.createdAt),
-                description: `Transfer of ₦${t.amount / 100} to ${t.toAccount}`,
-                isUser: t.userId == user?._id,
+                description: `Transfer of ₦${t.amount} to ${t.toAccount}`,
+                isUser: t.fromAccount == user?.user_metadata.accountNo,
                 meta: { beneficiary: t.beneficiaryName }
             });
         });

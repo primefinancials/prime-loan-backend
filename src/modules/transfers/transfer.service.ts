@@ -321,10 +321,9 @@ export class TransferService {
     const skip = (page - 1) * limit;
 
     const user = await User.findById(userId);
-    
+
     const query = {
       $or: [
-        { userId },
         { fromAccount: user?.user_metadata?.accountNo },
         { toAccount: user?.user_metadata?.accountNo }
       ]
