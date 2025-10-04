@@ -320,13 +320,22 @@ export class TransferService {
   }> {
     const skip = (page - 1) * limit;
 
-    // Run queries in parallel
+    const user = await User.findById(userId);
+    
+    const query = {
+      $or: [
+        { userId },
+        { fromAccount: user?.user_metadata?.accountNo },
+        { toAccount: user?.user_metadata?.accountNo }
+      ]
+    };
+
     const [transactions, total] = await Promise.all([
-      Transfer.find({ userId })
-        .sort({ createdAt: -1 }) // newest first
+      Transfer.find(query)
+        .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),
-      Transfer.countDocuments({ userId })
+      Transfer.countDocuments(query)
     ]);
 
     return {

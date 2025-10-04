@@ -499,14 +499,14 @@ export class UserService {
         // Transfers
         transfers.data.forEach((t) => {
             activity.push({
-            type: "transfer",
-            id: t._id,
-            amount: t.amount,
-            status: t.status,
-            date: new Date(t.createdAt),
-            description: `Transfer of ₦${t.amount / 100} to ${t.toAccount}`,
-            isUser: t.userId == user?._id,
-            meta: { beneficiary: t.beneficiaryName }
+                type: "transfer",
+                id: t._id,
+                amount: t.amount,
+                status: t.status,
+                date: new Date(t.createdAt),
+                description: `Transfer of ₦${t.amount / 100} to ${t.toAccount}`,
+                isUser: t.userId == user?._id,
+                meta: { beneficiary: t.beneficiaryName }
             });
         });
 
@@ -522,7 +522,7 @@ export class UserService {
             creditScore: await this.getUserCreditScore(user?._id || ""),
             activity
         };
-        }
+    }
 
     /**
      * Get user credit score
