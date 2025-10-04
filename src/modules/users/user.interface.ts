@@ -176,6 +176,7 @@ export interface ActivityEvent {
   status: string;
   date: Date;
   description: string;
+  isUser: boolean;
   meta?: Record<string, any>;
 }
 

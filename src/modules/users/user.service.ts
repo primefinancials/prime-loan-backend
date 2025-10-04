@@ -462,6 +462,7 @@ export class UserService {
                 amount: loan.amount,
                 status: loan.loan_payment_status,
                 date: new Date(loan.created_at),
+                isUser: loan.userId == user?._id,
                 description: `Loan request of ₦${loan.amount / 100} (${loan.status})`,
                 meta: { reason: loan.reason }
             });
@@ -475,6 +476,7 @@ export class UserService {
                 amount: plan.principal,
                 status: plan.status,
                 date: new Date(plan.createdAt),
+                isUser: plan.userId == user?._id,
                 description: `Savings plan "${plan.planName}" started with ₦${plan.principal / 100}`,
                 meta: { planType: plan.planType }
             });
@@ -489,6 +491,7 @@ export class UserService {
                 status: bill.status,
                 date: new Date(bill.createdAt),
                 description: `Bill payment of ₦${bill.amount / 100} (${bill.serviceType})`,
+                isUser: bill.userId == user?._id,
                 meta: { providerRef: bill.providerRef }
             });
         });
@@ -502,6 +505,7 @@ export class UserService {
             status: t.status,
             date: new Date(t.createdAt),
             description: `Transfer of ₦${t.amount / 100} to ${t.toAccount}`,
+            isUser: t.userId == user?._id,
             meta: { beneficiary: t.beneficiaryName }
             });
         });
