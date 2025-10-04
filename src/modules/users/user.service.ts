@@ -436,6 +436,7 @@ export class UserService {
             LedgerService.getUserWalletBalance(user?._id || ""),
             Loan.find({ 
                 userId: user?._id || "", 
+                status: "accepted",
                 loan_payment_status: { $in: ["in-progress", "not-started"] } 
             }),
             SavingsPlan.find({ userId: user?._id || "", status: "ACTIVE" })
