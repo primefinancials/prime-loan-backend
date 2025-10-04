@@ -155,7 +155,7 @@ export class UserController {
     try {
       const user = req.user;
 
-      const stats = await UserService.getUserFinancialSummary(user?._id || "");
+      const stats = await UserService.getUserFinancialSummary(user);
 
       res.status(200).json({
         status: 'success',
