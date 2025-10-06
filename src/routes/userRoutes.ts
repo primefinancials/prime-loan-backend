@@ -510,7 +510,7 @@ router.post(
 
 /**
  * -----------------------------
- * BILL PAYMENTS (V2)
+ * BILL PAYMENTS (V2) — FLUTTERWAVE
  * -----------------------------
  */
 
@@ -518,14 +518,14 @@ router.post(
  * @swagger
  * tags:
  *   - name: Bills
- *     description: Bill payment endpoints (ClubConnect / provider integration)
+ *     description: Bill payment endpoints (Flutterwave integration)
  */
 
 /**
  * @swagger
- * /api/bills/initiate:
+ * /api/v2/bills/initiate:
  *   post:
- *     summary: Initiate a bill payment (single generic endpoint for airtime/data/tv/power/internet/betting/waec/jamb)
+ *     summary: Initiate a bill payment (single endpoint for airtime/data/tv/power/internet/betting/waec/jamb)
  *     tags: [Bills]
  *     security:
  *       - bearerAuth: []
@@ -534,25 +534,7 @@ router.post(
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required: [amount, serviceType, customerReference]
- *             properties:
- *               amount:
- *                 type: number
- *               serviceType:
- *                 type: string
- *                 enum: [airtime, data, tv, power, betting, internet, waec, jamb]
- *               serviceId:
- *                 type: string
- *                 description: provider service id (e.g. data plan id, cable id, electric company id, examType)
- *               customerReference:
- *                 type: string
- *                 description: target account/number (e.g. mobile number, meter number, smartcard)
- *               extras:
- *                 type: object
- *                 description: service-specific extras (for airtime include mobileNetwork, for power include meterType, etc.)
- *               idempotencyKey:
- *                 type: string
+ *             $ref: '#/components/schemas/InitiateBillPaymentRequest'
  *     responses:
  *       200:
  *         description: Bill payment processed (or queued)
@@ -567,93 +549,64 @@ router.post(
 
 /**
  * @swagger
- * /api/bills/status/{id}:
+ * /api/v2/bills/categories:
  *   get:
- *     summary: Get bill payment transaction status
+ *     summary: Get supported bill categories
+ *     tags: [Bills]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Supported bill categories
+ */
+router.get("/bills/categories", verifyJwtRest(), BillPaymentController.getCategories as any);
+
+/**
+ * @swagger
+ * /api/v2/bills/billers/{categoryCode}:
+ *   get:
+ *     summary: Get billers by category
  *     tags: [Bills]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: categoryCode
  *         required: true
  *         schema:
  *           type: string
- *         description: ClubConnect transaction id
+ *         description: Category code (e.g. BIL099 for power)
  *     responses:
  *       200:
- *         description: Transaction status
+ *         description: Billers list
  */
-router.get("/bills/status/:id", verifyJwtRest(), BillPaymentController.getStatus as any);
+router.get("/bills/billers/:categoryCode", verifyJwtRest(), BillPaymentController.getBillers as any);
 
 /**
  * @swagger
- * /api/bills/cancel/{id}:
- *   post:
- *     summary: Cancel a bill payment transaction
+ * /api/v2/bills/items/{billerCode}:
+ *   get:
+ *     summary: Get bill items/products for a biller
  *     tags: [Bills]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: billerCode
  *         required: true
  *         schema:
  *           type: string
- *         description: ClubConnect transaction id to cancel
  *     responses:
  *       200:
- *         description: Cancellation response
+ *         description: Bill items list
  */
-router.post("/bills/cancel/:id", verifyJwtRest(), BillPaymentController.cancelTransaction as any);
+router.get("/bills/items/:billerCode", verifyJwtRest(), BillPaymentController.getBillItems as any);
 
 /**
  * @swagger
- * /api/bills/wallet-balance:
- *   get:
- *     summary: Get ClubConnect wallet balance
- *     tags: [Bills]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Wallet balance
- */
-router.get("/bills/wallet-balance", verifyJwtRest(), BillPaymentController.walletBalance as any);
-
-/**
- * @swagger
- * /api/bills/data-plans:
- *   get:
- *     summary: Get available data plans
- *     tags: [Bills]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Data plans list
- */
-router.get("/bills/data-plans", verifyJwtRest(), BillPaymentController.getDataPlans as any);
-
-/**
- * @swagger
- * /api/bills/tv-packages:
- *   get:
- *     summary: Get available TV packages
- *     tags: [Bills]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: TV packages
- */
-router.get("/bills/tv-packages", verifyJwtRest(), BillPaymentController.getTvPackages as any);
-
-/**
- * @swagger
- * /api/bills/tv/verify:
+ * /api/v2/bills/validate:
  *   post:
- *     summary: Verify TV smartcard number (provider validation)
+ *     summary: Validate a customer's account or meter
  *     tags: [Bills]
  *     security:
  *       - bearerAuth: []
@@ -663,196 +616,86 @@ router.get("/bills/tv-packages", verifyJwtRest(), BillPaymentController.getTvPac
  *         application/json:
  *           schema:
  *             type: object
- *             required: [cableTV, smartCardNo]
+ *             required: [itemCode, customerReference]
  *             properties:
- *               cableTV:
+ *               itemCode:
  *                 type: string
- *               smartCardNo:
+ *               customerReference:
  *                 type: string
  *     responses:
  *       200:
- *         description: Verification result
+ *         description: Validation result
  */
-router.post("/bills/tv/verify", verifyJwtRest(), validateReqBody(tvVerifySchema), BillPaymentController.verifyTv as any);
+router.post("/bills/validate", verifyJwtRest(), BillPaymentController.validateAccount as any);
 
 /**
  * @swagger
- * /api/bills/power-subscriptions:
+ * /api/v2/bills/user-payments:
  *   get:
- *     summary: Get available electricity subscription types
+ *     summary: Get logged-in user's bill payment history
  *     tags: [Bills]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
  *     responses:
  *       200:
- *         description: Electricity subscription companies
+ *         description: User payments history
  */
-router.get("/bills/power-subscriptions", verifyJwtRest(), BillPaymentController.getPowerSubscriptions as any);
+router.get("/bills/user-payments", verifyJwtRest(), BillPaymentController.getUserPayments as any);
 
 /**
  * @swagger
- * /api/bills/power/verify:
- *   post:
- *     summary: Verify electricity meter number
- *     tags: [Bills]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [electricCompany, meterNo]
- *             properties:
- *               electricCompany:
- *                 type: string
- *               meterNo:
- *                 type: string
- *     responses:
- *       200:
- *         description: Meter verification
- */
-router.post("/bills/power/verify", verifyJwtRest(), validateReqBody(powerVerifySchema), BillPaymentController.verifyPower as any);
-
-/**
- * @swagger
- * /api/bills/betting-platforms:
+ * /api/v2/bills/all:
  *   get:
- *     summary: Get supported betting platforms
+ *     summary: Get all bill payments (admin only)
  *     tags: [Bills]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Betting platforms
+ *         description: All bill payments
  */
-router.get("/bills/betting-platforms", verifyJwtRest(), BillPaymentController.getBettingPlatforms as any);
+router.get("/bills/all", verifyJwtRest(), BillPaymentController.getAllPayments as any);
 
 /**
  * @swagger
- * /api/bills/betting/verify:
- *   post:
- *     summary: Verify betting customer ID
- *     tags: [Bills]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [bettingCompany, customerId]
- *             properties:
- *               bettingCompany:
- *                 type: string
- *               customerId:
- *                 type: string
- *     responses:
- *       200:
- *         description: Betting verification
- */
-router.post("/bills/betting/verify", verifyJwtRest(), validateReqBody(bettingVerifySchema), BillPaymentController.verifyBetting as any);
-
-/**
- * @swagger
- * /api/bills/internet-plans/{network}:
+ * /api/v2/bills/downtime/{billerCode}:
  *   get:
- *     summary: Get available internet plans for a network (smile-direct/spectranet)
+ *     summary: Check downtime for a biller
  *     tags: [Bills]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: network
+ *         name: billerCode
  *         required: true
  *         schema:
  *           type: string
- *         description: Network name (smile-direct | spectranet)
  *     responses:
  *       200:
- *         description: Internet plans
+ *         description: Downtime check result
  */
-router.get("/bills/internet-plans/:network", verifyJwtRest(), BillPaymentController.getInternetPlans as any);
+router.get("/bills/downtime/:billerCode", verifyJwtRest(), BillPaymentController.checkDowntime as any);
 
 /**
  * @swagger
- * /api/bills/smile/verify:
- *   post:
- *     summary: Verify Smile account details
- *     tags: [Bills]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [mobileNumber]
- *             properties:
- *               mobileNumber:
- *                 type: string
- *     responses:
- *       200:
- *         description: Smile verification
- */
-router.post("/bills/smile/verify", verifyJwtRest(), validateReqBody(smileVerifySchema), BillPaymentController.verifySmile as any);
-
-/**
- * @swagger
- * /api/bills/waec-types:
+ * /api/v2/bills/health:
  *   get:
- *     summary: Get available WAEC PIN/exam types
+ *     summary: Flutterwave connectivity health check
  *     tags: [Bills]
- *     security:
- *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: WAEC types
+ *         description: Flutterwave API reachable
  */
-router.get("/bills/waec-types", verifyJwtRest(), BillPaymentController.getWaecTypes as any);
-
-/**
- * @swagger
- * /api/bills/jamb-types:
- *   get:
- *     summary: Get available JAMB PIN/exam types
- *     tags: [Bills]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: JAMB types
- */
-router.get("/bills/jamb-types", verifyJwtRest(), BillPaymentController.getJambTypes as any);
-
-/**
- * @swagger
- * /api/bills/jamb/verify:
- *   post:
- *     summary: Verify JAMB registration profile
- *     tags: [Bills]
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [examType, profileId]
- *             properties:
- *               examType:
- *                 type: string
- *               profileId:
- *                 type: string
- *     responses:
- *       200:
- *         description: JAMB verification
- */
-router.post("/bills/jamb/verify", verifyJwtRest(), validateReqBody(jambVerifySchema), BillPaymentController.verifyJamb as any);
+router.get("/bills/health", BillPaymentController.flutterwaveHealth as any);
 
 /**
  * -----------------------------

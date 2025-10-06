@@ -361,6 +361,8 @@ export class TransferService {
     const user = await User.findOne({ "user_metadata.accountNo": body.account_number });
     if (!user) return null;
 
+    console.log({ body });
+
     const traceId = body.session_id;
 
     // Ledger credit

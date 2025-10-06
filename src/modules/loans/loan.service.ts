@@ -43,7 +43,7 @@ export interface CreateLoanParams {
   amount: number; // naira
   reason?: string;
   documentType?: string; // NIN_SLIP | NIN | NATIONAL_ID | DRIVERS_LICENSE | PASSPORT
-  documentBase64?: string; // ID doc
+  base64Image?: string; // ID doc
   faceVideoBase64?: string; // mandatory facial video recording
   category?: LOANCATEGORY; // working, personal etc.
   type?: LOANTYPE;
@@ -208,7 +208,7 @@ export class LoanService {
     requiredParam("amount", params.amount);
 
     requiredParam("documentType", params.documentType);
-    requiredParam("documentBase64", params.documentBase64);
+    requiredParam("base64Image", params.base64Image);
     requiredParam("faceVideoBase64", params.faceVideoBase64);
 
     if (!ALLOWED_ID_DOCS.has(params.documentType!)) {

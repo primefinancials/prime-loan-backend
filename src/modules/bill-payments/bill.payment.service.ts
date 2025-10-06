@@ -1,185 +1,322 @@
 /**
- * Bill Payment Orchestrator with Club Konnect Integration
+ * Bill Payment Orchestrator (Flutterwave-backed)
+ *
+ * - Uses Flutterwave Bill Payment endpoints to initiate purchases.
+ * - Uses TransferService + VfdProvider for ledger/transfer prefunding.
+ * - Orchestrates via processTransaction(...) so the general flow is:
+ *     1) Create PENDING transfer (ledger)
+ *     2) Send transfer to VFD
+ *     3) Call provider (Flutterwave) to perform the bill purchase
+ *     4) Let processTransaction handle finalization and error flows
+ *
+ * NOTES:
+ *  - Expect these params:
+ *      req.serviceId -> Flutterwave biller_code (e.g. BIL108)
+ *      req.extras.itemCode | productCode | pkg -> Flutterwave item/product code (e.g. MD142)
+ *      req.customerReference -> account/meter/smartcard/phone (string/number)
+ *      req.idempotencyKey -> external idempotency (tx_ref)
+ *  - Make sure FLUTTERWAVE_SECRET_KEY is available via process.env or your config.
  */
-import { ClubConnectsService } from '../../shared/providers/clubConnect.provider';
+
+import axios from "axios";
+import { sha512 } from "js-sha512";
+import { TransferService } from "../transfers/transfer.service";
+import { VfdProvider, TransferRequest } from "../../shared/providers/vfd.provider";
 import { processTransaction } from "../../shared/transactions/BillPaymentTransactionProcessor";
-import { TransferService } from '../transfers/transfer.service';
-import { VfdProvider, TransferRequest } from '../../shared/providers/vfd.provider';
-import User from '../users/user.model';
-import { sha512 } from 'js-sha512';
-import { InitiateBillPaymentRequest, ServiceType } from './bill-payment.interface';
-import { BillPayment } from './bill-payment.model';
+import User from "../users/user.model";
+import { BillPayment } from "./bill-payment.model";
+import { InitiateBillPaymentRequest, ServiceType } from "./bill-payment.interface";
+
+type FlutterwaveResponse<T = any> = {
+  status: string; // "success" | "error"
+  message?: string;
+  data?: T;
+};
 
 function requireExtra<T>(
   value: T | undefined,
   name: string,
   service: ServiceType
 ): T {
-  if (value === undefined || value === null || (typeof value === 'string' && value.trim() === '')) {
+  if (
+    value === undefined ||
+    value === null ||
+    (typeof value === "string" && value.trim() === "")
+  ) {
     throw new Error(`Missing required '${name}' for serviceType='${service}'`);
   }
   return value;
 }
 
-export class BillPaymentService {
-  static async initiateBillPayment(req: InitiateBillPaymentRequest) {
-    const provider = new ClubConnectsService();
-    const vfdProvider = new VfdProvider();
-    
-    const userId = req.userId;
+function fwHeaders() {
+  const key = process.env.FLUTTERWAVE_SECRET_KEY;
+  if (!key) {
+    throw new Error("Missing FLUTTERWAVE_SECRET_KEY in environment");
+  }
+  return {
+    Authorization: `Bearer ${key}`,
+    "Content-Type": "application/json",
+  };
+}
 
+async function flutterwaveGet<T = any>(path: string, params?: Record<string, any>) {
+  const url = `https://api.flutterwave.com${path}`;
+  const res = await axios.get<FlutterwaveResponse<T>>(url, {
+    headers: fwHeaders(),
+    params,
+  });
+  return res.data;
+}
+
+async function flutterwavePost<T = any>(path: string, body: any = {}) {
+  const url = `https://api.flutterwave.com${path}`;
+  const res = await axios.post<FlutterwaveResponse<T>>(url, body, {
+    headers: fwHeaders(),
+  });
+  return res.data;
+}
+
+export default class BillPaymentService {
+  /**
+   * Fetch high-level categories (Airtime, Mobile Data Service, Power, TV, Internet etc.)
+   * GET /v3/top-bill-categories?country=NG
+   */
+  static async getSupportedCategories(country = "NG") {
+    const resp = await flutterwaveGet("/v3/top-bill-categories", { country });
+    return resp.data;
+  }
+
+  /**
+   * Get billers for a category
+   * GET /v3/bills/{category}/billers
+   * - category is usually the category code you got from top-bill-categories
+   */
+  static async getBillersByCategory(categoryCode: string, country = "NG") {
+    const resp = await flutterwaveGet(`/v3/bills/${encodeURIComponent(categoryCode)}/billers`, { country });
+    return resp.data;
+  }
+
+  /**
+   * Get items/products for a biller (packages, plans etc.)
+   * GET /v3/billers/{biller_code}/items
+   */
+  static async getBillItems(billerCode: string) {
+    const resp = await flutterwaveGet(`/v3/billers/${encodeURIComponent(billerCode)}/items`);
+    return resp.data;
+  }
+
+  /**
+   * Validate a customer (meter no, smartcard no, etc.)
+   * GET /v3/bill-items/{item_code}/validate?customer={customer}
+   */
+  static async validateServiceAccount(itemCode: string, customerReference: string | number) {
+    const resp = await flutterwaveGet(`/v3/bill-items/${encodeURIComponent(itemCode)}/validate`, {
+      customer: customerReference,
+    });
+    return resp.data;
+  }
+
+  /**
+   * Initiate a bill payment using Flutterwave's bill payment endpoints
+   *
+   * IMPORTANT:
+   *  - serviceId should map to a biller_code (e.g. BIL108)
+   *  - extras.itemCode or extras.productCode or extras.pkg should contain the item/product code for many billers
+   */
+  static async initiateBillPayment(req: InitiateBillPaymentRequest) {
+    // load user + prefunding accounts
+    const vfdProvider = new VfdProvider();
+
+    const userId = req.userId;
     const user = await User.findById(userId);
-    const from = (await vfdProvider.getAccountInfo(user? user.user_metadata.accountNo : "trx-user")).data;
+    if (!user) throw new Error("User not found");
+
+    const from = (await vfdProvider.getAccountInfo(user ? user.user_metadata?.accountNo : "trx-user")).data;
     const to = (await vfdProvider.getPrimeAccountInfo()).data;
 
-    const prd = req.extras?.internetNetwork? 
-      req.extras.internetNetwork
-    : req.extras?.mobileNetwork?
-      req.extras.mobileNetwork == "01"?
-        "MTN"
-      : req.extras.mobileNetwork == "02"?
-        "Glo"
-      : req.extras.mobileNetwork == "03"?
-        "9Mobile"
-      : "Airtel"
-    : req.extras?.meterType?
-      req.extras.meterType == "01"?
-        "Prepaid"
-      : "Postpaid"
-    : ''
-    
-    const idempotencyKey = req.idempotencyKey!;      
-      
+    // friendly helpers for Flutterwave bill requests
+    const billerCode = req.serviceId; // expected biller_code like BIL108
+    const itemCode = req.extras?.internetNetwork || req.extras?.meterType || req.extras?.mobileNetwork || req.extras?.pkg;
+
+    // idempotency tx reference used with Flutterwave (and also used for ledger)
+    const idempotencyKey = req.idempotencyKey || cryptoRandom();
+
     return await processTransaction({
       userId: req.userId,
       amount: req.amount,
       serviceType: req.serviceType,
       serviceId: req.serviceId,
       customerReference: req.customerReference,
-      idempotencyKey: req.idempotencyKey,
+      idempotencyKey,
       providerFn: async () => {
+        // Build path + payload for Flutterwave create-payment
+        // Flutterwave requires different payload keys for some billers.
+        // We'll assemble a general payload, and pass extras into an "extra" property
+        // so Flutterwave gets all custom keys it expects.
+        if (!billerCode || typeof billerCode !== "string") {
+          throw new Error("serviceId (biller_code) is required and must be a string");
+        }
+
+        // For some billers Flutterwave also provides products orders endpoints:
+        //  POST /v3/billers/{biller_code}/products/{product_code}/orders
+        // If extras.useProductOrders === true, we will prefer that endpoint.
+        const useProductOrders = !!req.extras?.useProductOrders;
+
         switch (req.serviceType) {
-          /**
-           * AIRTIME
-           * ClubConnectsService.BuyAirtime(amount, mobileNumber, mobileNetwork, bonusType?)
-           * - amount: req.amount
-           * - mobileNumber: Number(req.customerReference)
-           * - mobileNetwork: extras.mobileNetwork (REQUIRED)
-           * - bonusType: extras.bonusType (OPTIONAL)
-           */
-          case 'airtime': {
-            const mobileNetwork = requireExtra(req.extras?.mobileNetwork, 'extras.mobileNetwork', 'airtime');
-            const mobileNumber = Number(req.customerReference);
-            return provider.BuyAirtime(req.amount, mobileNumber, mobileNetwork, req.extras?.bonusType);
+          case "airtime": {
+            // For airtime, Flutterwave expects you to call the biller-item payment.
+            // Require itemCode (many deployments use item codes for networks / denominations)
+            const item = requireExtra(itemCode, "extras.itemCode (airtime item/product code)", "airtime");
+            const payload: any = {
+              amount: String(req.amount),
+              customer: String(req.customerReference),
+              tx_ref: idempotencyKey,
+              currency: "NGN",
+              phone: String(req.customerReference),
+              extra: req.extras || {},
+            };
+            // POST /v3/billers/{biller_code}/items/{item_code}/payment
+            const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
+            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave airtime purchase failed");
+            return resp.data;
           }
 
-          /**
-           * DATA
-           * ClubConnectsService.BuyData(dataPlan, mobileNumber, mobileNetwork)
-           * - dataPlan: Number(req.serviceId) (REQUIRED)
-           * - mobileNumber: Number(req.customerReference)
-           * - mobileNetwork: extras.mobileNetwork (REQUIRED)
-           */
-          case 'data': {
-            const dataPlan = Number(req.serviceId);
-            if (Number.isNaN(dataPlan)) {
-              throw new Error(`Invalid 'serviceId' for data: expected numeric dataPlan, got '${req.serviceId}'`);
+          case "data": {
+            // Data bundles require item codes and often a `type` value (see Flutterwave docs)
+            const item = requireExtra(itemCode, "extras.itemCode (data item/product code)", "data");
+            const payload: any = {
+              amount: String(req.amount),
+              customer: String(req.customerReference),
+              tx_ref: idempotencyKey,
+              currency: "NGN",
+              phone: String(req.customerReference),
+              // include any data-specific type flag if present in extras (biller specific)
+              type: req.serviceType,
+              extra: req.extras || {},
+            };
+            const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
+            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave data purchase failed");
+            return resp.data;
+          }
+
+          case "tv": {
+            // TV: serviceId -> biller_code (e.g. DSTV biller). extras.pkg or productCode -> package code item
+            const pkg = requireExtra(itemCode, "extras.pkg / extras.itemCode (TV package code)", "tv");
+            const payload: any = {
+              amount: String(req.amount),
+              customer: String(req.customerReference), // smartcard number
+              tx_ref: idempotencyKey,
+              currency: "NGN",
+              phone: String(req.customerReference),
+              extra: req.extras || {},
+            };
+
+            // Optionally use products/orders endpoint for DSTV-like billers
+            if (useProductOrders) {
+              const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/products/${encodeURIComponent(pkg)}/orders`, {
+                amount: String(req.amount),
+                customer: String(req.customerReference),
+                tx_ref: idempotencyKey,
+                currency: "NGN",
+                extra: req.extras || {},
+              });
+              if (resp.status !== "success") throw new Error(resp.message || "Flutterwave TV order failed");
+              return resp.data;
             }
-            const mobileNetwork = requireExtra(req.extras?.mobileNetwork, 'extras.mobileNetwork', 'data');
-            const mobileNumber = Number(req.customerReference);
-            return provider.BuyData(dataPlan, mobileNumber, mobileNetwork);
+
+            const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(pkg)}/payment`, payload);
+            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave TV purchase failed");
+            return resp.data;
           }
 
-          /**
-           * TV
-           * ClubConnectsService.BuyTv(cableTV, pkg, smartCardNo, phoneNo)
-           * - cableTV: req.serviceId (REQUIRED)
-           * - pkg: extras.pkg (REQUIRED)
-           * - smartCardNo: Number(req.customerReference) (REQUIRED)
-           * - phoneNo: You may choose to pass a contact phone; reusing customerReference is common.
-           */
-          case 'tv': {
-            const cableTV = req.serviceId as any;
-            const pkg = requireExtra(req.extras?.pkg, 'extras.pkg', 'tv');
-            const smartCardNo = Number(req.customerReference);
-            const phoneNo = smartCardNo; // or pass a separate contact number if you store it elsewhere
-            return provider.BuyTv(cableTV, pkg, smartCardNo, phoneNo);
+          case "power": {
+            // Electricity: serviceId = biller_code (electric company)
+            // extras.meterType required (01 prepaid | 02 postpaid), itemCode often required
+            const meterType = requireExtra(req.extras?.meterType, "extras.meterType (01 | 02)", "power");
+            const item = itemCode; // item may be optional for some providers, but usually present
+            const payload: any = {
+              amount: String(req.amount),
+              customer: String(req.customerReference), // meter number
+              tx_ref: idempotencyKey,
+              currency: "NGN",
+              meter_type: String(meterType),
+              phone: String(req.customerReference),
+              extra: req.extras || {},
+            };
+
+            if (!item) {
+              // call product orders endpoint if product code isn't available in itemCode
+              const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/payment`, payload).catch(() => null);
+              if (resp && resp.status === "success") return resp.data;
+              throw new Error("Power billers usually require an item/product code (provide extras.itemCode/productCode/pkg)");
+            }
+
+            const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
+            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave power purchase failed");
+            return resp.data;
           }
 
-          /**
-           * POWER
-           * ClubConnectsService.BuyPower(electricCompany, meterType, meterNo, amount, phoneNo)
-           * - electricCompany: req.serviceId (REQUIRED)
-           * - meterType: extras.meterType (REQUIRED)
-           * - meterNo: Number(req.customerReference) (REQUIRED)
-           * - amount: req.amount
-           * - phoneNo: a phone to receive token/SMS; reusing meterNo or separate phone is common
-           */
-          case 'power': {
-            const electricCompany = req.serviceId;
-            const meterType = requireExtra(req.extras?.meterType, 'extras.meterType', 'power');
-            const meterNo = Number(req.customerReference);
-            const phoneNo = meterNo; // or supply a distinct phone number if available
-            return provider.BuyPower(electricCompany, meterType, meterNo, req.amount, phoneNo);
+          case "betting": {
+            // Betting: serviceId is the betting provider/biller code; use item/product as required
+            const item = itemCode || undefined;
+            const payload: any = {
+              amount: String(req.amount),
+              customer: String(req.customerReference), // customer id on betting platform
+              tx_ref: idempotencyKey,
+              currency: "NGN",
+              extra: req.extras || {},
+            };
+
+            // If item specified, call item payment route; otherwise try product order
+            if (item) {
+              const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
+              if (resp.status !== "success") throw new Error(resp.message || "Flutterwave betting purchase failed");
+              return resp.data;
+            } else {
+              const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/payment`, payload);
+              if (resp.status !== "success") throw new Error(resp.message || "Flutterwave betting purchase failed");
+              return resp.data;
+            }
           }
 
-          /**
-           * BETTING
-           * ClubConnectsService.BuyBetting(bettingCompany, customerId, amount)
-           * - bettingCompany: req.serviceId
-           * - customerId: Number(req.customerReference)
-           * - amount: req.amount
-           */
-          case 'betting': {
-            const bettingCompany = req.serviceId;
-            const customerId = Number(req.customerReference);
-            return provider.BuyBetting(bettingCompany, customerId, req.amount);
+          case "internet": {
+            // Internet: extras.internetNetwork expected (e.g. 'smile-direct' | 'spectranet'), itemCode is plan id
+            const internetNetwork = requireExtra(req.extras?.internetNetwork, "extras.internetNetwork", "internet");
+            const item = requireExtra(itemCode, "extras.itemCode (internet plan code)", "internet");
+            const payload: any = {
+              amount: String(req.amount),
+              customer: String(req.customerReference),
+              tx_ref: idempotencyKey,
+              currency: "NGN",
+              extra: { ...req.extras, network: internetNetwork },
+            };
+            const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
+            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave internet purchase failed");
+            return resp.data;
           }
 
-          /**
-           * INTERNET
-           * ClubConnectsService.BuyInternet(mobileNetwork, dataPlan, mobileNumber)
-           * - mobileNetwork: extras.internetNetwork ('smile-direct' | 'spectranet') (REQUIRED)
-           * - dataPlan: req.serviceId (string)
-           * - mobileNumber: Number(req.customerReference)
-           */
-          case 'internet': {
-            const internetNetwork = requireExtra(req.extras?.internetNetwork, 'extras.internetNetwork', 'internet');
-            const dataPlan = req.serviceId; // e.g., Smile/Spectranet plan code
-            const mobileNumber = Number(req.customerReference);
-            return provider.BuyInternet(internetNetwork, dataPlan, mobileNumber);
-          }
-
-          /**
-           * WAEC
-           * ClubConnectsService.BuyWaec(examType, phoneNo)
-           * - examType: req.serviceId
-           * - phoneNo: Number(req.customerReference)
-           */
-          case 'waec': {
-            const examType = req.serviceId;
-            const phoneNo = Number(req.customerReference);
-            return provider.BuyWaec(examType, phoneNo);
-          }
-
-          /**
-           * JAMB
-           * ClubConnectsService.BuyJamb(examType, phoneNo)
-           * - examType: req.serviceId
-           * - phoneNo: Number(req.customerReference)
-           */
-          case 'jamb': {
-            const examType = req.serviceId;
-            const phoneNo = Number(req.customerReference);
-            return provider.BuyJamb(examType, phoneNo);
+          case "waec":
+          case "jamb": {
+            // Exam services: itemCode holds the exam product code
+            const item = requireExtra(itemCode, "extras.itemCode (exam product code)", req.serviceType);
+            const payload: any = {
+              amount: String(req.amount),
+              customer: String(req.customerReference),
+              tx_ref: idempotencyKey,
+              currency: "NGN",
+              extra: req.extras || {},
+            };
+            const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
+            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave exam purchase failed");
+            return resp.data;
           }
 
           default:
-            throw new Error(`Unsupported serviceType: ${req.serviceType}`);
+            throw new Error(`Unsupported serviceType: ${String(req.serviceType)}`);
         }
       },
       txnProvider: async () => {
-        // 1. Create transfer record + ledger entry (PENDING)
+        // 1) Create transfer record + ledger entry (PENDING)
         const result = await TransferService.initiateTransfer({
           fromAccount: from.accountNo,
           userId,
@@ -187,11 +324,11 @@ export class BillPaymentService {
           amount: req.amount,
           transferType: "intra",
           bankCode: "999999",
-          remark: `${prd} ${req.serviceType[0].toLocaleUpperCase()}${req.serviceType.slice(1)} Purchase`,
+          remark: `${req.serviceType} purchase`,
           idempotencyKey,
         });
-        
-        // 2. Send transfer to VFD
+
+        // 2) Send transfer to VFD (the banking provider)
         const transferReq: TransferRequest = {
           uniqueSenderAccountId: from.accountId,
           fromAccount: from.accountNo,
@@ -206,29 +343,43 @@ export class BillPaymentService {
           toBank: "999999",
           signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
           amount: req.amount,
-          remark: `${prd} ${req.serviceType[0].toLocaleUpperCase()}${req.serviceType.slice(1)} Purchase`,
+          remark: `${req.serviceType} purchase`,
           transferType: "intra",
           reference: result.reference,
         };
 
-        return {...(await vfdProvider.transfer(transferReq)), reference: result.reference};
-      }
+        const vfdResult = await vfdProvider.transfer(transferReq);
+        return { ...vfdResult, reference: result.reference };
+      },
     });
   }
 
+  /**
+   * Check if a biller (billerCode) has downtime within stored Bill entries
+   */
+  static async checkServiceDowntime(billerCode: string): Promise<boolean> {
+    const bill = await BillPayment.findOne({ billerCode }).lean();
+    if (!bill) return false;
+
+    return true;
+    // return !!(bill.hasDowntime && bill.downtimeStart && bill.downtimeEnd &&
+    //   new Date() >= bill.downtimeStart && new Date() <= bill.downtimeEnd);
+  }
+
+  /**
+   * Retrieve bill payments for a user (pagination + optional filters)
+   */
   static async getUserBillPayments(userId: string, page = 1, limit = 20, status?: string, type?: string, search?: string) {
     const skip = (page - 1) * limit;
-    
     const query: any = { userId };
     if (status) query.status = status;
-    if (status) query.serviceType = type;
-
+    if (type) query.serviceType = type;
     if (search) {
-      const regex = new RegExp(search, "i"); // case-insensitive search
+      const regex = new RegExp(search, "i");
       query.$or = [
-        { "traceId": regex },
-        { "providerRef": regex },
-        { "customerReference": regex },
+        { traceId: regex },
+        { providerRef: regex },
+        { customerReference: regex },
       ];
     }
 
@@ -238,30 +389,30 @@ export class BillPaymentService {
       .limit(limit)
       .sort({ createdAt: -1 })
       .lean();
-    
-    const total = await BillPayment.countDocuments(query); 
 
+    const total = await BillPayment.countDocuments(query);
     return {
       billPayments,
       page,
       pages: Math.ceil(total / limit),
-      total
+      total,
     };
   }
 
+  /**
+   * Retrieve all bill payments (admin)
+   */
   static async getBillPayments(page = 1, limit = 20, status?: string, type?: string, search?: string) {
     const skip = (page - 1) * limit;
-    
     const query: any = {};
     if (status) query.status = status;
-    if (status) query.serviceType = type;
-
+    if (type) query.serviceType = type;
     if (search) {
-      const regex = new RegExp(search, "i"); // case-insensitive search
+      const regex = new RegExp(search, "i");
       query.$or = [
-        { "traceId": regex },
-        { "providerRef": regex },
-        { "customerReference": regex },
+        { traceId: regex },
+        { providerRef: regex },
+        { customerReference: regex },
       ];
     }
 
@@ -271,14 +422,25 @@ export class BillPaymentService {
       .limit(limit)
       .sort({ createdAt: -1 })
       .lean();
-    
-    const total = await BillPayment.countDocuments(query); 
 
+    const total = await BillPayment.countDocuments(query);
     return {
       billPayments,
       page,
       pages: Math.ceil(total / limit),
-      total
+      total,
     };
+  }
+}
+
+/* Helper: secure-ish uuid fallback for idempotency when not provided */
+function cryptoRandom() {
+  // Node: crypto available, fallback to random UUID-ish
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { randomUUID } = require("crypto");
+    return randomUUID();
+  } catch (e) {
+    return `id-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
   }
 }
