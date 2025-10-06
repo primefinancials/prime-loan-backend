@@ -358,10 +358,11 @@ export class TransferService {
     reference: string;
     session_id: string;
   }) {
-    const user = await User.findOne({ "user_metadata.accountNo": body.account_number });
-    if (!user) return null;
 
     console.log({ body });
+    
+    const user = await User.findOne({ "user_metadata.accountNo": body.account_number });
+    if (!user) return null;
 
     const traceId = body.session_id;
 
