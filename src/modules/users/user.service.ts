@@ -12,7 +12,7 @@ import jwt, { Secret, SignOptions } from "jsonwebtoken";
 import { LedgerService } from "../ledger/LedgerService";
 import { SavingsPlan } from "../savings/savings.plan.model";
 import Loan from "../loans/loan.model";
-import { BillPaymentService } from "../bill-payments/bill.payment.service";
+import BillPaymentService from "../bill-payments/bill.payment.service";
 import { SavingsService } from "../savings/savings.service";
 import { LoanService } from "../loans/loan.service";
 import { ActivityEvent } from "./user.interface";
@@ -444,12 +444,10 @@ export class UserService {
 
         const totalLoanOutstanding = activeLoans.reduce((sum, loan) => sum + (loan.outstanding || 0), 0);
         const totalSavings = savingsPlans.reduce((sum, plan) => sum + plan.principal, 0);
-
-        const [billPayments, savings, transfers] = await Promise.all([
-            BillPaymentService.getUserBillPayments(user?._id || ""),
-            SavingsService.getUserPlans(user?._id || ""),
-            TransferService.transfers(user?._id || ""),
-        ]);
+        
+        const billPayments = await BillPaymentService.getUserBillPayments(user?._id || "");
+        const savings = await SavingsService.getUserPlans(user?._id || "");
+        const transfers = await TransferService.transfers(user?._id || "");
 
         // Normalize to unified activity format
         const activity: ActivityEvent[] = [];
