@@ -157,11 +157,6 @@ export default class BillPaymentService {
           throw new Error("serviceId (biller_code) is required and must be a string");
         }
 
-        // For some billers Flutterwave also provides products orders endpoints:
-        //  POST /v3/billers/{biller_code}/products/{product_code}/orders
-        // If extras.useProductOrders === true, we will prefer that endpoint.
-        const useProductOrders = !!req.extras?.useProductOrders;
-
         switch (req.serviceType) {
           case "airtime": {
             // For airtime, Flutterwave expects you to call the biller-item payment.
@@ -210,19 +205,6 @@ export default class BillPaymentService {
               phone: String(req.customerReference),
               extra: req.extras || {},
             };
-
-            // Optionally use products/orders endpoint for DSTV-like billers
-            if (useProductOrders) {
-              const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/products/${encodeURIComponent(pkg)}/orders`, {
-                amount: String(req.amount),
-                customer: String(req.customerReference),
-                tx_ref: idempotencyKey,
-                currency: "NGN",
-                extra: req.extras || {},
-              });
-              if (resp.status !== "success") throw new Error(resp.message || "Flutterwave TV order failed");
-              return resp.data;
-            }
 
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(pkg)}/payment`, payload);
             if (resp.status !== "success") throw new Error(resp.message || "Flutterwave TV purchase failed");
