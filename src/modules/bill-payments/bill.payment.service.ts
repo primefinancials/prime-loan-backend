@@ -136,7 +136,7 @@ export default class BillPaymentService {
 
     // friendly helpers for Flutterwave bill requests
     const billerCode = req.serviceId; // expected biller_code like BIL108
-    const itemCode = req.extras?.internetNetwork || req.extras?.meterType || req.extras?.mobileNetwork || req.extras?.pkg;
+    const itemCode = req.itemCode;
 
     // idempotency tx reference used with Flutterwave (and also used for ledger)
     const idempotencyKey = req.idempotencyKey || cryptoRandom();
@@ -167,8 +167,7 @@ export default class BillPaymentService {
               customer: String(req.customerReference),
               tx_ref: idempotencyKey,
               currency: "NGN",
-              phone: String(req.customerReference),
-              extra: req.extras || {},
+              phone: String(req.customerReference)
             };
             // POST /v3/billers/{biller_code}/items/{item_code}/payment
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
@@ -186,8 +185,7 @@ export default class BillPaymentService {
               currency: "NGN",
               phone: String(req.customerReference),
               // include any data-specific type flag if present in extras (biller specific)
-              type: req.serviceType,
-              extra: req.extras || {},
+              type: req.serviceType
             };
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
             if (resp.status !== "success") throw new Error(resp.message || "Flutterwave data purchase failed");
@@ -202,8 +200,7 @@ export default class BillPaymentService {
               customer: String(req.customerReference), // smartcard number
               tx_ref: idempotencyKey,
               currency: "NGN",
-              phone: String(req.customerReference),
-              extra: req.extras || {},
+              phone: String(req.customerReference)
             };
 
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(pkg)}/payment`, payload);
@@ -214,7 +211,7 @@ export default class BillPaymentService {
           case "power": {
             // Electricity: serviceId = biller_code (electric company)
             // extras.meterType required (01 prepaid | 02 postpaid), itemCode often required
-            const meterType = requireExtra(req.extras?.meterType, "extras.meterType (01 | 02)", "power");
+            const meterType = requireExtra(req.meterType, "extras.meterType (01 | 02)", "power");
             const item = itemCode; // item may be optional for some providers, but usually present
             const payload: any = {
               amount: String(req.amount),
@@ -222,8 +219,7 @@ export default class BillPaymentService {
               tx_ref: idempotencyKey,
               currency: "NGN",
               meter_type: String(meterType),
-              phone: String(req.customerReference),
-              extra: req.extras || {},
+              phone: String(req.customerReference)
             };
 
             if (!item) {
@@ -245,8 +241,7 @@ export default class BillPaymentService {
               amount: String(req.amount),
               customer: String(req.customerReference), // customer id on betting platform
               tx_ref: idempotencyKey,
-              currency: "NGN",
-              extra: req.extras || {},
+              currency: "NGN"
             };
 
             // If item specified, call item payment route; otherwise try product order
@@ -263,14 +258,12 @@ export default class BillPaymentService {
 
           case "internet": {
             // Internet: extras.internetNetwork expected (e.g. 'smile-direct' | 'spectranet'), itemCode is plan id
-            const internetNetwork = requireExtra(req.extras?.internetNetwork, "extras.internetNetwork", "internet");
             const item = requireExtra(itemCode, "extras.itemCode (internet plan code)", "internet");
             const payload: any = {
               amount: String(req.amount),
               customer: String(req.customerReference),
               tx_ref: idempotencyKey,
-              currency: "NGN",
-              extra: { ...req.extras, network: internetNetwork },
+              currency: "NGN"
             };
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
             if (resp.status !== "success") throw new Error(resp.message || "Flutterwave internet purchase failed");
@@ -285,8 +278,7 @@ export default class BillPaymentService {
               amount: String(req.amount),
               customer: String(req.customerReference),
               tx_ref: idempotencyKey,
-              currency: "NGN",
-              extra: req.extras || {},
+              currency: "NGN"
             };
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
             if (resp.status !== "success") throw new Error(resp.message || "Flutterwave exam purchase failed");

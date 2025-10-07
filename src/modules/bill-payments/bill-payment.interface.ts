@@ -254,24 +254,8 @@ export interface InitiateBillPaymentRequest {
   serviceId: string;                 // provider-specific product ID or identifier (see mapping below)
   customerReference: string;         // e.g., phoneNo, smartcardNo, meterNo, profileId, customerId
   idempotencyKey: string;
-  /**
-   * Extra, service-specific parameters.
-   * Only some fields are required depending on the serviceType (guards below).
-   */
-  extras?: {
-    // airtime/data
-    mobileNetwork?: MOBILENETWORKS;
-    bonusType?: BONUSTYPE;
-
-    // tv
-    pkg?: string; // package code/string
-
-    // power
-    meterType?: METERTYPE;
-
-    // internet
-    internetNetwork?: 'smile-direct' | 'spectranet';
-  };
+  itemCode: string;                 // e.g., BIL108 for MTN airtime
+  meterType?: string;         // required for power serviceType (01 for prepaid, 02 for postpaid)
 }
 
 export interface BillPaymentResult {

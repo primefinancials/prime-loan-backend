@@ -18,7 +18,7 @@ export class BillPaymentController {
    */
   static async initiate(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { amount, serviceType, serviceId, customerReference, extras } = req.body;
+      const { amount, serviceType, serviceId, customerReference, itemCode, extras } = req.body;
       const userId = req.user!._id;
       const idempotencyKey = req.idempotencyKey!;
 
@@ -28,7 +28,7 @@ export class BillPaymentController {
         serviceType,
         serviceId,
         customerReference,
-        extras,
+        itemCode,
         idempotencyKey,
       });
 

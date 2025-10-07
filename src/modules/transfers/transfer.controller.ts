@@ -141,6 +141,33 @@ export class TransferController {
   }
 
   /**
+   * Get paginated transfers for authenticated user
+   */
+  static async getAccountInfo(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const userAccount = req.user!.user_metadata.accountNo;
+
+      const result = await this.vfdProvider.getAccountInfo(userAccount);
+      res.status(200).json({ status: "success", data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+  
+  /**
+   * Get paginated transfers for authenticated user
+   */
+  static async getBanks(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const result = await this.vfdProvider.getBanks();
+
+      res.status(200).json({ status: "success", data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Handle incoming wallet credit alerts (webhook from VFD)
    */
   static async walletAlert(req: any, res: Response, next: NextFunction) {

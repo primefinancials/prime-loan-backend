@@ -13,11 +13,6 @@ import {
   changePasswordSchema,
   // bill-payment
   billPaymentSchema,
-  tvVerifySchema,
-  powerVerifySchema,
-  bettingVerifySchema,
-  smileVerifySchema,
-  jambVerifySchema,
   // loan
   createClientLoanSchema,
   repayLoanSchema,
@@ -434,6 +429,18 @@ router.get(
   "/transfers/:id",
   verifyJwtRest(),
   TransferController.getTransfer as any
+);
+
+router.get(
+  "/banks",
+  verifyJwtRest(),
+  TransferController.getBanks as any
+);
+
+router.get(
+  "/account-info",
+  verifyJwtRest(),
+  TransferController.getAccountInfo as any
 );
 
 /**
