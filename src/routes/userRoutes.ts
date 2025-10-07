@@ -440,7 +440,13 @@ router.get(
 router.get(
   "/account-info",
   verifyJwtRest(),
-  TransferController.getAccountInfo as any
+  TransferController.getMyAccountInfo as any
+);
+
+router.get(
+  "/beneficiary-account-info",
+  verifyJwtRest(),
+  TransferController.getBeneficiaryAccountInfo as any
 );
 
 /**

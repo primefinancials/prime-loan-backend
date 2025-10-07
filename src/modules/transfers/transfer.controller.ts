@@ -143,11 +143,33 @@ export class TransferController {
   /**
    * Get paginated transfers for authenticated user
    */
-  static async getAccountInfo(req: ProtectedRequest, res: Response, next: NextFunction) {
+  static async getMyAccountInfo(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const userAccount = req.user!.user_metadata.accountNo;
 
-      const result = await this.vfdProvider.getAccountInfo(userAccount);
+      const result = await TransferController.vfdProvider.getAccountInfo(userAccount);
+      res.status(200).json({ status: "success", data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get paginated transfers for authenticated user
+   */
+  static async getBeneficiaryAccountInfo(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const {
+        userAccount,
+        bankCode,
+        transferType
+      } = req.query as { userAccount: string; bankCode: string; transferType: 'intra' | 'inter' };
+
+      if(!userAccount || !bankCode || !transferType) {
+        return res.status(400).json({ status: "error", message: "userAccount, bankCode and transferType are required" });
+      }
+
+      const result = await TransferController.vfdProvider.getBeneficiary(userAccount, bankCode, transferType);
       res.status(200).json({ status: "success", data: result });
     } catch (error) {
       next(error);
@@ -159,7 +181,7 @@ export class TransferController {
    */
   static async getBanks(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const result = await this.vfdProvider.getBanks();
+      const result = await TransferController.vfdProvider.getBanks();
 
       res.status(200).json({ status: "success", data: result });
     } catch (error) {
