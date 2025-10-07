@@ -426,7 +426,7 @@ router.get(
  *         description: Transfer returned
  */
 router.get(
-  "/transfers/:id",
+  "/transfers/:id([0-9a-fA-F]{24})",
   verifyJwtRest(),
   TransferController.getTransfer as any
 );
@@ -871,7 +871,7 @@ router.post(
  *         description: Loan repayment processed successfully
  */
 router.post(
-  "/loans/:id/repay",
+  "/loans/:id([0-9a-fA-F]{24})/repay",
   verifyJwtRest(),
   idempotencyMiddleware() as any,
   validateReqBody(repayLoanSchema),
@@ -897,7 +897,7 @@ router.post(
  *       200:
  *         description: Loan status returned
  */
-router.get("/loans/:id/status", verifyJwtRest(), LoanController.getLoanStatus as any);
+router.get("/loans/:id([0-9a-fA-F]{24})/status", verifyJwtRest(), LoanController.getLoanStatus as any);
 
 /**
  * @swagger
@@ -994,7 +994,7 @@ router.post(
  *                 type: number
  */
 router.post(
-  "/savings/:id/withdraw",
+  "/savings/:id([0-9a-fA-F]{24})/withdraw",
   verifyJwtRest(),
   validateReqBody(withdrawSchema),
   idempotencyMiddleware() as any,
