@@ -162,6 +162,8 @@ export class VfdProvider {
       config.url = `${baseUrl}${config.url}`;
 
       const response = await axios(config);
+
+      console.log({ response })
       return response.data as T;
     });
   }
