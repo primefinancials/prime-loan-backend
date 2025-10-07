@@ -37,6 +37,8 @@ export class TransferController {
     const userId = req.user!._id;
     const idempotencyKey = req.idempotencyKey!;
 
+    if (Number(req.user?.user_metadata?.wallet || 0) < amount) throw new APIError(409, "Insufficient wallet balance");
+
     const result = await TransferService.initiateTransfer({
       fromAccount,
       userId,

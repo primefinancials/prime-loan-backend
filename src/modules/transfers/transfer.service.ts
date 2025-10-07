@@ -50,6 +50,10 @@ export class TransferService {
 
     try {
       return await DatabaseService.withTransaction(session, async () => {
+        const user = await User.findOne({ "user_metadata.accountNo": request.fromAccount }).session(session);
+        if (!user) throw new Error("User not found");
+
+        if (Number(user?.user_metadata?.wallet || 0) < request.amount) throw new Error("Insufficient wallet balance");
         // Create transfer record
         const [transfer] = await Transfer.create([{
           userId: request.userId,
@@ -65,8 +69,6 @@ export class TransferService {
           meta: request.meta,
           naration: request.naration
         }], { session });
-
-        const user = await User.findOne({ "user_metadata.accountNo": transfer.fromAccount }).session(session);
 
         if (user) {
           if(type == "transfer") {
@@ -360,7 +362,7 @@ export class TransferService {
   }) {
 
     console.log({ body });
-    
+
     const user = await User.findOne({ "user_metadata.accountNo": body.account_number });
     if (!user) return null;
 

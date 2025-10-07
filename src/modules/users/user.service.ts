@@ -512,7 +512,7 @@ export class UserService {
         activity.sort((a, b) => b.date.getTime() - a.date.getTime());
 
         return {
-            walletBalance: user?.user_metadata?.wallet || walletBalance,
+            walletBalance: user?.user_metadata?.wallet,
             totalLoanOutstanding,
             totalSavings,
             activeLoansCount: activeLoans.length,
