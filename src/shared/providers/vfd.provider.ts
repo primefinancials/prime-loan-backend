@@ -158,12 +158,11 @@ export class VfdProvider {
         AccessToken: accessToken,
         "Content-Type": "application/json",
       };
-      config.timeout = config.timeout || 20000;
       config.url = `${baseUrl}${config.url}`;
 
       const response = await axios(config);
 
-      console.log({ response })
+      console.log({ response, accessToken });
       return response.data as T;
     });
   }
