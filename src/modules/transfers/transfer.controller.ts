@@ -39,7 +39,12 @@ export class TransferController {
 
     console.log({ body: req.body, idempotencyKey })
 
-    if (Number(req.user?.user_metadata?.wallet || 0) < amount) throw new APIError(409, "Insufficient wallet balance");
+    if (Number(req.user?.user_metadata?.wallet || 0) < amount) {
+      return res.status(400).json({
+        status: "error",
+        message: "Insufficient wallet balance",
+      });
+    }
 
     const result = await TransferService.initiateTransfer({
       fromAccount,
