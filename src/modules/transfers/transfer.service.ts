@@ -48,6 +48,8 @@ export class TransferService {
 
     const session = await DatabaseService.startSession();
 
+    console.log(" In Initiate Transfer")
+
     try {
       return await DatabaseService.withTransaction(session, async () => {
         const user = await User.findOne({ "user_metadata.accountNo": request.fromAccount }).session(session);
@@ -113,6 +115,8 @@ export class TransferService {
    */
   static async completeTransfer(reference: string, type: "bill-payment" | "transfer" | "savings-deposit" | "savings-withdrawal" | "loan-disbursement" | "loan-repayment" = "transfer"): Promise<TransferResult | null> {
     const session = await DatabaseService.startSession();
+
+    console.log(" In Complete Transfer")
 
     try {
       return await DatabaseService.withTransaction(session, async () => {
@@ -180,6 +184,8 @@ export class TransferService {
    */
   static async failTransfer(reference: string): Promise<TransferResult | null> {
     const session = await DatabaseService.startSession();
+
+    console.log(" In Failed Transfer")
 
     try {
       return await DatabaseService.withTransaction(session, async () => {

@@ -196,6 +196,7 @@ export class TransferController {
    */
   static async walletAlert(req: any, res: Response, next: NextFunction) {
     try {
+      console.log({ body: req.body })
       const txn = await TransferService.walletAlerts(req.body);
       if (!txn) {
         return res.status(404).json({ status: "error", message: "User account not found" });
