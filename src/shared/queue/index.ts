@@ -1,4 +1,5 @@
-import { Queue, Worker, JobsOptions, ConnectionOptions } from 'bullmq';
+// src/shared/queue/index.ts
+import { Queue, Worker } from 'bullmq';
 import IORedis from 'ioredis';
 import pino from 'pino';
 
@@ -7,24 +8,35 @@ const logger = pino({ name: 'queue-service' });
 export class QueueService {
   private static connection: IORedis | null = null;
 
+  /**
+   * Initialize Redis connection
+   */
   static async connect() {
     if (this.connection) return;
 
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
-    this.connection = new IORedis(redisUrl);
+    logger.info({ redisUrl }, 'Connecting to Redis for BullMQ...');
+
+    this.connection = new IORedis(redisUrl, {
+      maxRetriesPerRequest: null, // ⚙️ Required for BullMQ
+      enableReadyCheck: false,
+    });
 
     this.connection.on('connect', () => logger.info('✅ Redis connected'));
     this.connection.on('error', (err) => logger.error({ err }, 'Redis error'));
   }
 
-  static async closeAll() {
-    if (this.connection) {
-      await this.connection.quit();
-      this.connection = null;
-      logger.info('🔌 Redis connection closed');
-    }
+  /**
+   * Create a queue
+   */
+  static createQueue(queueName: string) {
+    if (!this.connection) throw new Error('QueueService not connected');
+    return new Queue(queueName, { connection: this.connection });
   }
 
+  /**
+   * Create a worker
+   */
   static createWorker(queueName: string, handler: any, options: any = {}) {
     if (!this.connection) throw new Error('QueueService not connected');
 
@@ -33,12 +45,30 @@ export class QueueService {
       ...options,
     });
 
-    worker.on('error', (err) => logger.error({ err }, `Worker error: ${queueName}`));
+    worker.on('completed', (job) =>
+      logger.info({ queueName, jobId: job.id }, '✅ Job completed')
+    );
+
+    worker.on('failed', (job, err) =>
+      logger.error({ queueName, jobId: job?.id, err }, '❌ Job failed')
+    );
+
+    worker.on('error', (err) =>
+      logger.error({ err }, `⚠️ Worker error on queue ${queueName}`)
+    );
+
     return worker;
   }
 
-  static createQueue(queueName: string) {
-    if (!this.connection) throw new Error('QueueService not connected');
-    return new Queue(queueName, { connection: this.connection });
+  /**
+   * Graceful shutdown
+   */
+  static async closeAll() {
+    logger.info('🔌 Closing BullMQ Redis connection...');
+    if (this.connection) {
+      await this.connection.quit();
+      this.connection = null;
+      logger.info('✅ Redis connection closed');
+    }
   }
 }

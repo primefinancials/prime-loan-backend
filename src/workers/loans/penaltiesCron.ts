@@ -17,6 +17,7 @@ const logger = pino({ name: 'loan-penalties-cron' });
 export class LoanPenaltiesCron {
   static async start() {
     await DatabaseService.connect();
+    await QueueService.connect();
 
     // Run daily at midnight
     const worker = QueueService.createWorker(

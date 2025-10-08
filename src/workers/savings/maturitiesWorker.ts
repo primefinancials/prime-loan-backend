@@ -14,6 +14,7 @@ const logger = pino({ name: 'savings-maturities' });
 export class SavingsMaturitiesWorker {
   static async start() {
     await DatabaseService.connect();
+    await QueueService.connect();
 
     // Run hourly
     const worker = QueueService.createWorker(

@@ -16,6 +16,7 @@ import createApp from "./app";
 import { LoanPenaltiesCron } from "./workers/loans/penaltiesCron";
 import { TransfersPoller } from "./workers/pollers/transfersPoller";
 import { SavingsMaturitiesWorker } from "./workers/savings/maturitiesWorker";
+import { QueueService } from "./shared/queue";
 
 const logger = pino({ name: "prime-finance-server" });
 
@@ -51,12 +52,13 @@ export async function startApp() {
       });
 
     // Graceful shutdown
-    process.on("SIGTERM", () => {
+    process.on("SIGTERM", async () => {
       logger.info("SIGTERM received, shutting down gracefully");
       server.close(() => {
         logger.info("Server closed");
         process.exit(0);
       });
+      await QueueService.closeAll();
     });
 
     return server;

@@ -13,6 +13,7 @@ const logger = pino({ name: 'bill-payments-poller' });
 export class BillPaymentsPoller {
   static async start() {
     await DatabaseService.connect();
+    await QueueService.connect();
 
     const worker = QueueService.createWorker(
       'bill-payments-poller',

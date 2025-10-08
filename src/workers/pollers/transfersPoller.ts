@@ -16,6 +16,7 @@ export class TransfersPoller {
 
   static async start() {
     await DatabaseService.connect();
+    await QueueService.connect();
 
     const worker = QueueService.createWorker(
       'transfers-poller',
