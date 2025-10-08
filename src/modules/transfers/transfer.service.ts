@@ -372,7 +372,7 @@ export class TransferService {
     const user = await User.findOne({ "user_metadata.accountNo": body.account_number });
     if (!user) return null;
 
-    const traceId = body.session_id;
+    const traceId = body?.session_id || body.reference;
 
     // Ledger credit
     await LedgerService.createEntry({
