@@ -89,7 +89,7 @@ export class TransferController {
       }
 
       await TransferService.failTransfer(result.reference);
-      throw new APIError(409, providerResp.message);
+      throw new APIError(409, JSON.stringify(providerResp));
     } catch (error) {
       await TransferService.failTransfer(result.reference);
       next(error);
