@@ -335,6 +335,7 @@ export class LoanService {
         const transferRecord = await TransferService.initiateTransfer({
           fromAccount: primeInfo.accountNo,
           userId: String(loan.userId),
+          beneficiaryName: userAccTyped.client,
           toAccount: userAccTyped.accountNo,
           amount: amountNaira,
           transferType: "intra",
@@ -479,6 +480,7 @@ export class LoanService {
         const transferIdempotency = params.idempotencyKey || `repay-${UuidService.generate()}`;
         const transferRecord = await TransferService.initiateTransfer({
           fromAccount: userAcc.accountNo,
+          beneficiaryName: primeInfo.client,
           userId: String(user._id),
           toAccount: primeInfo.accountNo,
           amount: params.amount,

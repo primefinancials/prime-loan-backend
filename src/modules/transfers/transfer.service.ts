@@ -22,6 +22,7 @@ export interface InitiateTransferRequest {
   transferType: 'intra' | 'inter';
   bankCode?: string;
   remark?: string;
+  beneficiaryName: string;
   meta?: object;
   naration?: string;
   idempotencyKey?: string;
@@ -65,6 +66,7 @@ export class TransferService {
           amount: request.amount,
           transferType: request.transferType,
           status: 'PENDING',
+          beneficiaryName: request.beneficiaryName,
           reference,
           remark: request.remark,
           bankCode: request.bankCode,
@@ -251,6 +253,7 @@ export class TransferService {
           const res = await TransferService.initiateTransfer({
             fromAccount: adminAccountData.accountNo,
             toAccount: userAccountData.accountNo,
+            beneficiaryName: userAccountData.client,
             amount: userBalance,
             bankCode: "999999",
             transferType: "intra",

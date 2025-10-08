@@ -53,6 +53,8 @@ export async function processTransaction({
       // 3. Initiate Transaction
       const providerResp = await txnProvider();
 
+      console.log({ providerResp })
+
       if(providerResp.status === "00") {
         // 4. Complete Transaction (if Success)
         const initTrxn = await TransferService.completeTransfer(providerResp.reference, "bill-payment");
@@ -64,9 +66,10 @@ export async function processTransaction({
           providerResponse = await providerFn();
         } catch (err: any) {
           // 6. Mark Failed (if Error)
+          console.log({ err })
           billPayment.status = "FAILED";
           await billPayment.save({ session });
-          return { traceId, status: "FAILED" as "FAILED" | "COMPLETED", billPayment, message: err.message };
+          return { traceId, status: "FAILED" as "FAILED" | "COMPLETED", billPayment, message: err?.response?.data?.message || err.message };
         }
 
         // 6. Mark COMPLETED (if Success)
