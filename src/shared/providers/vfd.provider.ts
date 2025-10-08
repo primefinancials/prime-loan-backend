@@ -213,7 +213,7 @@ export class VfdProvider {
       url: "/transfer",
       data: {
         ...request,
-        amount: String(request.amount / 100), // convert kobo → naira
+        amount: String(request.amount), // convert kobo → naira
       },
     });
   }

@@ -388,8 +388,8 @@ export class LoanService {
         const duration = loan.duration || 30;
         const percentage =
           duration / 30 >= 1
-            ? ((loan.amount * loan_per) / 100) * (duration / 30)
-            : (loan.amount * loan_per) / 100;
+            ? ((loan.amount * loan_per)) * (duration / 30)
+            : (loan.amount * loan_per);
         const total = Number(Number(loan.amount) + Number(fee + percentage));
 
         const loanDate = new Date();

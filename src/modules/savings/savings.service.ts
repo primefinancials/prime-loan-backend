@@ -180,7 +180,7 @@ export class SavingsService {
         } 
 
         if (plan.maturityDate && new Date() > plan.maturityDate) {
-          netAmount = amount + Math.floor((plan.principal * (plan.interestRate * (plan.durationDays || 0))) * 100);
+          netAmount = amount + Math.floor((plan.principal * (plan.interestRate * (plan.durationDays || 0))));
         }
 
         const user = await User.findById(plan.userId);
@@ -335,7 +335,7 @@ export class SavingsService {
 
       // Calculate expected interest (simple: principal * rate * (duration/365))
       const duration = plan.durationDays || 0;
-      const expectedInterest = Math.floor((plan.principal || 0) * (plan.interestRate / 100) * (duration / 365));
+      const expectedInterest = Math.floor((plan.principal || 0) * (plan.interestRate) * (duration / 365));
       totalInterestExpected += expectedInterest;
 
       if (plan.status === "ACTIVE") {

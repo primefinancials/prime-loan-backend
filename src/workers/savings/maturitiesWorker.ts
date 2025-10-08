@@ -67,7 +67,7 @@ export class SavingsMaturitiesWorker {
       await DatabaseService.withTransaction(session, async () => {
         // Calculate interest
         const daysActive = plan.durationDays || 30;
-        const annualRate = plan.interestRate / 100;
+        const annualRate = plan.interestRate;
         const dailyRate = annualRate / 365;
         const interestAmount = Math.floor(plan.principal * dailyRate * daysActive);
 

@@ -40,7 +40,7 @@ export class LoanPenaltiesCron {
   }
 
   private static async processLoans() {
-    const penaltyRate = parseFloat(process.env.LOAN_PENALTY_PCT_PER_DAY || '1') / 100;
+    const penaltyRate = parseFloat(process.env.LOAN_PENALTY_PCT_PER_DAY || '1');
 
     const today = new Date();
     const todayISO = today.toISOString().split('T')[0];
@@ -95,7 +95,7 @@ export class LoanPenaltiesCron {
         // Avoid duplicate penalty within the same day
         if (lastPenaltyDate === today) return;
 
-        const penaltyAmount = Math.floor(loan.amount * penaltyRate * 100); // in kobo
+        const penaltyAmount = Math.floor(loan.amount * penaltyRate); // in kobo
         const traceId = UuidService.generateTraceId();
 
         // Ledger entry for penalty
