@@ -50,6 +50,7 @@ export class TransferController {
       fromAccount,
       userId,
       toAccount,
+      beneficiaryName: toClient,
       amount,
       transferType,
       bankCode: toBank,
