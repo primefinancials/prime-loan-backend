@@ -1,59 +1,44 @@
-/**
- * Queue Service - BullMQ wrapper for job processing
- * Manages background jobs for polling, penalties, and other async operations
- */
-import { Queue, Worker, Job } from 'bullmq';
-import Redis from 'ioredis';
+import { Queue, Worker, JobsOptions, ConnectionOptions } from 'bullmq';
+import IORedis from 'ioredis';
+import pino from 'pino';
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+const logger = pino({ name: 'queue-service' });
 
 export class QueueService {
-  private static queues = new Map<string, Queue>();
-  private static workers = new Map<string, Worker>();
+  private static connection: IORedis | null = null;
 
-  static getQueue(name: string): Queue {
-    if (!this.queues.has(name)) {
-      this.queues.set(name, new Queue(name, { connection: redis }));
-    }
-    return this.queues.get(name)!;
-  }
+  static async connect() {
+    if (this.connection) return;
 
-  static createWorker(
-    queueName: string,
-    processor: (job: Job) => Promise<any>,
-    options: any = {}
-  ): Worker {
-    const worker = new Worker(queueName, processor, {
-      connection: redis,
-      ...options
-    });
+    const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+    this.connection = new IORedis(redisUrl);
 
-    this.workers.set(queueName, worker);
-    return worker;
-  }
-
-  static async addJob(queueName: string, jobName: string, data: any, options: any = {}) {
-    const queue = this.getQueue(queueName);
-    return queue.add(jobName, data, options);
-  }
-
-  static async addRecurringJob(
-    queueName: string,
-    jobName: string,
-    data: any,
-    cronPattern: string
-  ) {
-    const queue = this.getQueue(queueName);
-    return queue.add(jobName, data, {
-      repeat: { pattern: cronPattern }
-    });
+    this.connection.on('connect', () => logger.info('✅ Redis connected'));
+    this.connection.on('error', (err) => logger.error({ err }, 'Redis error'));
   }
 
   static async closeAll() {
-    await Promise.all([
-      ...Array.from(this.queues.values()).map(q => q.close()),
-      ...Array.from(this.workers.values()).map(w => w.close())
-    ]);
-    await redis.quit();
+    if (this.connection) {
+      await this.connection.quit();
+      this.connection = null;
+      logger.info('🔌 Redis connection closed');
+    }
+  }
+
+  static createWorker(queueName: string, handler: any, options: any = {}) {
+    if (!this.connection) throw new Error('QueueService not connected');
+
+    const worker = new Worker(queueName, handler, {
+      connection: this.connection,
+      ...options,
+    });
+
+    worker.on('error', (err) => logger.error({ err }, `Worker error: ${queueName}`));
+    return worker;
+  }
+
+  static createQueue(queueName: string) {
+    if (!this.connection) throw new Error('QueueService not connected');
+    return new Queue(queueName, { connection: this.connection });
   }
 }
