@@ -210,12 +210,12 @@ export class TransferService {
           reference: transfer.reference
         };
 
-        const user = await User.findById(transfer.userId);
+        // const user = await User.findById(transfer.userId);
         
-        if (user) {
-          user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(transfer.amount));
-          await user.save();
-        }
+        // if (user) {
+        //   user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(transfer.amount));
+        //   await user.save();
+        // }
 
         return result;
       });
