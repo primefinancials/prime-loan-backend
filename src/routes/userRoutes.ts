@@ -517,7 +517,7 @@ router.get(
  */
 router.post(
   "/transfers/wallet-alerts",
-  // validateReqBody(walletAlertsSchema),
+  validateReqBody(walletAlertsSchema),
   TransferController.walletAlert as any
 );
 

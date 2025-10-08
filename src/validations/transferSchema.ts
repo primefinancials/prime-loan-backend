@@ -60,5 +60,6 @@ export const walletAlertsSchema = Joi.object({
   originator_bank: Joi.string().optional().allow(""),
   originator_narration: Joi.string().optional().allow(""),
   reference: Joi.string().required(),
-  session_id: Joi.string().required(),
+  session_id: Joi.string().optional().allow(""),
+  timestamp: Joi.string().optional().allow(""),
 });

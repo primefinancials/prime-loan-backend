@@ -24,6 +24,8 @@ export const idempotencyMiddleware = () => {
         userId: req.user?._id 
       });
 
+      console.log({ existingKey })
+
       if (existingKey) {
         // Return cached response
         return res.status(200).json(existingKey.response);
