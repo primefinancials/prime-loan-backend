@@ -19,7 +19,7 @@ export class TransfersPoller {
 
     const worker = QueueService.createWorker(
       'transfers-poller',
-      async (job) => {
+      async () => {
         await this.pollPendingTransfers();
       },
       {

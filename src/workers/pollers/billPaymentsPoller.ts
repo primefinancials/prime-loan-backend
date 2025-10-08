@@ -16,7 +16,7 @@ export class BillPaymentsPoller {
 
     const worker = QueueService.createWorker(
       'bill-payments-poller',
-      async (job) => {
+      async () => {
         await this.pollPendingBillPayments();
       },
       {

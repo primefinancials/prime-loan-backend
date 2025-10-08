@@ -18,7 +18,7 @@ export class SavingsMaturitiesWorker {
     // Run hourly
     const worker = QueueService.createWorker(
       'savings-maturities',
-      async (job) => {
+      async () => {
         await this.processMaturedPlans();
       },
       {
