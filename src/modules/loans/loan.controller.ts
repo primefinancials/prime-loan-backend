@@ -98,62 +98,62 @@ export class LoanController {
       }
 
       // Eligibility check
-      const eligibility = await LoanEligibilityService.calculateEligibility(req.user!, amount);
-      const admins = await getMailsByPermission("manage_loans");
+      // const eligibility = await LoanEligibilityService.calculateEligibility(req.user!, amount);
+      // const admins = await getMailsByPermission("manage_loans");
 
-      if (eligibility.eligible) {
-        if (eligibility.notifyAdmin) {
-          await NotificationService.sendLoanApplicationAdmin(
-            req.user!, 
-            `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
-            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount} although eligible, system require admin intervention because: ${eligibility.reason}.`,
-            admins,
-            loan
-          );
-        } else {
-          const amount = await LoanLadder.findOne({ step: req.user?.user_metadata.ladderIndex || 0 });
+      // if (eligibility.eligible) {
+      //   if (eligibility.notifyAdmin) {
+      //     await NotificationService.sendLoanApplicationAdmin(
+      //       req.user!, 
+      //       `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
+      //       `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount} although eligible, system require admin intervention because: ${eligibility.reason}.`,
+      //       admins,
+      //       loan
+      //     );
+      //   } else {
+      //     const amount = await LoanLadder.findOne({ step: req.user?.user_metadata.ladderIndex || 0 });
 
-          if (amount) {
-            const disburseLoan = await LoanService.disburseLoan({
-              loanId: loan._id,
-              adminId: "system",
-              amount: amount.amount,
-            });
+      //     if (amount) {
+      //       const disburseLoan = await LoanService.disburseLoan({
+      //         loanId: loan._id,
+      //         adminId: "system",
+      //         amount: amount.amount,
+      //       });
 
-            return res.status(201).json({
-              status: "success",
-              data: disburseLoan,
-            });
-          }
+      //       return res.status(201).json({
+      //         status: "success",
+      //         data: disburseLoan,
+      //       });
+      //     }
 
-          await NotificationService.sendLoanApplicationAdmin(
-            req.user!, 
-            `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
-            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount} although eligible, system could not determine amount to disburse due to invalid ladder score: ${req.user?.user_metadata.ladderIndex}.`,
-            admins,
-            loan
-          );
-        }
-      }
+      //     await NotificationService.sendLoanApplicationAdmin(
+      //       req.user!, 
+      //       `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
+      //       `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount} although eligible, system could not determine amount to disburse due to invalid ladder score: ${req.user?.user_metadata.ladderIndex}.`,
+      //       admins,
+      //       loan
+      //     );
+      //   }
+      // }
 
-      if (!eligibility.eligible) {
-        if (eligibility.notifyAdmin) {
-          await NotificationService.sendLoanApplicationAdmin(
-            req.user!, 
-            `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
-            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount} and is not eligible, but system require admin intervention because: ${eligibility.reason}.`,
-            admins,
-            loan
-          );
-        } else {
-          await LoanService.rejectLoan("system", loan._id, eligibility?.reason || "");
+      // if (!eligibility.eligible) {
+      //   if (eligibility.notifyAdmin) {
+      //     await NotificationService.sendLoanApplicationAdmin(
+      //       req.user!, 
+      //       `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
+      //       `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount} and is not eligible, but system require admin intervention because: ${eligibility.reason}.`,
+      //       admins,
+      //       loan
+      //     );
+      //   } else {
+      //     await LoanService.rejectLoan("system", loan._id, eligibility?.reason || "");
 
-          return res.status(400).json({
-            status: "failed",
-            message: eligibility.reason,
-          });
-        }
-      }
+      //     return res.status(400).json({
+      //       status: "failed",
+      //       message: eligibility.reason,
+      //     });
+      //   }
+      // }
 
       res.status(201).json({
         status: "success",

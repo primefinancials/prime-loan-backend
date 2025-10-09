@@ -427,12 +427,12 @@ export class LoanService {
 
         // 6) notify user (best-effort)
         try {
-          await NotificationService.sendLoanApproval(user, loan);
+          // await NotificationService.sendLoanApproval(user, loan);
         } catch (err) { console.warn("notify error:", err); }
 
         // idempotent response
         if (params.idempotencyKey) {
-          await saveIdempotentResponse(params.idempotencyKey, String(loan.userId), { loan, providerResponse });
+          // await saveIdempotentResponse(params.idempotencyKey, String(loan.userId), { loan, providerResponse });
         }
 
         return { loan, providerResponse, trxnRes };

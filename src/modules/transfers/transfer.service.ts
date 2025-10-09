@@ -171,7 +171,7 @@ export class TransferService {
         const user = await User.findById(transfer.userId);
 
         if (user && type == "transfer") {
-          await NotificationService.sendDebitAlert(user, transfer.amount);
+          // await NotificationService.sendDebitAlert(user, transfer.amount);
         }
 
         return result;
