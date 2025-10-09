@@ -104,7 +104,7 @@ const LoanSchema: Schema = new Schema(
     repayment_history: [RepaymentHistorySchema],
     lastInterestAdded: { type: String, required: false },
     rejectionReason: { type: String, required: false },
-    debit_account: { type: String, required: true },
+    debit_account: { type: String },
     adminAction
   },
   { timestamps: true }
