@@ -221,32 +221,32 @@ export class LoanService {
     if (!user || Array.isArray(user) || !user._id) throw new NotFoundError("User not found");
 
     // prevent duplicate active loans for requester
-    const existingActive = await Loan.find({
-      userId: params.userId,
-      loan_payment_status: { $in: ["in-progress", "not-started"] },
-      status: { $in: ["pending", "accepted", "active"] }
-    });
+    // const existingActive = await Loan.find({
+    //   userId: params.userId,
+    //   loan_payment_status: { $in: ["in-progress", "not-started"] },
+    //   status: { $in: ["pending", "accepted", "active"] }
+    // });
 
-    if (existingActive && existingActive.length > 0) {
-      throw new ConflictError("Duplicate loan attempt. Wait for current loan decision or repay the existing one.");
-    }
+    // if (existingActive && existingActive.length > 0) {
+    //   throw new ConflictError("Duplicate loan attempt. Wait for current loan decision or repay the existing one.");
+    // }
 
     // Check guarantors - they cannot have active loans (if provided)
-    const guarantorPhones = [params.guarantor_1_phone, params.guarantor_2_phone].filter(Boolean) as string[];
-    for (const phone of guarantorPhones) {
-      const gUser = await User.findOne({ "user_metadata.phone": phone });
-      if (gUser && !Array.isArray(gUser) && gUser._id) {
-        const gActive = await Loan.findOne({
-          userId: gUser._id,
-          loan_payment_status: { $in: ["in-progress", "not-started"] },
-          status: { $in: ["pending", "accepted", "active"] }
-        });
+    // const guarantorPhones = [params.guarantor_1_phone, params.guarantor_2_phone].filter(Boolean) as string[];
+    // for (const phone of guarantorPhones) {
+    //   const gUser = await User.findOne({ "user_metadata.phone": phone });
+    //   if (gUser && !Array.isArray(gUser) && gUser._id) {
+    //     const gActive = await Loan.findOne({
+    //       userId: gUser._id,
+    //       loan_payment_status: { $in: ["in-progress", "not-started"] },
+    //       status: { $in: ["pending", "accepted", "active"] }
+    //     });
 
-        if (gActive) {
-          throw new BadRequestError(`Guarantor (${phone}) has an active loan and cannot be used.`);
-        }
-      }
-    }
+    //     if (gActive) {
+    //       throw new BadRequestError(`Guarantor (${phone}) has an active loan and cannot be used.`);
+    //     }
+    //   }
+    // }
 
     // perform credit lookup (best-effort)
     const mono = await this.monoCreditLookup(params.bvn || user.user_metadata?.bvn);
