@@ -316,6 +316,7 @@ export class LoanService {
         if (loan.status === "accepted") throw new BadRequestError("Loan already accepted");
 
         const user = await User.findOne({ _id: loan.userId });
+        console.log({ id: loan.userId, user, loan })
         if (!user || Array.isArray(user) || !user._id) throw new NotFoundError("User not found");
 
         // get prime / user account info
