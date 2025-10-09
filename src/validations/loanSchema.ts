@@ -23,7 +23,9 @@ export const createClientLoanSchema = Joi.object({
   guarantor_2_phone: Joi.string().optional(),
   amount: Joi.string().required(),
   reason: Joi.string().required(),
-  base64Image: Joi.string().optional(),
+  documentType: Joi.string().required(),
+  base64Image: Joi.string().required(),
+  faceVideoBase64: Joi.string().required(),
   outstanding: Joi.string().optional(),
   category: Joi.string().required(),
   type: Joi.string().required(),
@@ -35,6 +37,7 @@ export const createClientLoanSchema = Joi.object({
   repayment_date: Joi.string().required(),
   acknowledgment: Joi.boolean().required(),
 });
+
 
 export const repayLoanSchema = Joi.object({
   transactionId: Joi.string().required(),

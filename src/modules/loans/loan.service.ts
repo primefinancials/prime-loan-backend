@@ -201,6 +201,7 @@ export class LoanService {
    * - notify user & admin (non-fatal)
    * --------------------- */
   static async createLoan(params: CreateLoanParams): Promise<ILoan> {
+    console.log({ params })
     requiredParam("userId", params.userId);
     requiredParam("first_name", params.first_name);
     requiredParam("last_name", params.last_name);
