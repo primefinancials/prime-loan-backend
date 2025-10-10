@@ -359,8 +359,8 @@ export class LoanService {
           toSession: userAccTyped.accountId,
           toAccount: userAccTyped.accountNo,
           toBank: "999999",
-          signature: sha512.hex(`${primeInfo.accountNo}${userAccTyped.accountNo}`), // left to provider or controller to fill if required
-          amount: amountNaira, // kobo
+          signature: sha512.hex(`${primeInfo.accountNo}${userAccTyped.accountNo}`),
+          amount: amountNaira, 
           remark: "Loan Disbursement",
           transferType: "intra",
           reference: transferRecord.reference
