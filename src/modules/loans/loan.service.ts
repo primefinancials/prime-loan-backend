@@ -19,6 +19,7 @@ import { TransferService } from "../transfers/transfer.service";
 import { NotificationService } from "../notifications/notification.service";
 import { APIError, BadRequestError, ConflictError, NotFoundError } from "../../exceptions";
 import User from "../users/user.model";
+import { sha512 } from "js-sha512";
 import { getMailsByPermission } from "../../shared/utils/checkPermission";
 
 /* ---------- Types ---------- */
@@ -358,7 +359,7 @@ export class LoanService {
           toSession: userAccTyped.accountId,
           toAccount: userAccTyped.accountNo,
           toBank: "999999",
-          signature: "", // left to provider or controller to fill if required
+          signature: sha512.hex(`${primeInfo.accountNo}${userAccTyped.accountNo}`), // left to provider or controller to fill if required
           amount: amountNaira, // kobo
           remark: "Loan Disbursement",
           transferType: "intra",
@@ -369,8 +370,9 @@ export class LoanService {
         let providerResponse: any;
         try {
           providerResponse = await this.vfd.transfer(transferRequest as any);
-        } catch (err) {
+        } catch (err: any) {
           // fail transfer inside system
+          console.log({ error: err?.response?.data || err?.message || err })
           await TransferService.failTransfer(transferRecord.reference);
           throw new APIError(409, `Provider disbursement failed: ${String(err)}`);
         }
