@@ -51,61 +51,60 @@ export async function processTransaction({
       }], { session }); 
 
       // 3. Initiate Transaction
-      const providerResp = await txnProvider();
+      const providerResp = await providerFn();
 
       console.log({ providerResp })
 
-      if(providerResp.status === "00") {
-        // 4. Complete Transaction (if Success)
-        const initTrxn = await TransferService.completeTransfer(providerResp.reference, "bill-payment");
+      if(providerResp.status === "success") {
 
           // 5. Call Bill Payment provider
-        let providerResponse;
+        let providerResponse, initTrxn;
 
         try {
-          providerResponse = await providerFn();
+          providerResponse = await txnProvider();
+          // 4. Complete Transaction (if Success)
+          if(providerResp.status === "00") {
+            initTrxn = await TransferService.completeTransfer(providerResp.reference, "bill-payment");
+
+            // 6. Mark COMPLETED (if Success)
+            billPayment.status = "COMPLETED";
+            billPayment.processedAt = new Date();
+            billPayment.meta = { ...billPayment.meta, providerResp };
+            await billPayment.save({ session });
+
+            // 7. Update ledger Debit (COMPLETED)
+            await LedgerService.createDoubleEntry(
+              traceId,
+              `user_wallet:${userId}`,
+              `bill-payment:${serviceType}`,
+              amount,
+              "bill-payment",
+              {
+                userId: userId,
+                subtype: serviceType,
+                idempotencyKey,
+                session,
+                meta: {
+                  billPaymentId: billPayment._id,
+                  transactionId: initTrxn?.transferId || ""
+                }
+              }
+            );
+
+            const result = { traceId, status: "COMPLETED" as "FAILED" | "COMPLETED", billPayment, message: "Bill payment completed successfully" };
+
+            return result;
+          }
         } catch (err: any) {
+          // 4. Fail Transaction (if Error)
+          await TransferService.failTransfer(providerResponse?.reference || "");
           // 6. Mark Failed (if Error)
           console.log({ err, traceId, status: "FAILED" as "FAILED" | "COMPLETED", billPayment, message: err?.response?.data?.message || err.message })
           billPayment.status = "FAILED";
           await billPayment.save({ session });
           throw new APIError(err?.response?.data?.message || err.message);
         }
-
-        // 6. Mark COMPLETED (if Success)
-        billPayment.status = "COMPLETED";
-        billPayment.processedAt = new Date();
-        billPayment.meta = { ...billPayment.meta, providerResponse };
-        await billPayment.save({ session });
-
-        // 7. Update ledger Debit (COMPLETED)
-        await LedgerService.createDoubleEntry(
-          traceId,
-          `user_wallet:${userId}`,
-          `bill-payment:${serviceType}`,
-          amount,
-          "bill-payment",
-          {
-            userId: userId,
-            subtype: serviceType,
-            idempotencyKey,
-            session,
-            meta: {
-              billPaymentId: billPayment._id,
-              transactionId: initTrxn?.transferId || ""
-            }
-          }
-        );
-
-        const result = { traceId, status: "COMPLETED" as "FAILED" | "COMPLETED", billPayment, message: "Bill payment completed successfully" };
-
-        await saveIdempotentResponse(idempotencyKey, userId, result);
-
-        return result;
       }
-
-      // 4. Fail Transaction (if Error)
-      await TransferService.failTransfer(providerResp.reference);
 
       // 5. Fail Bill Payment
       billPayment.status = "FAILED";
