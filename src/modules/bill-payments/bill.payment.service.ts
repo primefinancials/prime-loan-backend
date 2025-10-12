@@ -164,8 +164,8 @@ export default class BillPaymentService {
             const item = requireExtra(itemCode, "extras.itemCode (airtime item/product code)", "airtime");
             const payload: any = {
               amount: String(req.amount),
-              customer: String(req.customerReference),
-              tx_ref: idempotencyKey,
+              customer_id: String(req.customerReference),
+              reference: idempotencyKey,
               currency: "NGN",
               phone: String(req.customerReference),
               country: "NG"
@@ -182,8 +182,8 @@ export default class BillPaymentService {
             const item = requireExtra(itemCode, "extras.itemCode (data item/product code)", "data");
             const payload: any = {
               amount: String(req.amount),
-              customer: String(req.customerReference),
-              tx_ref: idempotencyKey,
+              customer_id: String(req.customerReference),
+              reference: idempotencyKey,
               currency: "NGN",
               phone: String(req.customerReference),
               // include any data-specific type flag if present in extras (biller specific)
@@ -200,8 +200,8 @@ export default class BillPaymentService {
             const pkg = requireExtra(itemCode, "extras.pkg / extras.itemCode (TV package code)", "tv");
             const payload: any = {
               amount: String(req.amount),
-              customer: String(req.customerReference), // smartcard number
-              tx_ref: idempotencyKey,
+              customer_id: String(req.customerReference), // smartcard number
+              reference: idempotencyKey,
               currency: "NGN",
               country: "NG",
               phone: String(req.customerReference)
@@ -219,8 +219,8 @@ export default class BillPaymentService {
             const item = itemCode; // item may be optional for some providers, but usually present
             const payload: any = {
               amount: String(req.amount),
-              customer: String(req.customerReference), // meter number
-              tx_ref: idempotencyKey,
+              customer_id: String(req.customerReference), // meter number
+              reference: idempotencyKey,
               currency: "NGN",
               meter_type: String(meterType),
               phone: String(req.customerReference),
@@ -244,8 +244,8 @@ export default class BillPaymentService {
             const item = itemCode || undefined;
             const payload: any = {
               amount: String(req.amount),
-              customer: String(req.customerReference), // customer id on betting platform
-              tx_ref: idempotencyKey,
+              customer_id: String(req.customerReference), // customer id on betting platform
+              reference: idempotencyKey,
               currency: "NGN",
               country: "NG"
             };
@@ -267,8 +267,8 @@ export default class BillPaymentService {
             const item = requireExtra(itemCode, "extras.itemCode (internet plan code)", "internet");
             const payload: any = {
               amount: String(req.amount),
-              customer: String(req.customerReference),
-              tx_ref: idempotencyKey,
+              customer_id: String(req.customerReference),
+              reference: idempotencyKey,
               currency: "NGN"
             };
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
@@ -282,8 +282,8 @@ export default class BillPaymentService {
             const item = requireExtra(itemCode, "extras.itemCode (exam product code)", req.serviceType);
             const payload: any = {
               amount: String(req.amount),
-              customer: String(req.customerReference),
-              tx_ref: idempotencyKey,
+              customer_id: String(req.customerReference),
+              reference: idempotencyKey,
               currency: "NGN"
             };
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
