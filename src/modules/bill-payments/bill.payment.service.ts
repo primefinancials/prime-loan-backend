@@ -167,7 +167,8 @@ export default class BillPaymentService {
               customer: String(req.customerReference),
               tx_ref: idempotencyKey,
               currency: "NGN",
-              phone: String(req.customerReference)
+              phone: String(req.customerReference),
+              country: "NG"
             };
             // POST /v3/billers/{biller_code}/items/{item_code}/payment
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
@@ -186,7 +187,8 @@ export default class BillPaymentService {
               currency: "NGN",
               phone: String(req.customerReference),
               // include any data-specific type flag if present in extras (biller specific)
-              type: req.serviceType
+              type: req.serviceType,
+              country: "NG"
             };
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
             if (resp.status !== "success") throw new Error(resp.message || "Flutterwave data purchase failed");
@@ -201,6 +203,7 @@ export default class BillPaymentService {
               customer: String(req.customerReference), // smartcard number
               tx_ref: idempotencyKey,
               currency: "NGN",
+              country: "NG",
               phone: String(req.customerReference)
             };
 
@@ -220,7 +223,8 @@ export default class BillPaymentService {
               tx_ref: idempotencyKey,
               currency: "NGN",
               meter_type: String(meterType),
-              phone: String(req.customerReference)
+              phone: String(req.customerReference),
+              country: "NG"
             };
 
             if (!item) {
@@ -242,7 +246,8 @@ export default class BillPaymentService {
               amount: String(req.amount),
               customer: String(req.customerReference), // customer id on betting platform
               tx_ref: idempotencyKey,
-              currency: "NGN"
+              currency: "NGN",
+              country: "NG"
             };
 
             // If item specified, call item payment route; otherwise try product order
