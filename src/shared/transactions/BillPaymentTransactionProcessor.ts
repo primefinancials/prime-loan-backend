@@ -66,10 +66,10 @@ export async function processTransaction({
           providerResponse = await providerFn();
         } catch (err: any) {
           // 6. Mark Failed (if Error)
-          console.log({ err })
+          console.log({ err, traceId, status: "FAILED" as "FAILED" | "COMPLETED", billPayment, message: err?.response?.data?.message || err.message })
           billPayment.status = "FAILED";
           await billPayment.save({ session });
-          return { traceId, status: "FAILED" as "FAILED" | "COMPLETED", billPayment, message: err?.response?.data?.message || err.message };
+          throw new APIError(err?.response?.data?.message || err.message);
         }
 
         // 6. Mark COMPLETED (if Success)
