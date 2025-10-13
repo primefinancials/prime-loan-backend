@@ -61,6 +61,7 @@ export class SavingsService {
           transferType: "intra",
           bankCode: "999999",
           remark: `Initiated ${params.planType} plan intiated for ${params.planName}`,
+          walletBalance: String(from.accountBalance),
           naration: `
             Initiated ${params.planType} plan for ${params.planName}, with 
             ${params.amount} to get ${params.targetAmount} at ${params.interestRate} 
@@ -199,6 +200,7 @@ export class SavingsService {
           bankCode: "999999",
           remark: `${plan.planType} plan intiated for ${plan.planName} withrawal`,
           idempotencyKey: params.idempotencyKey,
+          walletBalance: String(to.accountBalance),
           meta: {
             earlyWithdrawal: plan.locked && plan.maturityDate && new Date() < plan.maturityDate,
             penalty

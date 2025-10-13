@@ -7,6 +7,7 @@
 import { Request, Response, NextFunction } from "express";
 import { ProtectedRequest } from "../../interfaces";
 import { UserService } from "./user.service";
+import { User } from "./user.interface";
 
 export class UserController {
   /**
@@ -63,9 +64,19 @@ export class UserController {
    */
   static async update(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { field, value } = req.body;
+      const { user }: { user: {
+          first_name: string;
+          profile_photo: string;
+          phone: string;
+          surname: string;
+          address?: string | null | undefined;
+      }} = req.body;
 
-      const updatedUser = await UserService.update(req.user!._id, field, value);
+      let updatedUser;
+
+      for (const [field, value] of Object.entries(user || {})) {
+        updatedUser = await UserService.update(req.user!._id, `user_metadata.${field}`, value);
+      }
 
       res.status(200).json({
         status: "success",

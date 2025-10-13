@@ -46,6 +46,8 @@ export class TransferController {
       });
     }
 
+    const userAccount =  await TransferController.vfdProvider.getAccountInfo(fromAccount);
+
     const result = await TransferService.initiateTransfer({
       fromAccount,
       userId,
@@ -56,6 +58,7 @@ export class TransferController {
       bankCode: toBank,
       remark,
       idempotencyKey,
+      walletBalance: String(userAccount.data.accountBalance)
     });
 
     try {
@@ -81,7 +84,7 @@ export class TransferController {
       const providerResp = await TransferController.vfdProvider.transfer(transferReq);
 
       if(providerResp.status === "00") {
-        await TransferService.completeTransfer(result.reference);
+        await TransferService.completeTransfer(result.reference, "transfer");
         return res.status(200).json({
           status: "success",
           data: { ...result, provider: providerResp },

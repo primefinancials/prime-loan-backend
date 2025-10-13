@@ -16,6 +16,7 @@ export async function processTransaction({
   serviceId,
   customerReference,
   idempotencyKey,
+  accountBalance,
   providerFn,
   txnProvider
 }: {
@@ -25,6 +26,7 @@ export async function processTransaction({
   serviceId: string;
   customerReference: string;
   idempotencyKey: string;
+  accountBalance: string;
   providerFn: () => Promise<any>;
   txnProvider: () => Promise<TransferResponse & { reference: string }>
 }): Promise<{ traceId: string, status: "FAILED" | "COMPLETED", billPayment: typeof BillPayment, message: string }> {

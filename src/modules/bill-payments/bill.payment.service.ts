@@ -148,6 +148,7 @@ export default class BillPaymentService {
       serviceId: req.serviceId,
       customerReference: req.customerReference,
       idempotencyKey,
+      accountBalance: from.accountBalance,
       providerFn: async () => {
         // Build path + payload for Flutterwave create-payment
         // Flutterwave requires different payload keys for some billers.
@@ -306,7 +307,8 @@ export default class BillPaymentService {
           transferType: "intra",
           bankCode: "999999",
           remark: `${req.serviceType} purchase`,
-          idempotencyKey,
+          walletBalance: String(from.accountBalance),
+          idempotencyKey
         });
 
         // 2) Send transfer to VFD (the banking provider)

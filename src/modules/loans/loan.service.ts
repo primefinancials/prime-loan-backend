@@ -222,32 +222,32 @@ export class LoanService {
     if (!user || Array.isArray(user) || !user._id) throw new NotFoundError("User not found");
 
     // prevent duplicate active loans for requester
-    // const existingActive = await Loan.find({
-    //   userId: params.userId,
-    //   loan_payment_status: { $in: ["in-progress", "not-started"] },
-    //   status: { $in: ["pending", "accepted", "active"] }
-    // });
+    const existingActive = await Loan.find({
+      userId: params.userId,
+      loan_payment_status: { $in: ["in-progress", "not-started"] },
+      status: { $in: ["pending", "accepted", "active"] }
+    });
 
-    // if (existingActive && existingActive.length > 0) {
-    //   throw new ConflictError("Duplicate loan attempt. Wait for current loan decision or repay the existing one.");
-    // }
+    if (existingActive && existingActive.length > 0) {
+      throw new ConflictError("Duplicate loan attempt. Wait for current loan decision or repay the existing one.");
+    }
 
     // Check guarantors - they cannot have active loans (if provided)
-    // const guarantorPhones = [params.guarantor_1_phone, params.guarantor_2_phone].filter(Boolean) as string[];
-    // for (const phone of guarantorPhones) {
-    //   const gUser = await User.findOne({ "user_metadata.phone": phone });
-    //   if (gUser && !Array.isArray(gUser) && gUser._id) {
-    //     const gActive = await Loan.findOne({
-    //       userId: gUser._id,
-    //       loan_payment_status: { $in: ["in-progress", "not-started"] },
-    //       status: { $in: ["pending", "accepted", "active"] }
-    //     });
+    const guarantorPhones = [params.guarantor_1_phone, params.guarantor_2_phone].filter(Boolean) as string[];
+    for (const phone of guarantorPhones) {
+      const gUser = await User.findOne({ "user_metadata.phone": phone });
+      if (gUser && !Array.isArray(gUser) && gUser._id) {
+        const gActive = await Loan.findOne({
+          userId: gUser._id,
+          loan_payment_status: { $in: ["in-progress", "not-started"] },
+          status: { $in: ["pending", "accepted", "active"] }
+        });
 
-    //     if (gActive) {
-    //       throw new BadRequestError(`Guarantor (${phone}) has an active loan and cannot be used.`);
-    //     }
-    //   }
-    // }
+        if (gActive) {
+          throw new BadRequestError(`Guarantor (${phone}) has an active loan and cannot be used.`);
+        }
+      }
+    }
 
     // perform credit lookup (best-effort)
     const mono = await this.monoCreditLookup(params.bvn || user.user_metadata?.bvn);
@@ -343,7 +343,8 @@ export class LoanService {
           transferType: "intra",
           bankCode: "999999",
           remark: "Loan disbursement",
-          idempotencyKey: transferIdempotency
+          idempotencyKey: transferIdempotency,
+          walletBalance: String(userAccTyped.accountBalance)
         }, "loan-disbursement");
 
         // build provider transfer payload (provider expects amount in kobo)
@@ -389,16 +390,13 @@ export class LoanService {
         // 4) update loan: compute total repayment schedule (fee + interest)
         const fee = 500;
         const loan_per = 10;
-        const duration = loan.duration || 30;
-        const percentage =
-          duration / 30 >= 1
-            ? ((loan.amount * loan_per)) * (duration / 30)
-            : (loan.amount * loan_per);
+        const duration = loan.duration || 21;
+        const percentage = (loan.amount * (loan_per / 100));
         const total = Number(Number(loan.amount) + Number(fee + percentage));
 
         const loanDate = new Date();
         const repaymentDate = new Date(loanDate);
-        repaymentDate.setDate(loanDate.getDate() + Number(loan.duration || duration));
+        repaymentDate.setDate(loanDate.getDate() + Number(duration));
 
         loan.outstanding = total;
         loan.status = "accepted";
@@ -429,13 +427,8 @@ export class LoanService {
 
         // 6) notify user (best-effort)
         try {
-          // await NotificationService.sendLoanApproval(user, loan);
+          await NotificationService.sendLoanApproval(user, loan);
         } catch (err) { console.warn("notify error:", err); }
-
-        // idempotent response
-        if (params.idempotencyKey) {
-          // await saveIdempotentResponse(params.idempotencyKey, String(loan.userId), { loan, providerResponse });
-        }
 
         return { loan, providerResponse, trxnRes };
       });
@@ -490,7 +483,8 @@ export class LoanService {
           transferType: "intra",
           bankCode: "999999",
           remark: "Loan repayment",
-          idempotencyKey: transferIdempotency
+          idempotencyKey: transferIdempotency,
+          walletBalance: String(userBalance)
         }, "loan-repayment");
 
         // 2) provider transfer (user -> prime)

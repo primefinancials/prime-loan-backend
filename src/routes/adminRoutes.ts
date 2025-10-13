@@ -830,6 +830,8 @@ router.post("/transfers/:id([0-9a-fA-F]{24})/requery", verifyJwtRest(), AdminCon
 
 router.get("/reconciliation/inconsistencies", verifyJwtRest(), AdminController.getReconciliationInconsistencies as any);
 
+router.get("/billpayment/all", verifyJwtRest(), validateReqQuery(transactionQuerySchema), AdminController.getBillPayment as any);
+
 router.get("/transactions/flagged", verifyJwtRest(), AdminController.getFlaggedTransactions as any);
 
 router.get("/transactions", verifyJwtRest(), validateReqQuery(transactionQuerySchema), AdminController.getTransactions as any);

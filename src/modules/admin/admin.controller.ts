@@ -15,6 +15,7 @@ import { TransferService } from '../transfers/transfer.service';
 import { UserService } from '../users/user.service';
 import { UnauthorizedError } from '../../exceptions';
 import { SettingsService } from './settings.service';
+import BillPaymentService from '../bill-payments/bill.payment.service';
 
 const adminService = new AdminService();
 
@@ -399,6 +400,31 @@ export class AdminController {
         data: {
           inconsistencies,
           count: inconsistencies.length
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get Users Bill Payments (admin)
+   */
+  static async getBillPayment(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, "manage_bill_payments");
+
+      const { status, search, type } = req.query;
+
+      const { page, limit } = parsePageLimit(req.query);
+
+      const billPayments = await BillPaymentService.getBillPayments(page, limit, status as string, type as string, search as string);
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          ...billPayments
         }
       });
     } catch (error) {

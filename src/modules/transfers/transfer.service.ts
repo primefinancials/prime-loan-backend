@@ -23,6 +23,7 @@ export interface InitiateTransferRequest {
   bankCode?: string;
   remark?: string;
   beneficiaryName: string;
+  walletBalance: string;
   meta?: object;
   naration?: string;
   idempotencyKey?: string;
@@ -92,7 +93,7 @@ export class TransferService {
             }, session);
           }
 
-          user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) - Number(transfer.amount));
+          user.user_metadata.wallet = String(Number(request.walletBalance || user?.user_metadata.wallet || 0) - Number(transfer.amount));
           await user.save();
         }
 
@@ -151,12 +152,12 @@ export class TransferService {
               }, session);
             }
 
-            user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(transfer.amount));
+            user.user_metadata.wallet = String(Number(user?.user_metadata.wallet || 0) + Number(transfer.amount));
             await user.save();
 
             const fromuser = await User.findOne({ "user_metadata.accountNo": transfer.fromAccount }).session(session);
 
-            // await NotificationService.sendCreditAlert(user, transfer.amount, `${fromuser?.user_metadata.first_name} ${fromuser?.user_metadata.surname}`, transfer.reference);
+            await NotificationService.sendCreditAlert(user, transfer.amount, `${fromuser?.user_metadata.first_name} ${fromuser?.user_metadata.surname}`, transfer.reference);
           }
         }
 
@@ -173,7 +174,7 @@ export class TransferService {
         const user = await User.findById(transfer.userId);
 
         if (user && type == "transfer") {
-          // await NotificationService.sendDebitAlert(user, transfer.amount);
+          await NotificationService.sendDebitAlert(user, transfer.amount);
         }
 
         return result;
@@ -256,10 +257,11 @@ export class TransferService {
             fromAccount: adminAccountData.accountNo,
             toAccount: userAccountData.accountNo,
             beneficiaryName: userAccountData.client,
-            amount: userBalance,
+            amount,
             bankCode: "999999",
             transferType: "intra",
-            userId: String(user._id)
+            userId: String(user._id),
+            walletBalance: String(userBalance)
           });
 
           const transferBody = {
@@ -286,11 +288,10 @@ export class TransferService {
           const response = await TransferService.vfdProvider.transfer(transferBody);
 
           if(response.status === "00") {
-            await TransferService.completeTransfer(res.reference);
+            await TransferService.completeTransfer(res.reference, "transfer");
           }
 
           user.user_metadata.signupBonusReceived = true;
-          user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(amount));
           await user.save({ session });
 
           counterModel.findOneAndUpdate(
