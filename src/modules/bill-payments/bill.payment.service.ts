@@ -173,9 +173,7 @@ export default class BillPaymentService {
             };
             // POST /v3/billers/{biller_code}/items/{item_code}/payment
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
-            console.log({ resp });
-            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave airtime purchase failed");
-            return resp.data;
+            return resp;
           }
 
           case "data": {
