@@ -65,7 +65,7 @@ export async function processTransaction({
         try {
           providerResponse = await txnProvider();
           // 4. Complete Transaction (if Success)
-          if(providerResp.status == "00") {
+          if(providerResponse.status == "00") {
             initTrxn = await TransferService.completeTransfer(providerResp.reference, "bill-payment");
 
             console.log("Complete Transfer");
