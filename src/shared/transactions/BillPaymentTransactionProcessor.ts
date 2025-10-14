@@ -65,14 +65,18 @@ export async function processTransaction({
         try {
           providerResponse = await txnProvider();
           // 4. Complete Transaction (if Success)
-          if(providerResp.status === "00") {
+          if(providerResp.status == "00") {
             initTrxn = await TransferService.completeTransfer(providerResp.reference, "bill-payment");
+
+            console.log("Complete Transfer");
 
             // 6. Mark COMPLETED (if Success)
             billPayment.status = "COMPLETED";
             billPayment.processedAt = new Date();
             billPayment.meta = { ...billPayment.meta, providerResp };
             await billPayment.save({ session });
+
+             console.log("Complete BillPayment");
 
             // 7. Update ledger Debit (COMPLETED)
             await LedgerService.createDoubleEntry(
