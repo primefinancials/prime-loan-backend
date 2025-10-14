@@ -190,8 +190,7 @@ export default class BillPaymentService {
               country: "NG"
             };
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
-            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave data purchase failed");
-            return resp.data;
+            return resp;
           }
 
           case "tv": {
@@ -207,8 +206,7 @@ export default class BillPaymentService {
             };
 
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(pkg)}/payment`, payload);
-            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave TV purchase failed");
-            return resp.data;
+            return resp;
           }
 
           case "power": {
@@ -229,13 +227,11 @@ export default class BillPaymentService {
             if (!item) {
               // call product orders endpoint if product code isn't available in itemCode
               const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/payment`, payload).catch(() => null);
-              if (resp && resp.status === "success") return resp.data;
-              throw new Error("Power billers usually require an item/product code (provide extras.itemCode/productCode/pkg)");
+              return resp;
             }
 
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
-            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave power purchase failed");
-            return resp.data;
+            return resp;
           }
 
           case "betting": {
@@ -252,12 +248,10 @@ export default class BillPaymentService {
             // If item specified, call item payment route; otherwise try product order
             if (item) {
               const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
-              if (resp.status !== "success") throw new Error(resp.message || "Flutterwave betting purchase failed");
-              return resp.data;
+              return resp;
             } else {
               const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/payment`, payload);
-              if (resp.status !== "success") throw new Error(resp.message || "Flutterwave betting purchase failed");
-              return resp.data;
+              return resp;
             }
           }
 
@@ -271,23 +265,7 @@ export default class BillPaymentService {
               currency: "NGN"
             };
             const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
-            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave internet purchase failed");
-            return resp.data;
-          }
-
-          case "waec":
-          case "jamb": {
-            // Exam services: itemCode holds the exam product code
-            const item = requireExtra(itemCode, "extras.itemCode (exam product code)", req.serviceType);
-            const payload: any = {
-              amount: String(req.amount),
-              customer_id: String(req.customerReference),
-              reference: idempotencyKey,
-              currency: "NGN"
-            };
-            const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(item)}/payment`, payload);
-            if (resp.status !== "success") throw new Error(resp.message || "Flutterwave exam purchase failed");
-            return resp.data;
+            return resp;
           }
 
           default:
