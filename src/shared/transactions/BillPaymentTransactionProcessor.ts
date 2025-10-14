@@ -57,7 +57,7 @@ export async function processTransaction({
 
       console.log({ providerResp })
 
-      if(providerResp.status === "success") {
+      if(providerResp.status == "success") {
 
           // 5. Call Bill Payment provider
         let providerResponse, initTrxn;
@@ -106,12 +106,12 @@ export async function processTransaction({
           await billPayment.save({ session });
           throw new APIError(err?.response?.data?.message || err.message);
         }
+      } else {
+        // 5. Fail Bill Payment
+        billPayment.status = "FAILED";
+        await billPayment.save({ session });
+        throw new APIError(providerResp.message);
       }
-
-      // 5. Fail Bill Payment
-      billPayment.status = "FAILED";
-      await billPayment.save({ session });
-      throw new APIError(providerResp.message);
     }) as any;
   } finally {
     await session.endSession();
