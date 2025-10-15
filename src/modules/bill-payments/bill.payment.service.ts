@@ -212,14 +212,14 @@ export default class BillPaymentService {
           case "power": {
             // Electricity: serviceId = biller_code (electric company)
             // extras.meterType required (01 prepaid | 02 postpaid), itemCode often required
-            const meterType = requireExtra(req.meterType, "extras.meterType (01 | 02)", "power");
+            // const meterType = requireExtra(req.meterType, "extras.meterType (01 | 02)", "power");
             const item = itemCode; // item may be optional for some providers, but usually present
             const payload: any = {
               amount: String(req.amount),
               customer_id: String(req.customerReference), // meter number
               reference: idempotencyKey,
               currency: "NGN",
-              meter_type: String(meterType),
+              meter_type: String(req.meterType),
               phone: String(req.customerReference),
               country: "NG"
             };
