@@ -14,7 +14,7 @@ const transporter = nodemailer.createTransport({
 export class NotificationService {
   private static async sendEmail(to: string, subject: string, html: string) {
     await transporter.sendMail({
-      from: `Prime Finance <${process.env.EMAIL_USERNAME}>`,
+      from: `Prime Finance <${`info@primefinance.live`}>`,
       to,
       subject,
       html,
