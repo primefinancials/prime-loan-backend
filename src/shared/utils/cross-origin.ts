@@ -19,6 +19,7 @@ const DefaultCorsOptions: CorsOptions = {
     'https://prime-finance-admin.netlify.app',
     'https://admin.primefinance.live',
     'https://primefinance.live',
+    'https://www.primefinance.live',
     'https://prime-loan-web-init.vercel.app',
     'https://prime-loan-web.vercel.app',
   ],
