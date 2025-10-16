@@ -26,20 +26,20 @@ export class LoanEligibilityService {
   ): Promise<EligibilityResult> {
     // Check for active loans
     // Note: This would need to query the loan service in real implementation
-    const hasActiveLoan = await Loan.find({
-      userId: user._id,
-      loan_payment_status: { $in: ["in-progress", "not-started"] },
-      status: { $in: ["pending", "accepted", "active"] }
-    });
+    // const hasActiveLoan = await Loan.find({
+    //   userId: user._id,
+    //   loan_payment_status: { $in: ["in-progress", "not-started"] },
+    //   status: { $in: ["pending", "accepted", "active"] }
+    // });
 
-    if (hasActiveLoan) {
-      return {
-        eligible: false,
-        maxAmount: 0,
-        notifyAdmin: false,
-        reason: 'User has active loan'
-      };
-    }
+    // if (hasActiveLoan) {
+    //   return {
+    //     eligible: false,
+    //     maxAmount: 0,
+    //     notifyAdmin: false,
+    //     reason: 'User has active loan'
+    //   };
+    // }
 
     const settings = await SettingsService.getSettings();
 
