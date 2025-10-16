@@ -148,7 +148,6 @@ export default class BillPaymentService {
       serviceId: req.serviceId,
       customerReference: req.customerReference,
       idempotencyKey,
-      accountBalance: from.accountBalance,
       providerFn: async () => {
         // Build path + payload for Flutterwave create-payment
         // Flutterwave requires different payload keys for some billers.
@@ -310,6 +309,44 @@ export default class BillPaymentService {
         const vfdResult = await vfdProvider.transfer(transferReq);
         return { ...vfdResult, reference: result.reference };
       },
+      refundProvider: async () => {
+        // 1) Create transfer record + ledger entry (PENDING)
+        const result = await TransferService.initiateTransfer({
+          fromAccount: to.accountNo,
+          userId,
+          toAccount: from.accountNo,
+          beneficiaryName: from.client,
+          amount: req.amount,
+          transferType: "intra",
+          bankCode: "999999",
+          remark: `${req.serviceType} purchase refund`,
+          walletBalance: String(to.accountBalance),
+          idempotencyKey
+        });
+
+        // 2) Send transfer to VFD (the banking provider)
+        const transferReq: TransferRequest = {
+          uniqueSenderAccountId: to.accountId,
+          fromAccount: to.accountNo,
+          fromClientId: to.clientId,
+          fromClient: to.client,
+          fromSavingsId: to.accountId,
+          toAccount: from.accountNo,
+          toClient: from.client,
+          toSession: from.accountId,
+          toClientId: from.clientId,
+          toSavingsId: from.accountId,
+          toBank: "999999",
+          signature: sha512.hex(`${to.accountNo}${from.accountNo}`),
+          amount: req.amount,
+          remark: `${req.serviceType} purchase refund`,
+          transferType: "intra",
+          reference: result.reference,
+        };
+
+        const vfdResult = await vfdProvider.transfer(transferReq);
+        return { ...vfdResult, reference: result.reference };
+      }
     });
   }
 

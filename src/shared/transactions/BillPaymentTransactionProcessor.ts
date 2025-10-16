@@ -4,7 +4,6 @@ import { DatabaseService } from "../../shared/db";
 import { UuidService } from "../../shared/utils/uuid";
 import { Money } from "../../shared/utils/money";
 import { BillPayment } from "../../modules/bill-payments/bill-payment.model";
-import { saveIdempotentResponse } from "../../shared/idempotency/middleware";
 import { APIError } from "../../exceptions";
 import { TransferResponse } from "../providers/vfd.provider";
 import { TransferService } from "../../modules/transfers/transfer.service";
@@ -16,9 +15,9 @@ export async function processTransaction({
   serviceId,
   customerReference,
   idempotencyKey,
-  accountBalance,
   providerFn,
-  txnProvider
+  txnProvider,
+  refundProvider
 }: {
   userId: string;
   amount: number;
@@ -26,10 +25,15 @@ export async function processTransaction({
   serviceId: string;
   customerReference: string;
   idempotencyKey: string;
-  accountBalance: string;
   providerFn: () => Promise<any>;
-  txnProvider: () => Promise<TransferResponse & { reference: string }>
-}): Promise<{ traceId: string, status: "FAILED" | "COMPLETED", billPayment: typeof BillPayment, message: string }> {
+  txnProvider: () => Promise<TransferResponse & { reference: string }>;
+  refundProvider: () => Promise<TransferResponse & { reference: string }>;
+}): Promise<{
+  traceId: string;
+  status: "FAILED" | "COMPLETED";
+  billPayment: typeof BillPayment;
+  message: string;
+}> {
   const traceId = UuidService.generateTraceId();
 
   if (!Money.isValidAmount(amount)) {
@@ -40,81 +44,124 @@ export async function processTransaction({
 
   try {
     return await DatabaseService.withTransaction(session, async () => {
-      // 1. Create bill payment record
-      const [billPayment] = await BillPayment.create([{
-        userId,
-        traceId,
-        serviceType,
-        serviceId,
-        customerReference,
-        amount: amount,
-        status: "PENDING",
-        meta: { originalAmount: amount }
-      }], { session }); 
+      // 1️⃣ Create base bill payment record
+      const [billPayment] = await BillPayment.create(
+        [
+          {
+            userId,
+            traceId,
+            serviceType,
+            serviceId,
+            customerReference,
+            amount,
+            status: "PENDING",
+            meta: { originalAmount: amount },
+          },
+        ],
+        { session }
+      );
 
-      // 3. Initiate Transaction
-      const providerResp = await providerFn();
+      let txnResponse: any;
+      let providerResponse: any;
+      let refundResponse: any;
 
-      console.log({ providerResp })
-
-      if(providerResp.status == "success") {
-
-          // 5. Call Bill Payment provider
-        let providerResponse, initTrxn;
-
-        try {
-          providerResponse = await txnProvider();
-          // 4. Complete Transaction (if Success)
-          if(providerResponse.status == "00") {
-            initTrxn = await TransferService.completeTransfer(providerResponse.reference, "bill-payment");
-
-            console.log("Complete Transfer");
-
-            // 6. Mark COMPLETED (if Success)
-            billPayment.status = "COMPLETED";
-            billPayment.processedAt = new Date();
-            billPayment.meta = { ...billPayment.meta, providerResp };
-            await billPayment.save({ session });
-
-             console.log("Complete BillPayment");
-
-            // 7. Update ledger Debit (COMPLETED)
-            await LedgerService.createDoubleEntry(
-              traceId,
-              `user_wallet:${userId}`,
-              `bill-payment:${serviceType}`,
-              amount,
-              "bill-payment",
-              {
-                userId: userId,
-                subtype: serviceType,
-                idempotencyKey,
-                session,
-                meta: {
-                  billPaymentId: billPayment._id,
-                  transactionId: initTrxn?.transferId || ""
-                }
-              }
-            );
-
-            const result = { traceId, status: "COMPLETED" as "FAILED" | "COMPLETED", billPayment, message: "Bill payment completed successfully" };
-
-            return result;
-          }
-        } catch (err: any) {
-          // 4. Fail Transaction (if Error)
-          await TransferService.failTransfer(providerResponse?.reference || "");
-          // 6. Mark Failed (if Error)
-          console.log({ err, traceId, status: "FAILED" as "FAILED" | "COMPLETED", billPayment, message: err?.response?.data?.message || err.message })
-          billPayment.status = "FAILED";
-          await billPayment.save({ session });
-          throw new APIError(err?.response?.data?.message || err.message);
-        }
-      } else {
-        // 5. Fail Bill Payment
+      // 2️⃣ Call txnProvider first
+      try {
+        txnResponse = await txnProvider();
+        console.log("TxnProvider Response:", txnResponse);
+      } catch (err: any) {
         billPayment.status = "FAILED";
+        billPayment.meta = { ...billPayment.meta, txnError: err.message };
         await billPayment.save({ session });
-        throw new APIError(providerResp.message);
+        throw new APIError(400, "Transaction initialization failed");
+      }
+
+      // ✅ Check if transaction succeeded
+      const txnStatus = txnResponse?.status || txnResponse?.statusCode;
+      if (txnStatus !== "00") {
+        billPayment.status = "FAILED";
+        billPayment.meta = { ...billPayment.meta, txnResponse };
+        await billPayment.save({ session });
+        throw new APIError(400,"BillPayment failed during initialization");
+      }
+
+      // 3️⃣ Proceed to call providerFn
+      try {
+        providerResponse = await providerFn();
+        console.log("Provider Response:", providerResponse);
+
+        const providerStatus = providerResponse?.status?.toLowerCase?.() || "";
+
+        if (providerStatus === "success" || providerStatus === "successful") {
+          // 4️⃣ Complete transaction (mark completed)
+          await TransferService.completeTransfer(
+            txnResponse.reference,
+            "bill-payment"
+          );
+
+          billPayment.status = "COMPLETED";
+          billPayment.processedAt = new Date();
+          billPayment.meta = {
+            ...billPayment.meta,
+            txnResponse,
+            providerResponse,
+          };
+          await billPayment.save({ session });
+
+          // Ledger update
+          await LedgerService.createDoubleEntry(
+            traceId,
+            `user_wallet:${userId}`,
+            `bill-payment:${serviceType}`,
+            amount,
+            "bill-payment",
+            {
+              userId,
+              subtype: serviceType,
+              idempotencyKey,
+              session,
+              meta: {
+                billPaymentId: billPayment._id,
+                transactionId: txnResponse.reference,
+              },
+            }
+          );
+
+          return {
+            traceId,
+            status: "COMPLETED",
+            billPayment,
+            message: "Bill payment completed successfully",
+          };
+        } else {
+          // ❌ Provider failed → trigger refund
+          throw new Error("Provider transaction failed");
+        }
+      } catch (err: any) {
+        console.log("Provider Error:", err.message);
+
+        // 5️⃣ Attempt refund
+        try {
+          refundResponse = await refundProvider();
+          console.log("Refund Response:", refundResponse);
+        } catch (refundErr: any) {
+          console.error("Refund Failed:", refundErr.message);
+        }
+
+        // 6️⃣ Mark failed + save all responses
+        billPayment.status = "FAILED";
+        billPayment.meta = {
+          ...billPayment.meta,
+          txnResponse,
+          providerResponse,
+          refundResponse,
+          providerError: err.message,
+        };
+        await billPayment.save({ session });
+
+        await TransferService.failTransfer(txnResponse?.reference || "");
+
+        throw new APIError(400, "Transaction failed and refund attempted")
       }
     }) as any;
   } finally {
