@@ -73,7 +73,7 @@ export async function processTransaction({
         billPayment.status = "FAILED";
         billPayment.meta = { ...billPayment.meta, txnError: err.message };
         await billPayment.save({ session });
-        throw new APIError(400, "Transaction initialization failed");
+        throw new APIError(400, err.message || "Transaction initialization failed");
       }
 
       // ✅ Check if transaction succeeded
@@ -82,7 +82,7 @@ export async function processTransaction({
         billPayment.status = "FAILED";
         billPayment.meta = { ...billPayment.meta, txnResponse };
         await billPayment.save({ session });
-        throw new APIError(400,"BillPayment failed during initialization");
+        throw new APIError(400, txnResponse.message || "BillPayment failed during initialization");
       }
 
       // 3️⃣ Proceed to call providerFn
@@ -135,7 +135,7 @@ export async function processTransaction({
           };
         } else {
           // ❌ Provider failed → trigger refund
-          throw new Error("Provider transaction failed");
+          throw new Error(providerResponse.message || "Provider transaction failed");
         }
       } catch (err: any) {
         console.log("Provider Error:", err.message);
@@ -161,7 +161,7 @@ export async function processTransaction({
 
         await TransferService.failTransfer(txnResponse?.reference || "");
 
-        throw new APIError(400, "Transaction failed and refund attempted")
+        throw new APIError(400, err.message || "Transaction failed and refund attempted")
       }
     }) as any;
   } finally {
