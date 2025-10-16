@@ -32,7 +32,7 @@ export class LoanEligibilityService {
       status: { $in: ["pending", "accepted", "active"] }
     });
 
-    console.log({ ActiveLoans: hasActiveLoan.length })
+    console.log({ ActiveLoans: hasActiveLoan })
 
     if (hasActiveLoan && hasActiveLoan.length > 0) {
       return {
