@@ -1023,4 +1023,134 @@ router.post(
  */
 router.get("/savings", verifyJwtRest(), validateReqQuery(userPlansQuerySchema), SavingsController.getUserPlans as any);
 
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     LoanLadder:
+ *       type: object
+ *       properties:
+ *         reference:
+ *           type: string
+ *           example: "66e03a06b281b3a4e9e5f111"
+ *         step:
+ *           type: number
+ *           example: 2
+ *           description: Step number on the loan ladder.
+ *         amount:
+ *           type: number
+ *           example: 5000
+ *           description: Maximum loan amount allowed at this ladder step.
+ *         adminNotes:
+ *           type: string
+ *           example: "Eligible for mid-tier customers with good repayment history"
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ *
+ *     LoanLadderCreateRequest:
+ *       type: object
+ *       required: [step, amount]
+ *       properties:
+ *         step:
+ *           type: number
+ *           example: 1
+ *         amount:
+ *           type: number
+ *           example: 2500
+ *         adminNotes:
+ *           type: string
+ *           example: "Initial step for new customers"
+ *
+ *     LoanLadderUpdateRequest:
+ *       type: object
+ *       properties:
+ *         step:
+ *           type: number
+ *           example: 3
+ *         amount:
+ *           type: number
+ *           example: 7500
+ *         adminNotes:
+ *           type: string
+ *           example: "Adjusted to match new loan policy"
+ */
+
+/**
+ * @swagger
+ * /api/loans/ladder:
+ *   get:
+ *     summary: Get all Loan Ladder steps
+ *     description: Retrieve paginated list of all loan ladders (accessible by users and admins).
+ *     tags: [Loan Ladder]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Successful retrieval of loan ladders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/LoanLadder'
+ */
+router.get("/ladder", verifyJwtRest(), LoanController.getLoanLadders as any);
+
+/**
+ * @swagger
+ * /api/loans/ladder/{id}:
+ *   get:
+ *     summary: Get a specific Loan Ladder step
+ *     description: Retrieve details of a single loan ladder step by ID (accessible by both admin and user).
+ *     tags: [Loan Ladder]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved ladder step
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   $ref: '#/components/schemas/LoanLadder'
+ *       404:
+ *         description: Ladder step not found
+ */
+
+router.get("/ladder/:id", verifyJwtRest(), LoanController.getLoanLadderById as any);
+
+
 export default router;
+

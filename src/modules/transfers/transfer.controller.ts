@@ -8,9 +8,11 @@ import { TransferService } from "./transfer.service";
 import { VfdProvider, TransferRequest } from "../../shared/providers/vfd.provider";
 import { sha512 } from "js-sha512";
 import { APIError } from "../../exceptions";
+import { ProfitService } from "../profits/profits.service";
 
 export class TransferController {
   private static vfdProvider = new VfdProvider();
+  private static profitService = new ProfitService();
 
   /**
    * Initiate a transfer
@@ -75,7 +77,7 @@ export class TransferController {
         toSavingsId,
         toBank,
         signature: sha512.hex(`${fromAccount}${toAccount}`),
-        amount: amount,
+        amount: Number(amount) - 40,
         remark: remark || "",
         transferType,
         reference: result.reference,
@@ -85,6 +87,14 @@ export class TransferController {
 
       if(providerResp.status === "00") {
         await TransferService.completeTransfer(result.reference, "transfer");
+
+        await TransferController.profitService.recordRealizedProfit({
+          amount: 40,
+          source: "transaction",
+          userId,
+          reference: result.reference
+        });
+
         return res.status(200).json({
           status: "success",
           data: { ...result, provider: providerResp },

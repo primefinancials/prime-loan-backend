@@ -10,8 +10,10 @@
 import { Request, Response, NextFunction } from "express";
 import BillPaymentService from "./bill.payment.service";
 import { ProtectedRequest } from "../../interfaces";
+import { ProfitService } from "../profits/profits.service";
 
 export class BillPaymentController {
+  private static profitService = new ProfitService();
   /**
    * 🔹 Initiate a bill payment
    * Delegates to BillPaymentService.initiateBillPayment (orchestrates via VFD + Flutterwave)
@@ -31,6 +33,14 @@ export class BillPaymentController {
         itemCode,
         idempotencyKey,
       });
+
+      await BillPaymentController.profitService.recordProfit({
+        amount: (3 / 100) * Number(amount),
+        source: "bill-payment",
+        userId,
+        reference: result.traceId,
+        type: "realized"
+      })
 
       res.status(200).json({ status: "success", data: result });
     } catch (error) {

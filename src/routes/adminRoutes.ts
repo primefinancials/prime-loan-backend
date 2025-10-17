@@ -38,6 +38,7 @@ import {
 } from "../validations";
 import { idempotencyMiddleware } from "../shared/idempotency/middleware";
 import { checkPermission } from "../shared/utils/checkPermission";
+import { profitController } from "../modules/profits/profits.controller";
 
 /**
  * Swagger components (schemas) used by routes below.
@@ -899,5 +900,387 @@ router.put(
   verifyJwtRest(),
   AdminController.updateSettings as any
 );
+
+/* =============================
+   PROFITS MANAGEMENT
+   ============================= */
+
+/**
+ * @swagger
+ * /backoffice/profits/user/{userId}:
+ *   get:
+ *     tags: [Admin - Profits]
+ *     summary: Get all profits for a specific user (optionally filtered by type)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [realized, unrealized]
+ *     responses:
+ *       200:
+ *         description: List of user profits
+ */
+router.get(
+  "/profits/user/:userId",
+  verifyJwtRest(),
+  profitController.getUserProfits.bind(profitController) as any
+);
+
+/**
+ * @swagger
+ * /backoffice/profits/type:
+ *   get:
+ *     tags: [Admin - Profits]
+ *     summary: Get all profits filtered by type
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [realized, unrealized]
+ *     responses:
+ *       200:
+ *         description: Profits by type
+ */
+router.get(
+  "/profits/type",
+  verifyJwtRest(),
+  profitController.getProfitByType.bind(profitController) as any
+);
+
+/**
+ * @swagger
+ * /backoffice/profits/reference:
+ *   get:
+ *     tags: [Admin - Profits]
+ *     summary: Get a specific profit by reference
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: reference
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Profit found
+ */
+router.get(
+  "/profits/reference",
+  verifyJwtRest(),
+  profitController.getProfitByReference.bind(profitController) as any
+);
+
+/**
+ * @swagger
+ * /backoffice/profits/total:
+ *   get:
+ *     tags: [Admin - Profits]
+ *     summary: Get total profits (filterable by userId, type, or source)
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: string
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [realized, unrealized]
+ *       - in: query
+ *         name: source
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Total profit calculated
+ */
+router.get(
+  "/profits/total",
+  verifyJwtRest(),
+  profitController.getTotalProfit.bind(profitController) as any
+);
+
+/**
+ * @swagger
+ * /backoffice/profits/{reference}/realize:
+ *   patch:
+ *     tags: [Admin - Profits]
+ *     summary: Mark an unrealized profit as realized
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: reference
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Profit marked as realized
+ */
+router.patch(
+  "/profits/:reference/realize",
+  verifyJwtRest(),
+  profitController.markProfitAsRealized.bind(profitController) as any
+);
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     LoanLadder:
+ *       type: object
+ *       properties:
+ *         reference:
+ *           type: string
+ *           example: "66e03a06b281b3a4e9e5f111"
+ *         step:
+ *           type: number
+ *           example: 2
+ *           description: Step number on the loan ladder.
+ *         amount:
+ *           type: number
+ *           example: 5000
+ *           description: Maximum loan amount allowed at this ladder step.
+ *         adminNotes:
+ *           type: string
+ *           example: "Eligible for mid-tier customers with good repayment history"
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ *
+ *     LoanLadderCreateRequest:
+ *       type: object
+ *       required: [step, amount]
+ *       properties:
+ *         step:
+ *           type: number
+ *           example: 1
+ *         amount:
+ *           type: number
+ *           example: 2500
+ *         adminNotes:
+ *           type: string
+ *           example: "Initial step for new customers"
+ *
+ *     LoanLadderUpdateRequest:
+ *       type: object
+ *       properties:
+ *         step:
+ *           type: number
+ *           example: 3
+ *         amount:
+ *           type: number
+ *           example: 7500
+ *         adminNotes:
+ *           type: string
+ *           example: "Adjusted to match new loan policy"
+ */
+
+/**
+ * @swagger
+ * /api/loans/ladder:
+ *   post:
+ *     summary: Create a new Loan Ladder step
+ *     description: Admin-only endpoint to create a new ladder step defining the loan progression structure.
+ *     tags: [Loan Ladder]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoanLadderCreateRequest'
+ *     responses:
+ *       201:
+ *         description: Loan ladder step created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Loan ladder step created successfully
+ *                 data:
+ *                   $ref: '#/components/schemas/LoanLadder'
+ *       401:
+ *         description: Unauthorized - Missing or invalid JWT
+ *       403:
+ *         description: Forbidden - Admin permission required
+ *       500:
+ *         description: Internal server error
+ */
+
+router.post("/ladder", verifyJwtRest(), LoanController.createLoanLadder as any);
+
+/**
+ * @swagger
+ * /api/loans/ladder/{id}:
+ *   put:
+ *     summary: Update a Loan Ladder step
+ *     description: Admin-only endpoint to modify existing ladder details.
+ *     tags: [Loan Ladder]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         description: The ID of the loan ladder step to update
+ *         schema:
+ *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/LoanLadderUpdateRequest'
+ *     responses:
+ *       200:
+ *         description: Loan ladder step updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   $ref: '#/components/schemas/LoanLadder'
+ *       404:
+ *         description: Ladder step not found
+ */
+router.put("/ladder/:id", verifyJwtRest(), LoanController.updateLoanLadder as any);
+
+/**
+ * @swagger
+ * /api/loans/ladder/{id}:
+ *   delete:
+ *     summary: Delete a Loan Ladder step
+ *     description: Admin-only endpoint to remove a specific ladder step.
+ *     tags: [Loan Ladder]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Ladder step deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Loan ladder deleted successfully
+ *       404:
+ *         description: Ladder not found
+ */
+router.delete("/ladder/:id", verifyJwtRest(), LoanController.deleteLoanLadder as any);
+
+/**
+ * @swagger
+ * /backoffice/loans/ladder:
+ *   get:
+ *     summary: Get all Loan Ladder steps
+ *     description: Retrieve paginated list of all loan ladders (accessible by users and admins).
+ *     tags: [Loan Ladder]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *     responses:
+ *       200:
+ *         description: Successful retrieval of loan ladders
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/LoanLadder'
+ */
+router.get("/ladder", verifyJwtRest(), LoanController.getLoanLadders as any);
+
+/**
+ * @swagger
+ * /backoffice/loans/ladder/{id}:
+ *   get:
+ *     summary: Get a specific Loan Ladder step
+ *     description: Retrieve details of a single loan ladder step by ID (accessible by both admin and user).
+ *     tags: [Loan Ladder]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved ladder step
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   $ref: '#/components/schemas/LoanLadder'
+ *       404:
+ *         description: Ladder step not found
+ */
+
+router.get("/ladder/:id", verifyJwtRest(), LoanController.getLoanLadderById as any);
+
 
 export default router;

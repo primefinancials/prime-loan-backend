@@ -21,6 +21,7 @@ import { APIError, BadRequestError, ConflictError, NotFoundError } from "../../e
 import User from "../users/user.model";
 import { sha512 } from "js-sha512";
 import { getMailsByPermission } from "../../shared/utils/checkPermission";
+import { ILoanLadder } from "./loan-ladder.model";
 
 /* ---------- Types ---------- */
 
@@ -855,4 +856,67 @@ export class LoanService {
       pages: Math.max(1, Math.ceil(total / limit))
     };
   }
+
+  /* ------------------------------
+  * Loan Ladder (Admin + User)
+  * ------------------------------ */
+  static async createLoanLadder(adminId: string, step: number, amount: number, adminNotes?: string) {
+    if (!adminId) throw new BadRequestError("Admin ID is required");
+    if (step === undefined || step === null) throw new BadRequestError("Step is required");
+    if (amount === undefined || amount === null) throw new BadRequestError("Amount is required");
+
+    // Ensure no duplicate step exists
+    const existing = await LoanLadder.findOne({ step });
+    if (existing) throw new ConflictError(`Step ${step} already exists in loan ladder`);
+
+    const ladder = await LoanLadder.create({
+      step,
+      amount,
+      verifiedBy: adminId,
+      meta: { adminNotes },
+    });
+
+    return ladder;
+  }
+
+  static async updateLoanLadder(adminId: string, id: string, updates: Partial<ILoanLadder>) {
+    if (!adminId) throw new BadRequestError("Admin ID is required");
+    if (!id) throw new BadRequestError("Ladder ID is required");
+
+    const ladder = await LoanLadder.findById(id);
+    if (!ladder) throw new NotFoundError("Loan ladder entry not found");
+
+    Object.assign(ladder, updates, { verifiedBy: adminId });
+    await ladder.save();
+
+    return ladder;
+  }
+
+  static async deleteLoanLadder(adminId: string, id: string) {
+    if (!adminId) throw new BadRequestError("Admin ID is required");
+    if (!id) throw new BadRequestError("Ladder ID is required");
+
+    const ladder = await LoanLadder.findById(id);
+    if (!ladder) throw new NotFoundError("Loan ladder entry not found");
+
+    await LoanLadder.findByIdAndDelete(id);
+    return { message: "Loan ladder entry deleted successfully" };
+  }
+
+  static async getLoanLadders(page = 1, limit = 20) {
+    const skip = (page - 1) * limit;
+    const [data, total] = await Promise.all([
+      LoanLadder.find().skip(skip).limit(limit).sort({ step: 1 }),
+      LoanLadder.countDocuments(),
+    ]);
+    return { data, total, page, pages: Math.max(1, Math.ceil(total / limit)) };
+  }
+
+  static async getLoanLadderById(id: string) {
+    if (!id) throw new BadRequestError("Ladder ID is required");
+    const ladder = await LoanLadder.findById(id);
+    if (!ladder) throw new NotFoundError("Loan ladder not found");
+    return ladder;
+  }
 }
+

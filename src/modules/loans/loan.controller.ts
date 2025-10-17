@@ -15,8 +15,11 @@ import { checkPermission } from "../../shared/utils/checkPermission";
 import { getMailsByPermission } from "../../shared/utils/checkPermission";
 import { NotificationService } from "../notifications/notification.service";
 import { UserService } from "../users/user.service";
+import { ProfitService } from "../profits/profits.service";
 
 export class LoanController {
+  private static profitService = new ProfitService();
+
   /**
    * Request a new loan
    */
@@ -114,15 +117,15 @@ export class LoanController {
           const amount = await LoanLadder.findOne({ step: req.user?.user_metadata.ladderIndex || 0 });
 
           if (amount) {
-            const disburseLoan = await LoanService.disburseLoan({
-              loanId: loan._id,
-              adminId: "system",
-              amount: amount.amount,
-            });
+            // const disburseLoan = await LoanService.disburseLoan({
+            //   loanId: loan._id,
+            //   adminId: "system",
+            //   amount: amount.amount,
+            // });
 
             return res.status(201).json({
               status: "success",
-              data: disburseLoan,
+              data: loan,
             });
           }
 
@@ -182,6 +185,41 @@ export class LoanController {
         idempotencyKey,
       } as RepayParams);
 
+      const profit = await LoanController.profitService.getProfitByReference(id);
+      if(profit?.amount || 0 >= amount) {
+        await LoanController.profitService.deleteProfit(id);
+        await LoanController.profitService.recordProfit({
+          amount,
+          source: "loan",
+          userId: result.loan.userId,
+          reference: result.loan._id,
+          type: "realized"
+        });
+      }  else { 
+        const [figure, outstanding] = [
+          amount,
+          profit?.amount || 0 - amount
+        ];
+
+        await LoanController.profitService.deleteProfit(id);
+
+        await LoanController.profitService.recordProfit({
+          amount: figure,
+          source: "loan",
+          userId: result.loan.userId,
+          reference: crypto.randomUUID(),
+          type: "realized"
+        });
+
+        await LoanController.profitService.recordProfit({
+          amount: outstanding,
+          source: "loan",
+          userId: result.loan.userId,
+          reference: result.loan._id,
+          type: "unrealized"
+        });
+      }
+
       res.status(200).json({
         status: "success",
         data: result,
@@ -208,6 +246,14 @@ export class LoanController {
         amount,
         idempotencyKey,
       } as DisburseParams);
+
+      await LoanController.profitService.recordProfit({
+        amount: ((10 / 100) * Number(amount)) + 500,
+        source: "loan",
+        userId: result.loan.userId,
+        reference: result.loan._id,
+        type: "unrealized"
+      });
 
       res.status(200).json({
         status: "success",
@@ -382,6 +428,120 @@ export class LoanController {
       res.status(200).json({
         status: "success",
         data
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+    /**
+   * ────────────────────────────────────────────────
+   * 📊 Loan Ladder Management
+   * ────────────────────────────────────────────────
+   */
+
+  /**
+   * Admin: Create a new Loan Ladder step
+   */
+  static async createLoanLadder(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      const { step, amount, adminNotes } = req.body;
+
+      checkPermission(admin, "manage_loans");
+
+      const ladder = await LoanService.createLoanLadder(
+        admin?._id || "",
+        Number(step),
+        Number(amount),
+        adminNotes
+      );
+
+      res.status(201).json({
+        status: "success",
+        message: "Loan ladder step created successfully",
+        data: ladder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Admin: Update an existing Loan Ladder step
+   */
+  static async updateLoanLadder(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      const { id } = req.params;
+      const updates = req.body;
+
+      checkPermission(admin, "manage_loans");
+
+      const ladder = await LoanService.updateLoanLadder(admin?._id || "", id, updates);
+
+      res.status(200).json({
+        status: "success",
+        message: "Loan ladder updated successfully",
+        data: ladder,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Admin: Delete a Loan Ladder step
+   */
+  static async deleteLoanLadder(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      const { id } = req.params;
+
+      checkPermission(admin, "manage_loans");
+
+      const result = await LoanService.deleteLoanLadder(admin?._id || "", id);
+
+      res.status(200).json({
+        status: "success",
+        message: result.message,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get all Loan Ladder steps (Admin + User)
+   */
+  static async getLoanLadders(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const page = Number(req.query.page) || 1;
+      const limit = Number(req.query.limit) || 20;
+
+      const ladders = await LoanService.getLoanLadders(page, limit);
+
+      res.status(200).json({
+        status: "success",
+        ...ladders,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Get a specific Loan Ladder step (Admin + User)
+   */
+  static async getLoanLadderById(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+
+      const ladder = await LoanService.getLoanLadderById(id);
+
+      res.status(200).json({
+        status: "success",
+        data: ladder,
       });
     } catch (error) {
       next(error);
