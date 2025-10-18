@@ -733,7 +733,6 @@ export class LoanService {
         stats.disbursedUsers++;
 
         expectedProfit = (repayment || 0) - (amount || 0);
-        realized = (repayment || 0) - (outstanding || 0) - (amount || 0);
       }
 
       // Loan status categorization
@@ -761,7 +760,6 @@ export class LoanService {
         let sum = 0;
 
         for (let payment of loan?.repayment_history || []) {
-          realized += Number(payment.amount);
           sum += isNaN(Number(payment.amount)) ? 0 : Number(payment.amount);
         }
 
@@ -769,7 +767,7 @@ export class LoanService {
       }
 
       stats.unrealizedProfit += Math.max(expectedProfit - realized, 0);
-      stats.realizedProfit += Math.max(realized, 0);
+      stats.realizedProfit += Math.max(stats.repaidAmount + stats.repaidingAmount, 0);
 
       if (loan.loan_payment_status == "in-progress") {
         stats.repaidingLoans++;
