@@ -766,8 +766,8 @@ export class LoanService {
         stats.repaidAmount += sum;
       }
 
-      stats.unrealizedProfit += Math.max(expectedProfit - realized, 0);
-      stats.realizedProfit += Math.max(stats.repaidAmount + stats.repaidingAmount, 0);
+      stats.realizedProfit = Math.max(stats.repaidAmount + stats.repaidingAmount, 0);
+      stats.unrealizedProfit = Math.max(expectedProfit - realized, 0);
 
       if (loan.loan_payment_status == "in-progress") {
         stats.repaidingLoans++;
