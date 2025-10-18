@@ -508,7 +508,7 @@ export class LoanController {
       });
     } catch (error) {
       next(error);
-    }
+    }  
   }
 
   /**
