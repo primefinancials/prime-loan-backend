@@ -722,6 +722,9 @@ export class LoanService {
       stats.totalApplied += amount;
       stats.appliedUsers++;
 
+      let expectedProfit = 0;
+      let realized = 0;
+
       // Disbursed loans
       if (
         loan.status == "accepted"
@@ -729,11 +732,8 @@ export class LoanService {
         stats.totalDisbursed += amount;
         stats.disbursedUsers++;
 
-        const expectedProfit = (repayment || 0) - (amount || 0);
-        const realized = (repayment || 0) - (outstanding || 0) - (amount || 0);
-
-        stats.realizedProfit += Math.max(realized, 0);
-        stats.unrealizedProfit += Math.max(expectedProfit - realized, 0);
+        expectedProfit = (repayment || 0) - (amount || 0);
+        realized = (repayment || 0) - (outstanding || 0) - (amount || 0);
       }
 
       // Loan status categorization
@@ -761,11 +761,15 @@ export class LoanService {
         let sum = 0;
 
         for (let payment of loan?.repayment_history || []) {
+          realized += Number(payment.amount);
           sum += isNaN(Number(payment.amount)) ? 0 : Number(payment.amount);
         }
 
         stats.repaidAmount += sum;
       }
+
+      stats.unrealizedProfit += Math.max(expectedProfit - realized, 0);
+      stats.realizedProfit += Math.max(realized, 0);
 
       if (loan.loan_payment_status == "in-progress") {
         stats.repaidingLoans++;
