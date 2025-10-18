@@ -9,6 +9,7 @@ import { VfdProvider, TransferRequest } from "../../shared/providers/vfd.provide
 import { sha512 } from "js-sha512";
 import { APIError } from "../../exceptions";
 import { ProfitService } from "../profits/profits.service";
+import { UuidService } from "../../shared/utils/uuid";
 
 export class TransferController {
   private static vfdProvider = new VfdProvider();
@@ -92,7 +93,7 @@ export class TransferController {
           amount: 40,
           source: "transaction",
           userId,
-          reference: crypto.randomUUID()
+          reference: UuidService.generate()
         });
 
         return res.status(200).json({
