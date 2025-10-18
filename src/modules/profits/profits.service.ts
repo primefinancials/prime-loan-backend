@@ -50,8 +50,8 @@ export class ProfitService {
     let providerResponse: any;
     try {
       providerResponse = await ProfitService.vfd.transfer(transferRequest);
-    } catch (err) {
-      console.log((`Failed to send profit: ${String(err)}`));
+    } catch (err: any) {
+      console.log((`Failed to send profit: ${String(err.response.data.message || err.message)}`));
       throw new Error(`Failed to send profit: ${String(err)}`);
     }
 
