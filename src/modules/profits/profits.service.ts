@@ -3,6 +3,7 @@ import Profit, { Profit as ProfitDoc } from "./profits.model";
 import { VfdProvider } from "../../shared/providers/vfd.provider";
 import { NotFoundError, APIError } from "../../exceptions";
 import { TransferRequest } from "../../shared/providers/vfd.provider";
+import { sha512 } from "js-sha512";
 
 export class ProfitService {
   private static vfd = new VfdProvider();
@@ -40,8 +41,8 @@ export class ProfitService {
       toSession: primeInfo.accountId,
       toAccount: primeInfo.accountNo,
       toBank: "999999",
-      signature: "",
       amount: String(params.amount),
+      signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
       remark: `${params.source} Profit`,
       transferType: "intra",
       reference: params.reference
