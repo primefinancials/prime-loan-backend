@@ -92,7 +92,7 @@ export class TransferController {
           amount: 40,
           source: "transaction",
           userId,
-          reference: result.reference
+          reference: crypto.randomUUID()
         });
 
         return res.status(200).json({
