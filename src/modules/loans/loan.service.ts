@@ -712,6 +712,8 @@ export class LoanService {
       notStarted: 0,
     };
 
+    let expectedProfit = 0;
+
     for (const loan of loans) {
       const amount = loan.amount || 0;
       const repayment = loan.repayment_amount || 0;
@@ -722,7 +724,6 @@ export class LoanService {
       stats.totalApplied += amount;
       stats.appliedUsers++;
 
-      let expectedProfit = 0;
       let realized = 0;
 
       // Disbursed loans
@@ -732,7 +733,7 @@ export class LoanService {
         stats.totalDisbursed += amount;
         stats.disbursedUsers++;
 
-        expectedProfit = (repayment || 0) - (amount || 0);
+        expectedProfit += (repayment || 0) - (amount || 0);
       }
 
       // Loan status categorization
@@ -766,9 +767,6 @@ export class LoanService {
         stats.repaidAmount += sum;
       }
 
-      stats.realizedProfit = Math.max(stats.repaidAmount + stats.repaidingAmount, 0);
-      stats.unrealizedProfit = Math.max(expectedProfit - realized, 0);
-
       if (loan.loan_payment_status == "in-progress") {
         stats.repaidingLoans++;
         let sum = 0;
@@ -789,6 +787,9 @@ export class LoanService {
         stats.pendingAmount += amount;
       }
     }
+
+    stats.realizedProfit = Math.max(stats.repaidAmount + stats.repaidingAmount, 0);
+    stats.unrealizedProfit = Math.max(expectedProfit - stats.realizedProfit, 0);
 
     return {
       totalLoans: loans.length,
