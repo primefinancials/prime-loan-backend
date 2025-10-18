@@ -432,12 +432,16 @@ export class UserService {
      * Get user financial summary
      */
     static async getUserFinancialSummary(user: User | null) {
-        const [walletBalance, activeLoans, savingsPlans] = await Promise.all([
+        const [walletBalance, activeLoans, pendingLoans, savingsPlans] = await Promise.all([
             LedgerService.getUserWalletBalance(user?._id || ""),
             Loan.find({ 
                 userId: user?._id || "", 
                 status: "accepted",
                 loan_payment_status: { $in: ["in-progress", "not-started"] } 
+            }),
+            Loan.find({ 
+                userId: user?._id || "", 
+                status: "pending",
             }),
             SavingsPlan.find({ userId: user?._id || "", status: "ACTIVE" })
         ]);
@@ -516,6 +520,7 @@ export class UserService {
             totalLoanOutstanding,
             totalSavings,
             activeLoansCount: activeLoans.length,
+            pendingLoansCount: pendingLoans.length,
             activeSavingsCount: savingsPlans.length,
             creditScore: await this.getUserCreditScore(user?._id || ""),
             activity

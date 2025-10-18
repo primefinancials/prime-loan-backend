@@ -773,6 +773,7 @@ export class LoanService {
 
         for (let payment of loan?.repayment_history || []) {
           sum += isNaN(Number(payment.amount)) ? 0 : Number(payment.amount);
+          expectedProfit += Number(payment.amount);
         }
 
         stats.repaidingAmount += sum;
