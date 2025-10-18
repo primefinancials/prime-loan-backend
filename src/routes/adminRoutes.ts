@@ -1096,7 +1096,7 @@ router.patch(
 
 /**
  * @swagger
- * /api/loans/ladder:
+ * /backoffice/ladder:
  *   post:
  *     summary: Create a new Loan Ladder step
  *     description: Admin-only endpoint to create a new ladder step defining the loan progression structure.
@@ -1137,7 +1137,7 @@ router.post("/ladder", verifyJwtRest(), LoanController.createLoanLadder as any);
 
 /**
  * @swagger
- * /api/loans/ladder/{id}:
+ * /backoffice/ladder/{id}:
  *   put:
  *     summary: Update a Loan Ladder step
  *     description: Admin-only endpoint to modify existing ladder details.
@@ -1212,7 +1212,7 @@ router.delete("/ladder/:id", verifyJwtRest(), LoanController.deleteLoanLadder as
 
 /**
  * @swagger
- * /backoffice/loans/ladder:
+ * /backoffice/ladder:
  *   get:
  *     summary: Get all Loan Ladder steps
  *     description: Retrieve paginated list of all loan ladders (accessible by users and admins).
@@ -1250,7 +1250,7 @@ router.get("/ladder", verifyJwtRest(), LoanController.getLoanLadders as any);
 
 /**
  * @swagger
- * /backoffice/loans/ladder/{id}:
+ * /backoffice/ladder/{id}:
  *   get:
  *     summary: Get a specific Loan Ladder step
  *     description: Retrieve details of a single loan ladder step by ID (accessible by both admin and user).

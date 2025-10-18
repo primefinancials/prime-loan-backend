@@ -51,6 +51,7 @@ export class ProfitService {
     try {
       providerResponse = await ProfitService.vfd.transfer(transferRequest);
     } catch (err) {
+      console.log((`Failed to send profit: ${String(err)}`));
       throw new Error(`Failed to send profit: ${String(err)}`);
     }
 
