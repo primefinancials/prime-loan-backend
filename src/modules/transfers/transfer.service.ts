@@ -50,7 +50,7 @@ export class TransferService {
 
     const session = await DatabaseService.startSession();
 
-    console.log(" In Initiate Transfer")
+    console.log("In Initiate Transfer:", request)
 
     try {
       return await DatabaseService.withTransaction(session, async () => {
@@ -96,6 +96,8 @@ export class TransferService {
 
         user.user_metadata.wallet = String(Number(request.walletBalance || 0) - Number(transfer.amount));
         await user.save();
+
+        console.log({ user_metadata: user.user_metadata });
 
         const result: TransferResult = {
           traceId,
