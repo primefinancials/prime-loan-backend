@@ -223,7 +223,7 @@ export class TransferController {
     try {
       console.log({ body: req.body })
       const profit = await SettingsService.calculateProfit("transfer", "receive", Number(req.body.amount))
-      const txn = await TransferService.walletAlerts({ amount: Number(req.body.amount) - profit, ...req.body });
+      const txn = await TransferService.walletAlerts({ ...req.body, amount: (Number(req.body.amount) - profit) });
       
       if (!txn) {
         return res.status(404).json({ status: "error", message: "User account not found" });
