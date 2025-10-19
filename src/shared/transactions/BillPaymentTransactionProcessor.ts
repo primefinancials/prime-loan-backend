@@ -73,8 +73,9 @@ export async function processTransaction({
         billPayment.status = "FAILED";
         billPayment.meta = { ...billPayment.meta, txnError: err.message };
         await billPayment.save({ session });
-        console.log(err?.response?.data?.message || err.message)
-        throw new APIError(400, err?.response?.data?.message || err.message || "Transaction initialization failed");
+        console.log(err?.response?.data?.message || err.message);
+        await TransferService.failTransfer(txnResponse?.reference || "");
+        throw new Error(err?.response?.data?.message || err.message || "Transaction initialization failed");
       }
 
       console.log({ txnResponse })
@@ -85,7 +86,8 @@ export async function processTransaction({
         billPayment.meta = { ...billPayment.meta, txnResponse };
         await billPayment.save({ session });
         console.log(`message: ${txnResponse.message } status: ${txnResponse.statusCode}`)
-        throw new APIError(400, txnResponse.message || "BillPayment failed during initialization");
+        await TransferService.failTransfer(txnResponse?.reference || "");
+        throw new Error(txnResponse.message || "BillPayment failed during initialization");
       }
 
       // 3️⃣ Proceed to call providerFn
@@ -138,6 +140,7 @@ export async function processTransaction({
           };
         } else {
           // ❌ Provider failed → trigger refund
+          await TransferService.failTransfer(txnResponse?.reference || "");
           throw new Error(providerResponse.message || "Provider transaction failed");
         }
       } catch (err: any) {
