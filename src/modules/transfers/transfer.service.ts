@@ -54,7 +54,7 @@ export class TransferService {
 
     try {
       return await DatabaseService.withTransaction(session, async () => {
-        const user = await User.findOne({ "user_metadata.accountNo": request.fromAccount }).session(session);
+        const user = await User.findOne({ "user_metadata.accountNo": request.fromAccount });
         if (!user) {
           throw new Error("User Not Found");
         }
@@ -94,8 +94,11 @@ export class TransferService {
           }, session);
         }
 
-        user.user_metadata.wallet = String(Number(request.walletBalance || 0) - Number(transfer.amount));
-        await user.save();
+        await User.findOneAndUpdate(
+          { _id: user._id },
+          { user_metadata: { ...user.user_metadata, wallet: String(Number(request.walletBalance || 0) - Number(transfer.amount)) } },
+          { new: true, upsert: true }
+        )
 
         console.log({ user_metadata: user.user_metadata });
 
@@ -417,8 +420,11 @@ export class TransferService {
       providerRef: body.session_id
     });
 
-    user.user_metadata.wallet = userAccountRes.data.accountBalance;
-    await user.save();
+    await User.findOneAndUpdate(
+      { _id: user._id },
+      { user_metadata: { ...user.user_metadata, wallet: String(userAccountRes.data.accountBalance) } },
+      { new: true, upsert: true }
+    )
 
     await NotificationService.sendCreditAlert(user, body.amount, body.originator_account_name, body.reference);
 
