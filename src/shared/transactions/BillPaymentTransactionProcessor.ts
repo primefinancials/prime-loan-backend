@@ -73,15 +73,18 @@ export async function processTransaction({
         billPayment.status = "FAILED";
         billPayment.meta = { ...billPayment.meta, txnError: err.message };
         await billPayment.save({ session });
-        throw new APIError(400, err.message || "Transaction initialization failed");
+        console.log(err?.response?.data?.message || err.message)
+        throw new APIError(400, err?.response?.data?.message || err.message || "Transaction initialization failed");
       }
 
+      console.log({ txnResponse })
+
       // ✅ Check if transaction succeeded
-      const txnStatus = txnResponse?.status || txnResponse?.statusCode;
-      if (txnStatus !== "00") {
+      if (txnResponse.statusCode !== "00") {
         billPayment.status = "FAILED";
         billPayment.meta = { ...billPayment.meta, txnResponse };
         await billPayment.save({ session });
+        console.log(`message: ${txnResponse.message } status: ${txnResponse.statusCode}`)
         throw new APIError(400, txnResponse.message || "BillPayment failed during initialization");
       }
 
@@ -92,7 +95,7 @@ export async function processTransaction({
 
         const providerStatus = providerResponse?.status?.toLowerCase?.() || "";
 
-        if (providerStatus === "success" || providerStatus === "successful") {
+        if (providerStatus === "success") {
           // 4️⃣ Complete transaction (mark completed)
           await TransferService.completeTransfer(
             txnResponse.reference,
@@ -145,7 +148,7 @@ export async function processTransaction({
           refundResponse = await refundProvider();
           console.log("Refund Response:", refundResponse);
         } catch (refundErr: any) {
-          console.error("Refund Failed:", refundErr.message);
+          console.error("Refund Failed:", refundErr?.response?.data?.message || refundErr.message);
         }
 
         // 6️⃣ Mark failed + save all responses
