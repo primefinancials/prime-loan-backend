@@ -93,7 +93,7 @@ export class TransferService {
             }, session);
           }
 
-          user.user_metadata.wallet = String(Number(request.walletBalance || user?.user_metadata.wallet || 0) - Number(transfer.amount));
+          user.user_metadata.wallet = String(Number(request.walletBalance || 0) - Number(transfer.amount));
           await user.save();
         }
 
@@ -378,6 +378,9 @@ export class TransferService {
     const user = await User.findOne({ "user_metadata.accountNo": body.account_number });
     if (!user) return null;
 
+    const userAccountRes = await TransferService.vfdProvider.getAccountInfo(user.user_metadata.accountNo || "");
+    if (!userAccountRes.data) return null;
+
     const traceId = body?.session_id || body.reference;
 
     // Ledger credit
@@ -412,7 +415,7 @@ export class TransferService {
       providerRef: body.session_id
     });
 
-    user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(body.amount));
+    user.user_metadata.wallet = userAccountRes.data.accountBalance;
     await user.save();
 
     await NotificationService.sendCreditAlert(user, body.amount, body.originator_account_name, body.reference);

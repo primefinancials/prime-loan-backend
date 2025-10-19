@@ -81,7 +81,7 @@ export async function processTransaction({
       console.log({ txnResponse })
 
       // ✅ Check if transaction succeeded
-      if (txnResponse.statusCode !== "00") {
+      if (txnResponse.status !== "00") {
         billPayment.status = "FAILED";
         billPayment.meta = { ...billPayment.meta, txnResponse };
         await billPayment.save({ session });
