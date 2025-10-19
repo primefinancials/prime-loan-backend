@@ -413,7 +413,7 @@ export class LoanService {
 
         // 6️⃣ Compute repayment details
         const duration = loan.duration || 21;
-        const fee = await SettingsService.calculateProfit("loan", params.amount);
+        const fee = await SettingsService.calculateProfit("loan", "send", params.amount);
         const total = Number(params.amount) + fee;
 
         const loanDate = new Date();

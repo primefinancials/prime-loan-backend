@@ -65,7 +65,7 @@ export class TransferController {
       walletBalance: String(userAccount.data.accountBalance)
     });
 
-    const profit = await SettingsService.calculateProfit("transfer", Number(amount))
+    const profit = await SettingsService.calculateProfit("transfer", "send", Number(amount))
 
     try {
       const transferReq: TransferRequest = {
@@ -222,10 +222,19 @@ export class TransferController {
   static async walletAlert(req: any, res: Response, next: NextFunction) {
     try {
       console.log({ body: req.body })
-      const txn = await TransferService.walletAlerts(req.body);
+      const profit = await SettingsService.calculateProfit("transfer", "send", Number(req.body.amount))
+      const txn = await TransferService.walletAlerts({ amount: Number(req.body.amount) - profit, ...req.body });
+      
       if (!txn) {
         return res.status(404).json({ status: "error", message: "User account not found" });
       }
+
+      await TransferController.profitService.recordRealizedProfit({
+        amount: profit,
+        source: "transaction",
+        userId: txn.userId,
+        reference: UuidService.generate()
+      });
       res.status(200).json({ status: "success", data: txn });
     } catch (error) {
       next(error);

@@ -576,10 +576,11 @@ export class AdminController {
 
   static async calculateProfit(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { category, amount } = req.query
+      const { category, action, amount } = req.query
 
       const settings = await SettingsService.calculateProfit(
         category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow", 
+        action as "send" | "receive",
         Number(amount)
       );
 

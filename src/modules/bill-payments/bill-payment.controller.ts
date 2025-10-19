@@ -35,7 +35,7 @@ export class BillPaymentController {
         idempotencyKey,
       });
 
-      const profit = await SettingsService.calculateProfit("bill-payment", amount)
+      const profit = await SettingsService.calculateProfit("bill-payment", "send", amount)
 
       await BillPaymentController.profitService.recordProfit({
         amount: profit,

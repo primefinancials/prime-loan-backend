@@ -10,6 +10,7 @@ export interface ProfitRange {
   category: "bill-payment" | "transfer" | "loan" | "savings" | "escrow";
   type: "percentage" | "amount";
   amount: number;
+  action: "send" | "receive"
   description: string;
 }
 
@@ -53,6 +54,7 @@ const ProfitRangeSchema = new Schema<ProfitRange>(
       enum: ["bill-payment", "transfer", "loan", "savings", "escrow"],
       required: true,
     },
+    action: { type: String, enum: ["send", "receive"], default: "send" },
     type: { type: String, enum: ["percentage", "amount"], required: true },
     amount: { type: Number, default: 0 },
     description: { type: String, required: true }
@@ -99,6 +101,7 @@ const SettingsSchema = new Schema<ISettings>(
           minAmount: 100,
           maxAmount: 4999,
           amount: 8,
+          action: "send",
           description: "Transfer Fee"
         },
         {
@@ -107,6 +110,7 @@ const SettingsSchema = new Schema<ISettings>(
           minAmount: 5000,
           maxAmount: 5000000,
           amount: 50,
+          action: "receive",
           description: "VAT Fee"
         },
         {
@@ -114,6 +118,7 @@ const SettingsSchema = new Schema<ISettings>(
           type: "percentage",
           minAmount: 0,
           maxAmount: 500000,
+          action: "send",
           amount: 0.10, // 10%
           description: "Loan Interest"
         },
@@ -122,6 +127,7 @@ const SettingsSchema = new Schema<ISettings>(
           type: "amount",
           minAmount: 0,
           maxAmount: 500000,
+          action: "send",
           amount: 500,
           description: "Service Fee"
         },
@@ -130,6 +136,7 @@ const SettingsSchema = new Schema<ISettings>(
           type: "percentage",
           minAmount: 0,
           maxAmount: 100000,
+          action: "send",
           amount: 0.03, // 3%
           description: "Bill Payment Commision"
         },
@@ -138,6 +145,7 @@ const SettingsSchema = new Schema<ISettings>(
           type: "percentage",
           minAmount: 0,
           maxAmount: 100000,
+          action: "send",
           amount: 0.025, // 2.5%
           description: "Savings Interest"
         },

@@ -74,6 +74,7 @@ export class SettingsService {
    */
   static async calculateProfit(
     category: "bill-payment" | "transfer" | "loan" | "savings" | "escrow",
+    action: "send" | "receive",
     amount: number
   ): Promise<number> {
     if (!amount || amount <= 0)
@@ -96,10 +97,12 @@ export class SettingsService {
     let totalProfit = 0;
 
     for (const config of validConfigs) {
-      if (config.type === "percentage") {
-        totalProfit += (config.amount! / 100) * amount;
-      } else if (config.type === "amount") {
-        totalProfit += config.amount || 0;
+      if(action == config.action) {
+        if (config.type === "percentage") {
+          totalProfit += (config.amount! / 100) * amount;
+        } else if (config.type === "amount") {
+          totalProfit += config.amount || 0;
+        }
       }
     }
 

@@ -247,7 +247,7 @@ export class LoanController {
         idempotencyKey,
       } as DisburseParams);
 
-      const profit = await SettingsService.calculateProfit("loan", amount)
+      const profit = await SettingsService.calculateProfit("loan", "send", amount)
 
       await LoanController.profitService.recordProfit({
         amount: profit,
