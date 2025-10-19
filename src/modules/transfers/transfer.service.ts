@@ -55,10 +55,12 @@ export class TransferService {
     try {
       return await DatabaseService.withTransaction(session, async () => {
         const user = await User.findOne({ "user_metadata.accountNo": request.fromAccount }).session(session);
-        if (user) {
-          if (Number(user?.user_metadata?.wallet || 0) < request.amount) {
-            throw new Error("Insufficient wallet balance");
-          }
+        if (!user) {
+          throw new Error("User Not Found");
+        }
+
+        if (Number(user.user_metadata?.wallet || 0) < request.amount) {
+          throw new Error("Insufficient wallet balance");
         }
         // Create transfer record
         const [transfer] = await Transfer.create([{
@@ -77,25 +79,23 @@ export class TransferService {
           naration: request.naration
         }], { session });
 
-        if (user) {
-          if(type == "transfer") {
-            // Create debit ledger entry
-            await LedgerService.createEntry({
-              traceId,
-              userId: user._id,
-              account: `user_wallet:${user._id}`,
-              entryType: 'DEBIT',
-              category: 'transfer',
-              amount: request.amount,
-              status: 'PENDING',
-              idempotencyKey: request.idempotencyKey,
-              meta: { transferId: transfer._id, toAccount: request.toAccount }
-            }, session);
-          }
-
-          user.user_metadata.wallet = String(Number(request.walletBalance || 0) - Number(transfer.amount));
-          await user.save();
+        if(type == "transfer") {
+          // Create debit ledger entry
+          await LedgerService.createEntry({
+            traceId,
+            userId: user._id,
+            account: `user_wallet:${user._id}`,
+            entryType: 'DEBIT',
+            category: 'transfer',
+            amount: request.amount,
+            status: 'PENDING',
+            idempotencyKey: request.idempotencyKey,
+            meta: { transferId: transfer._id, toAccount: request.toAccount }
+          }, session);
         }
+
+        user.user_metadata.wallet = String(Number(request.walletBalance || 0) - Number(transfer.amount));
+        await user.save();
 
         const result: TransferResult = {
           traceId,
