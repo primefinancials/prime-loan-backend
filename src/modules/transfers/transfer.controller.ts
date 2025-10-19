@@ -222,7 +222,7 @@ export class TransferController {
   static async walletAlert(req: any, res: Response, next: NextFunction) {
     try {
       console.log({ body: req.body })
-      const profit = await SettingsService.calculateProfit("transfer", "send", Number(req.body.amount))
+      const profit = await SettingsService.calculateProfit("transfer", "receive", Number(req.body.amount))
       const txn = await TransferService.walletAlerts({ amount: Number(req.body.amount) - profit, ...req.body });
       
       if (!txn) {
