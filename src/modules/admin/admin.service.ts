@@ -453,7 +453,8 @@ export class AdminService {
 
         if (action === 'approve') {
           // Disburse via LoanService (implementation dependent)
-          const loan = await LoanService.disburseLoan({ adminId, loanId });
+          const thisLoan = await LoanService.getLoanById(loanId);
+          const loan = await LoanService.disburseLoan({ adminId, loanId, amount: Number(thisLoan?.amount || 0) });
           results.push({ loanId, status: 'success', message: 'Loan approved and disbursed', loan });
         } else {
           const loan = await LoanService.rejectLoan(adminId, loanId, reason || 'Rejected by admin');
