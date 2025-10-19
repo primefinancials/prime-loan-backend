@@ -95,7 +95,7 @@ const LoanSchema: Schema = new Schema(
     duration: { type: String, required: true },
     category: { type: String, enum: ["personal", "working"], required: true },
     type: { type: String, enum: ["request", "repay"], required: true },
-    status: { type: String, enum: ["pending", "rejected", "accepted"], required: true },
+    status: { type: String, enum: ["pending", "rejected", "accepted", "canceled"], required: true },
     loan_payment_status: { type: String, enum: ["complete", "in-progress", "not-started"], required: true },
     repayment_date: { type: String, required: true },
     loan_date: { type: String, required: true },

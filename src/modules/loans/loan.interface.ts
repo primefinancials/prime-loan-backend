@@ -2,7 +2,7 @@ import { Document } from "mongoose";
 
 export type LOANCATEGORY = "personal" | "working";
 export type LOANTYPE = "request" | "repay";
-export type LOANSTATUS = "pending" | "rejected" | "accepted";
+export type LOANSTATUS = "pending" | "rejected" | "accepted" | "canceled";
 export type LOANPAYMENTSTATUS = "complete" | "in-progress" | "not-started";
 
 export interface Subscriber {

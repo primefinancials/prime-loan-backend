@@ -247,8 +247,10 @@ export class LoanController {
         idempotencyKey,
       } as DisburseParams);
 
+      const profit = await SettingsService.calculateProfit("loan", amount)
+
       await LoanController.profitService.recordProfit({
-        amount: ((10 / 100) * Number(amount)) + 500,
+        amount: profit,
         source: "loan",
         userId: result.loan.userId,
         reference: result.loan._id,
@@ -276,6 +278,26 @@ export class LoanController {
       checkPermission(admin, "manage_loans");
 
       const loan = await LoanService.rejectLoan(admin?._id || "", id, reason);
+
+      res.status(200).json({
+        status: "success",
+        data: loan,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * User: Cancel a loan
+   */
+  static async cancelLoan(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const user = req.user;
+
+      const loan = await LoanService.cancelLoan(user?._id || "", id, reason);
 
       res.status(200).json({
         status: "success",

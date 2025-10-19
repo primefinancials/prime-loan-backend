@@ -11,6 +11,7 @@ import { Request, Response, NextFunction } from "express";
 import BillPaymentService from "./bill.payment.service";
 import { ProtectedRequest } from "../../interfaces";
 import { ProfitService } from "../profits/profits.service";
+import { SettingsService } from "../admin/settings.service";
 
 export class BillPaymentController {
   private static profitService = new ProfitService();
@@ -34,8 +35,10 @@ export class BillPaymentController {
         idempotencyKey,
       });
 
+      const profit = await SettingsService.calculateProfit("bill-payment", amount)
+
       await BillPaymentController.profitService.recordProfit({
-        amount: (3 / 100) * Number(amount),
+        amount: profit,
         source: "bill-payment",
         userId,
         reference: result.traceId,

@@ -10,6 +10,7 @@ import { sha512 } from "js-sha512";
 import { APIError } from "../../exceptions";
 import { ProfitService } from "../profits/profits.service";
 import { UuidService } from "../../shared/utils/uuid";
+import { SettingsService } from "../admin/settings.service";
 
 export class TransferController {
   private static vfdProvider = new VfdProvider();
@@ -64,6 +65,8 @@ export class TransferController {
       walletBalance: String(userAccount.data.accountBalance)
     });
 
+    const profit = await SettingsService.calculateProfit("transfer", Number(amount))
+
     try {
       const transferReq: TransferRequest = {
         uniqueSenderAccountId: toBank == '999999'? fromSavingsId : "",
@@ -78,7 +81,7 @@ export class TransferController {
         toSavingsId,
         toBank,
         signature: sha512.hex(`${fromAccount}${toAccount}`),
-        amount: Number(amount) - 40,
+        amount: Number(amount) - profit,
         remark: remark || "",
         transferType,
         reference: result.reference,
@@ -90,7 +93,7 @@ export class TransferController {
         await TransferService.completeTransfer(result.reference, "transfer");
 
         await TransferController.profitService.recordRealizedProfit({
-          amount: 40,
+          amount: profit,
           source: "transaction",
           userId,
           reference: UuidService.generate()

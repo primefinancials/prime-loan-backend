@@ -22,6 +22,8 @@ import User from "../users/user.model";
 import { sha512 } from "js-sha512";
 import { getMailsByPermission } from "../../shared/utils/checkPermission";
 import { ILoanLadder } from "./loan-ladder.model";
+import { Transfer } from "../transfers/transfer.model";
+import { SettingsService } from "../admin/settings.service";
 
 /* ---------- Types ---------- */
 
@@ -61,7 +63,7 @@ export interface CreateLoanParams {
 export interface DisburseParams {
   adminId: string | "system";
   loanId: string;
-  amount?: number; // override amount (naira)
+  amount: number; // override amount (naira)
   idempotencyKey?: string;
 }
 
@@ -309,18 +311,37 @@ export class LoanService {
   static async disburseLoan(params: DisburseParams) {
     requiredParam("adminId", params.adminId);
     requiredParam("loanId", params.loanId);
+    requiredParam("amount", params.amount);
 
     const session = await DatabaseService.startSession();
+
     try {
       return await DatabaseService.withTransaction(session, async () => {
-        const loan = await Loan.findById(params.loanId).session(session);
-        if (!loan) throw new NotFoundError("Loan not found");
-        if (loan.status === "accepted") throw new BadRequestError("Loan already accepted");
+        const { loanId, adminId } = params;
 
-        const user = await User.findOne({ _id: loan.userId });
-        if (!user || Array.isArray(user) || !user._id) throw new NotFoundError("User not found");
+        // 1️⃣ Try to atomically lock the loan for disbursement
+        const loan = await Loan.findOneAndUpdate(
+          { _id: loanId, status: { $nin: ["accepted", "processing"] } },
+          { $set: { status: "processing" } },
+          { new: true, session }
+        );
 
-        // get prime / user account info
+        if (!loan) {
+          throw new BadRequestError("Loan already being processed or accepted");
+        }
+
+        const user = await User.findById(loan.userId).session(session);
+        if (!user) throw new NotFoundError("User not found");
+
+        // 2️⃣ Ensure idempotency key
+        const transferIdempotency = params.idempotencyKey || `disburse-${loan._id}`;
+        const existingTransfer = await Transfer.findOne({ idempotencyKey: transferIdempotency }).session(session);
+        if (existingTransfer) {
+          // Return existing disbursement result if already processed
+          return { loan, transfer: existingTransfer, reused: true };
+        }
+
+        // 3️⃣ Get account details
         const primeInfo = (await this.vfd.getPrimeAccountInfo()).data;
         const userAccTyped = (await this.vfd.getAccountInfo(user.user_metadata.accountNo)).data;
 
@@ -328,13 +349,9 @@ export class LoanService {
           throw new Error("Unable to get account info for disbursement");
         }
 
-        // Determine disbursement amounts
-        const amountNaira = (params.amount ?? loan.amount); // naira
-        const processing_fee = Number(loan.repayment_amount - loan.amount);
+        const amountNaira = params.amount;
 
-        // 1) create transfer record (pending) via TransferService (ledger entry created inside TransferService)
-        // generate idempotency if not provided
-        const transferIdempotency = params.idempotencyKey || `disburse-${UuidService.generate()}`;
+        // 4️⃣ Initiate transfer
         const transferRecord = await TransferService.initiateTransfer({
           fromAccount: primeInfo.accountNo,
           userId: String(loan.userId),
@@ -345,10 +362,10 @@ export class LoanService {
           bankCode: "999999",
           remark: "Loan disbursement",
           idempotencyKey: transferIdempotency,
-          walletBalance: String(userAccTyped.accountBalance)
+          walletBalance: String(userAccTyped.accountBalance),
         }, "loan-disbursement");
 
-        // build provider transfer payload (provider expects amount in kobo)
+        // 5️⃣ Send to provider
         const transferRequest: TransferRequest = {
           fromAccount: primeInfo.accountNo,
           uniqueSenderAccountId: "",
@@ -362,74 +379,78 @@ export class LoanService {
           toAccount: userAccTyped.accountNo,
           toBank: "999999",
           signature: sha512.hex(`${primeInfo.accountNo}${userAccTyped.accountNo}`),
-          amount: amountNaira, 
+          amount: amountNaira,
           remark: "Loan Disbursement",
           transferType: "intra",
-          reference: transferRecord.reference
+          reference: transferRecord.reference,
         } as any;
 
-        // 2) call provider
         let providerResponse: any;
         try {
-          providerResponse = await this.vfd.transfer(transferRequest as any);
+          providerResponse = await this.vfd.transfer(transferRequest);
         } catch (err: any) {
-          // fail transfer inside system
-          console.log({ error: err?.response?.data || err?.message || err })
           await TransferService.failTransfer(transferRecord.reference);
+          await Loan.findByIdAndUpdate(loanId, { status: "pending" }, { session });
           throw new APIError(409, `Provider disbursement failed: ${String(err)}`);
         }
 
-        const ok = providerResponse && (providerResponse.status === "00" || providerResponse.data?.txnId || providerResponse.txnId);
+        const ok =
+          providerResponse &&
+          (providerResponse.status === "00" ||
+            providerResponse.data?.txnId ||
+            providerResponse.txnId);
+
         if (!ok) {
           await TransferService.failTransfer(transferRecord.reference);
+          await Loan.findByIdAndUpdate(loanId, { status: "pending" }, { session });
           throw new APIError(409, `Disbursement failed: ${JSON.stringify(providerResponse)}`);
         }
 
-        // 3) complete internal transfer
-        const trxnRes = await TransferService.completeTransfer(transferRecord.reference, "loan-disbursement");
+        const trxnRes = await TransferService.completeTransfer(
+          transferRecord.reference,
+          "loan-disbursement"
+        );
 
-        // 4) update loan: compute total repayment schedule (fee + interest)
-        const fee = 500;
-        const loan_per = 10;
+        // 6️⃣ Compute repayment details
         const duration = loan.duration || 21;
-        const percentage = (loan.amount * (loan_per / 100));
-        const total = Number(Number(loan.amount) + Number(fee + percentage));
+        const fee = await SettingsService.calculateProfit("loan", params.amount);
+        const total = Number(params.amount) + fee;
 
         const loanDate = new Date();
         const repaymentDate = new Date(loanDate);
         repaymentDate.setDate(loanDate.getDate() + Number(duration));
 
-        loan.outstanding = total;
-        loan.status = "accepted";
-        loan.loan_date = loanDate.toISOString();
-        loan.repayment_date = repaymentDate.toISOString();
-        loan.loan_payment_status = "in-progress";
-        loan.adminAction = {
-          adminId: params.adminId,
-          action: "Approve",
-          date: new Date().toISOString()
-        };
+        Object.assign(loan, {
+          outstanding: total,
+          status: "accepted",
+          loan_date: loanDate.toISOString(),
+          repayment_date: repaymentDate.toISOString(),
+          loan_payment_status: "in-progress",
+          adminAction: {
+            adminId,
+            action: "Approve",
+            date: new Date().toISOString(),
+          },
+        });
 
         await loan.save({ session });
 
-        // 5) ledger double entry: platform_cash -> user_wallet
+        // 7️⃣ Ledger entry
         await LedgerService.createDoubleEntry(
           UuidService.generateTraceId(),
-          "loan_disbursement", // platform funding account
+          "loan_disbursement",
           `user_wallet:${user._id}`,
-          loan.amount,
+          params.amount,
           "loan",
-          {
-            userId: user._id,
-            subtype: "disbursement",
-            session
-          }
+          { userId: user._id, subtype: "disbursement", session }
         );
 
-        // 6) notify user (best-effort)
+        // 8️⃣ Notify user (best-effort)
         try {
           await NotificationService.sendLoanApproval(user, loan);
-        } catch (err) { console.warn("notify error:", err); }
+        } catch (err) {
+          console.warn("Notification error:", err);
+        }
 
         return { loan, providerResponse, trxnRes };
       });
@@ -609,6 +630,32 @@ export class LoanService {
   }
 
   /* ---------------------
+   * Cancel a loan (user)
+   * --------------------- */
+  static async cancelLoan(userId: string, loanId: string, reason: string) {
+    requiredParam("userId", userId);
+    requiredParam("loanId", loanId);
+    requiredParam("reason", reason);
+
+    const loan = await Loan.findById(loanId);
+    if (!loan) throw new NotFoundError("Loan not found");
+    if (loan.status === "accepted") throw new BadRequestError("Cannot cancel accepted loan");
+    if (loan.status === "rejected") throw new BadRequestError("Cannot cancel rejected loan");
+    if (loan.status === "canceled") throw new BadRequestError("Loan already canceled");
+
+    loan.outstanding = 0;
+    loan.rejectionReason = reason;
+    loan.status = "canceled";
+    loan.percentage = typeof loan.percentage === "string" 
+    ? Number(String(loan.percentage).replace("%", "")) 
+    : loan.percentage;
+
+    await loan.save();
+
+    return loan;
+  }
+
+  /* ---------------------
    * Reject a loan (admin)
    * --------------------- */
   static async rejectLoan(adminId: string, loanId: string, reason: string) {
@@ -679,18 +726,26 @@ export class LoanService {
   static async getAdminLoanStats() {
     const now = new Date();
 
-    // Load only required fields
-    const loans = await Loan.find({}, {
-      amount: 1,
-      repayment_amount: 1,
-      outstanding: 1,
-      loan_payment_status: 1,
-      repayment_date: 1,
-      status: 1,
-      repayment_history: 1
-    });
+    // ⚙️ Cache loan profit config once (avoid N+1)
+    const loanProfitConfigs = await SettingsService.getProfitConfig("loan");
 
-    let stats = {
+    // 📊 Only fetch required fields
+    const loans = await Loan.find(
+      {},
+      {
+        amount: 1,
+        repayment_amount: 1,
+        outstanding: 1,
+        loan_payment_status: 1,
+        repayment_date: 1,
+        status: 1,
+        repayment_history: 1,
+        userId: 1,
+      }
+    );
+
+    // Initialize stats
+    const stats = {
       totalApplied: 0,
       appliedUsers: 0,
       totalDisbursed: 0,
@@ -712,35 +767,66 @@ export class LoanService {
       notStarted: 0,
     };
 
+    // Keep track of unique users (optional)
+    const uniqueAppliedUsers = new Set<string>();
+    const uniqueDisbursedUsers = new Set<string>();
+
     let expectedProfit = 0;
+    let realizedProfit = 0;
+
+    // 🧠 Helper: compute expected profit once per loan
+    const computeExpectedProfit = (amount: number): number => {
+      let total = 0;
+      for (const config of loanProfitConfigs) {
+        if (amount < config.minAmount || amount > config.maxAmount) continue;
+        if (config.type === "percentage") total += (config.amount! / 100) * amount;
+        else total += config.amount || 0;
+      }
+      return total;
+    };
+
+    // 🧠 Helper: sum valid payments
+    const sumRepayments = (repayments: any[] = []) =>
+      repayments.reduce((acc, p) => {
+        if (p.action === "overdue_fee") return acc; // ignore penalties
+        const val = Number(p.amount);
+        return acc + (isNaN(val) ? 0 : val);
+      }, 0);
+
+    // 🧠 Helper: sum penalties
+    const sumPenalties = (repayments: any[] = []) =>
+      repayments.reduce((acc, p) => {
+        if (p.action === "overdue_fee") {
+          const val = Number(p.amount);
+          return acc + (isNaN(val) ? 0 : val);
+        }
+        return acc;
+      }, 0);
 
     for (const loan of loans) {
       const amount = loan.amount || 0;
-      const repayment = loan.repayment_amount || 0;
       const outstanding = loan.outstanding || 0;
       const dueDate = loan.repayment_date ? new Date(loan.repayment_date) : null;
 
-      // Applied loans
       stats.totalApplied += amount;
-      stats.appliedUsers++;
+      uniqueAppliedUsers.add(String(loan.userId));
 
-      let realized = 0;
-
-      // Disbursed loans
-      if (
-        loan.status == "accepted"
-      ) {
+      // ✅ Disbursed loans
+      if (loan.status === "accepted") {
         stats.totalDisbursed += amount;
-        stats.disbursedUsers++;
-
-        expectedProfit += (repayment || 0) - (amount || 0);
+        uniqueDisbursedUsers.add(String(loan.userId));
       }
 
-      // Loan status categorization
+      // ✅ Pending loans
+      if (loan.status === "pending") {
+        stats.pendingLoans++;
+        stats.pendingAmount += amount;
+      }
+
+      // ✅ Loan states
       if (
-        loan.status == "accepted" &&
-        (loan.loan_payment_status == "in-progress" ||
-        loan.loan_payment_status == "not-started")
+        loan.status === "accepted" &&
+        ["in-progress", "not-started"].includes(loan.loan_payment_status)
       ) {
         if (dueDate) {
           if (dueDate > now) {
@@ -756,41 +842,44 @@ export class LoanService {
         }
       }
 
-      if (loan.loan_payment_status == "complete") {
+      // ✅ Repaid loans
+      if (loan.loan_payment_status === "complete") {
         stats.repaidLoans++;
-        let sum = 0;
-
-        for (let payment of loan?.repayment_history || []) {
-          sum += isNaN(Number(payment.amount)) ? 0 : Number(payment.amount);
-        }
-
+        const sum = sumRepayments(loan.repayment_history);
+        const penalties = sumPenalties(loan.repayment_history);
         stats.repaidAmount += sum;
+        realizedProfit += sum - amount;
+        expectedProfit += computeExpectedProfit(amount) + penalties;
       }
 
-      if (loan.loan_payment_status == "in-progress") {
+      // ✅ In-progress loans
+      if (loan.loan_payment_status === "in-progress") {
         stats.repaidingLoans++;
-        let sum = 0;
-
-        for (let payment of loan?.repayment_history || []) {
-          sum += isNaN(Number(payment.amount)) ? 0 : Number(payment.amount);
-          expectedProfit += Number(payment.amount);
-        }
-
+        const sum = sumRepayments(loan.repayment_history);
+        const penalties = sumPenalties(loan.repayment_history);
         stats.repaidingAmount += sum;
+        if (sum > amount) realizedProfit += sum - amount;
+        expectedProfit += computeExpectedProfit(amount) + penalties;
       }
 
-      if(loan.status == "accepted" && loan.loan_payment_status == "not-started") {
+      // ✅ Not started
+      if (
+        loan.status === "accepted" &&
+        loan.loan_payment_status === "not-started"
+      ) {
         stats.notStarted++;
-      }
-
-      if (loan.status === "pending") {
-        stats.pendingLoans++;
-        stats.pendingAmount += amount;
+        expectedProfit += computeExpectedProfit(amount);
+        expectedProfit += sumPenalties(loan.repayment_history);
       }
     }
 
-    stats.realizedProfit = Math.max(stats.repaidAmount + stats.repaidingAmount, 0);
-    stats.unrealizedProfit = Math.max(expectedProfit - stats.realizedProfit, 0);
+    // 🧾 Assign unique user counts
+    stats.appliedUsers = uniqueAppliedUsers.size;
+    stats.disbursedUsers = uniqueDisbursedUsers.size;
+
+    // ✅ Profit calculations
+    stats.realizedProfit = Math.max(realizedProfit, 0);
+    stats.unrealizedProfit = Math.max(expectedProfit - realizedProfit, 0);
 
     return {
       totalLoans: loans.length,

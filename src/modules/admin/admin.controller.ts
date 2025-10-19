@@ -574,6 +574,41 @@ export class AdminController {
     }
   }
 
+  static async calculateProfit(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const { category, amount } = req.query
+
+      const settings = await SettingsService.calculateProfit(
+        category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow", 
+        Number(amount)
+      );
+
+      res.status(200).json({
+        status: 'success',
+        data: settings
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getProfitConfig(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const { category } = req.query
+
+      const settings = await SettingsService.getProfitConfig(
+        category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow",
+      );
+
+      res.status(200).json({
+        status: 'success',
+        data: settings
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * Login
    */

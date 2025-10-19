@@ -127,7 +127,7 @@ export class UserService {
         });
 
         // Credit signup bonus (async)
-        TransferService.createUserBonus(user._id, 5000).catch(console.error); // ₦50 bonus
+        TransferService.createUserBonus(user._id, 50).catch(console.error); // ₦50 bonus
 
         // Send welcome email (async)
         await NotificationService.sendWelcomeEmail(
