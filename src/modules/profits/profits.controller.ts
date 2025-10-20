@@ -7,10 +7,11 @@ export class ProfitController {
    */
   async getUserProfits(req: Request, res: Response) {
     try {
-      const { type, page = 1, limit = 10 } = req.query;
+      const { type, source, page = 1, limit = 10 } = req.query;
       const result = await profitService.getUserProfits(
         req.params.userId,
         type as "realized" | "unrealized",
+        source as "transaction" | "bill-payment" | "loan" | "savings" | "escrow",
         Number(page),
         Number(limit)
       );
@@ -25,9 +26,10 @@ export class ProfitController {
    */
   async getProfitByType(req: Request, res: Response) {
     try {
-      const { type, page = 1, limit = 10 } = req.query;
+      const { type, source, page = 1, limit = 10 } = req.query;
       const result = await profitService.getProfitByType(
         type as "realized" | "unrealized",
+        source as "transaction" | "bill-payment" | "loan" | "savings" | "escrow",
         Number(page),
         Number(limit)
       );

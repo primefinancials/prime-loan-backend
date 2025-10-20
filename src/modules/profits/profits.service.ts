@@ -120,12 +120,17 @@ export class ProfitService {
    * Fetch profits by type (paginated)
    */
   async getProfitByType(
-    type: "realized" | "unrealized",
+    type?: "realized" | "unrealized",
+    source?: "transaction" | "bill-payment" | "loan" | "savings" | "escrow",
     page = 1,
     limit = 10
   ) {
     const skip = (page - 1) * limit;
-    const query = { type };
+    let query: any = { };
+
+    if (type) query.type = type;
+    if (source) query.source = source;
+
     const [data, total] = await Promise.all([
       Profit.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
       Profit.countDocuments(query),
@@ -148,12 +153,14 @@ export class ProfitService {
   async getUserProfits(
     userId: string,
     type?: "realized" | "unrealized",
+    source?: "transaction" | "bill-payment" | "loan" | "savings" | "escrow",
     page = 1,
     limit = 10
   ) {
     const skip = (page - 1) * limit;
     const query: any = { userId };
     if (type) query.type = type;
+    if (source) query.source = source;
 
     const [data, total] = await Promise.all([
       Profit.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
@@ -176,7 +183,7 @@ export class ProfitService {
    * Get total profits (optionally filtered)
    */
   async getTotalProfits(filter?: {
-    source?: string;
+    source?: "transaction" | "bill-payment" | "loan" | "savings" | "escrow";
     userId?: string;
     type?: "realized" | "unrealized";
   }) {
