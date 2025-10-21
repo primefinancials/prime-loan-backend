@@ -99,7 +99,7 @@ export class SettingsService {
     for (const config of validConfigs) {
       if(action == config.action) {
         if (config.type === "percentage") {
-          totalProfit += (config.amount! / 100) * amount;
+          totalProfit += config.amount * amount;
         } else if (config.type === "amount") {
           totalProfit += config.amount || 0;
         }
