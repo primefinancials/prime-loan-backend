@@ -214,7 +214,7 @@ export class UserService {
 
         // Update last sign in
         user.last_sign_in_at = getCurrentTimestamp();
-        user.user_metadata.wallet = vfdUser.data.accountBalance
+        user.user_metadata = { ...user.user_metadata, wallet: vfdUser.data.accountBalance }
         await user.save();
 
         // Send login alert (async, non-blocking)
