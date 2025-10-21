@@ -80,6 +80,8 @@ const userSchema = new Schema<User>(
 
         // Loans
         "view_loans",
+        "view_overdue",
+        "view_pending",
         "manage_loans",
 
         // Transactions
@@ -88,6 +90,7 @@ const userSchema = new Schema<User>(
 
         // Reports / Settings
         "view_reports",
+        "view_profits",
         "manage_settings",
 
         // Savings
@@ -102,7 +105,7 @@ const userSchema = new Schema<User>(
         "view_notifications",
         "send_notifications",
         "manage_notifications"
-      ]
+      ],
     }
   },
   { timestamps: true }
