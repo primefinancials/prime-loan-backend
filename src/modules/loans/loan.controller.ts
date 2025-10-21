@@ -405,29 +405,22 @@ export class LoanController {
         | undefined;
       const search = req.query.search as string | undefined;
 
-      // Determine what subset the admin can view
-      const canView = checkPermission(admin, "view_loans");
-      const viewPending = checkPermission(admin, "view_pending");
-      const viewOverdue = checkPermission(admin, "view_overdue");
-
-      if (!canView && !viewPending && !viewOverdue) {
-        throw new UnauthorizedError("You do not have permission to view loans.");
+      if (checkPermission(admin, "view_loans")) {
+        const result = await LoanService.getLoansByCategory(category, page, limit, search);
+        return res.status(200).json({ status: "success", ...result });
       }
 
-      const data = await LoanService.getLoansByCategory(
-        canView
-          ? category
-          : viewPending
-          ? "pending"
-          : viewOverdue
-          ? "overdue"
-          : "active",
-        page,
-        limit,
-        search
-      );
+      if (checkPermission(admin, "view_pending")) {
+        const result = await LoanService.getLoansByCategory("pending", page, limit);
+        return res.status(200).json({ status: "success", ...result });
+      }
 
-      res.status(200).json({ status: "success", data });
+      if (checkPermission(admin, "view_overdue")) {
+        const result = await LoanService.getLoansByCategory("overdue", page, limit);
+        return res.status(200).json({ status: "success", ...result });
+      }
+
+      throw new UnauthorizedError("You do not have permission to view loans.");
     } catch (error) {
       next(error);
     }
