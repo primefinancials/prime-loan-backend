@@ -522,7 +522,7 @@ export class LoanService {
           toSession: primeInfo.accountId,
           toAccount: primeInfo.accountNo,
           toBank: "999999",
-          signature: "",
+          signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
           amount: repayAmount,
           remark: `${params.mandatory ? "Mandatory" : "Voluntary"} Loan Repayment`,
           transferType: "intra",
@@ -532,12 +532,12 @@ export class LoanService {
         let providerResponse: any;
         try {
           providerResponse = await this.vfd.transfer(transferRequest);
-        } catch (err) {
+        } catch (err: any) {
           await TransferService.failTransfer(transferRecord.reference);
-          throw new Error(`Repayment provider transfer failed: ${String(err)}`);
+          throw new Error(`Repayment provider transfer failed: ${String(err.message)}`);
         }
 
-        const ok = providerResponse && (providerResponse.status === "00" || providerResponse.data?.txnId || providerResponse.txnId);
+        const ok = providerResponse && (providerResponse.status === "00");
         if (!ok) {
           await TransferService.failTransfer(transferRecord.reference);
           throw new Error(`Repayment failed: ${JSON.stringify(providerResponse)}`);

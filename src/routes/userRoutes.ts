@@ -235,7 +235,7 @@ router.post(
   verifyJwtRest(),
   idempotencyMiddleware() as any,
   validateReqBody(rejectLoanSchema),
-  LoanController.requestLoan as unknown as express.RequestHandler
+  LoanController.cancelLoan as unknown as express.RequestHandler
 );
 
 router.post(
