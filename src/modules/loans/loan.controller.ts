@@ -407,17 +407,17 @@ export class LoanController {
 
       if (checkPermission(admin, "view_loans")) {
         const result = await LoanService.getLoansByCategory(category, page, limit, search);
-        return res.status(200).json({ status: "success", ...result });
+        return res.status(200).json({ status: "success", data: result });
       }
 
       if (checkPermission(admin, "view_pending")) {
         const result = await LoanService.getLoansByCategory("pending", page, limit);
-        return res.status(200).json({ status: "success", ...result });
+        return res.status(200).json({ status: "success", data: result });
       }
 
       if (checkPermission(admin, "view_overdue")) {
         const result = await LoanService.getLoansByCategory("overdue", page, limit);
-        return res.status(200).json({ status: "success", ...result });
+        return res.status(200).json({ status: "success", data: result });
       }
 
       throw new UnauthorizedError("You do not have permission to view loans.");
