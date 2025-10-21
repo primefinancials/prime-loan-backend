@@ -208,8 +208,13 @@ export class UserService {
             user.refresh_tokens.splice(0, user.refresh_tokens.length - 5);
         }
 
+        const vfdUser = await UserService.vfdProvider.getAccountInfo(user.user_metadata.accountNo);
+
+        console.log({vfdUser})
+
         // Update last sign in
         user.last_sign_in_at = getCurrentTimestamp();
+        user.user_metadata.wallet = vfdUser.data.accountBalance
         await user.save();
 
         // Send login alert (async, non-blocking)
@@ -225,6 +230,12 @@ export class UserService {
         delete (userObj as any).password;
         delete (userObj as any).__v;
         delete (userObj as any).refresh_tokens;
+
+        console.log({
+            ...userObj,
+            refreshToken,
+            accessToken,
+        })
 
         return {
             ...userObj,
