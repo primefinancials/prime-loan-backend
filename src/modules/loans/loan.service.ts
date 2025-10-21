@@ -907,6 +907,7 @@ export class LoanService {
         break;
 
       case "due":
+        filter.status = "active";
         filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
         filter.$expr = {
           $lte: [{ $toDate: "$repayment_date" }, now],
@@ -914,6 +915,7 @@ export class LoanService {
         break;
 
       case "overdue":
+        filter.status = "active";
         filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
         filter.$expr = {
           $lt: [{ $toDate: "$repayment_date" }, now],
