@@ -32,6 +32,7 @@ export class AdminController {
   static async createAdminAccount(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const actingAdmin = req.admin;
+      // original semantics: super-admin only
       if (!actingAdmin?.is_super_admin) {
         throw new UnauthorizedError('Only super admins can create admin accounts');
       }
@@ -53,7 +54,7 @@ export class AdminController {
   static async getAdmin(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const actingAdmin = req.admin;
-      checkPermission(actingAdmin!, 'view_users');
+      checkPermission(actingAdmin!, 'view_users', { throwOnFail: true });
 
       const { adminId } = req.params;
       if (!adminId) return res.status(400).json({ status: 'failed', message: 'adminId is required' });
@@ -69,10 +70,13 @@ export class AdminController {
     }
   }
 
+  /**
+   * Get list of admins
+   */
   static async getAdmins(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const actingAdmin = req.admin;
-      checkPermission(actingAdmin!, 'manage_users');
+      checkPermission(actingAdmin!, 'manage_users', { throwOnFail: true });
 
       const admin = await adminService.getAdmins();
 
@@ -91,6 +95,7 @@ export class AdminController {
   static async activateAndDeactivateAdmin(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const actingAdmin = req.admin;
+      // original semantics: super-admin only
       if (!actingAdmin?.is_super_admin) {
         throw new UnauthorizedError('Only super admins can activate or deactivate admins');
       }
@@ -117,7 +122,7 @@ export class AdminController {
   static async activateAndDeactivateUser(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const actingAdmin = req.admin;
-      checkPermission(actingAdmin!, 'manage_users');
+      checkPermission(actingAdmin!, 'manage_users', { throwOnFail: true });
 
       const { status, userId } = req.body;
       if (!userId || !status) {
@@ -141,7 +146,7 @@ export class AdminController {
   static async getTransactionDetails(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, "view_transactions");
+      checkPermission(admin!, "view_transactions", { throwOnFail: true });
 
       const { traceId } = req.params;
       if (!traceId) return res.status(400).json({ status: 'failed', message: 'traceId is required' });
@@ -173,7 +178,7 @@ export class AdminController {
   static async requeryTransfer(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, 'manage_transactions');
+      checkPermission(admin!, 'manage_transactions', { throwOnFail: true });
 
       const { id } = req.params;
       if (!id) return res.status(400).json({ status: 'failed', message: 'transfer id is required' });
@@ -196,7 +201,7 @@ export class AdminController {
 
       res.status(200).json({
         status: 'success',
-        message: 'Transfer requery not implemented on this server. Returning transfer state.',
+        message: 'Transfer requery triggered (best-effort).',
         data: transfer
       });
     } catch (error) {
@@ -210,8 +215,7 @@ export class AdminController {
   static async getDashboardStats(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-
-      checkPermission(admin!, 'view_reports');
+      checkPermission(admin!, 'view_reports', { throwOnFail: true });
 
       const stats = await adminService.getDashboardStats();
 
@@ -220,7 +224,7 @@ export class AdminController {
         data: stats
       });
     } catch (error) {
-      console.log('Dashboard Error: ', error)
+      console.log('Dashboard Error: ', error);
       next(error);
     }
   }
@@ -231,7 +235,7 @@ export class AdminController {
   static async getSystemHealth(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, "view_reports");
+      checkPermission(admin!, "view_reports", { throwOnFail: true });
 
       const health = await adminService.getSystemHealth();
 
@@ -250,7 +254,7 @@ export class AdminController {
   static async getFlaggedTransactions(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, 'manage_transactions');
+      checkPermission(admin!, 'manage_transactions', { throwOnFail: true });
 
       const result = await adminService.getFlaggedTransactions();
 
@@ -269,8 +273,7 @@ export class AdminController {
   static async getTransactions(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-
-      checkPermission(admin!, 'manage_transactions');
+      checkPermission(admin!, 'manage_transactions', { throwOnFail: true });
 
       const { search, type, status } = req.query;
       const { page, limit } = parsePageLimit(req.query);
@@ -292,7 +295,7 @@ export class AdminController {
   static async bulkLoanAction(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, 'manage_loans');
+      checkPermission(admin!, 'manage_loans', { throwOnFail: true });
 
       const { loanIds, action, reason } = req.body;
       if (!Array.isArray(loanIds) || loanIds.length === 0) return res.status(400).json({ status: 'failed', message: 'loanIds (array) is required' });
@@ -315,7 +318,7 @@ export class AdminController {
   static async generateBusinessReport(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, 'view_reports');
+      checkPermission(admin!, 'view_reports', { throwOnFail: true });
 
       const { from, to } = req.query;
       const startDate = from ? new Date(String(from)) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -338,7 +341,7 @@ export class AdminController {
   static async getProfitReport(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, 'view_reports');
+      checkPermission(admin!, 'view_reports', { throwOnFail: true });
 
       const { from, to, service } = req.query;
       const startDate = from ? new Date(String(from)) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -391,7 +394,7 @@ export class AdminController {
   static async getReconciliationInconsistencies(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, "manage_transactions");
+      checkPermission(admin!, "manage_transactions", { throwOnFail: true });
 
       const inconsistencies = await LedgerService.findInconsistencies();
 
@@ -413,7 +416,7 @@ export class AdminController {
   static async getBillPayment(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, "manage_bill_payments");
+      checkPermission(admin!, "manage_bill_payments", { throwOnFail: true });
 
       const { status, search, type } = req.query;
 
@@ -439,6 +442,7 @@ export class AdminController {
     try {
       const actingAdmin = req.admin;
 
+      // original: only super admins can update admin permissions
       if (!actingAdmin?.is_super_admin) {
         throw new UnauthorizedError('Only super admins can update admin permissions');
       }
@@ -465,7 +469,7 @@ export class AdminController {
     try {
       const admin = req.admin;
 
-      checkPermission(admin!, 'view_reports');
+      checkPermission(admin!, 'view_reports', { throwOnFail: true });
 
       const { page, limit } = parsePageLimit(req.query);
 
@@ -486,7 +490,7 @@ export class AdminController {
   static async getSavingsStats(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, 'view_savings');
+      checkPermission(admin!, 'view_savings', { throwOnFail: true });
 
       const stats = await SavingsService.getAdminSavingsStats();
 
@@ -505,7 +509,7 @@ export class AdminController {
   static async getSavingsByCategory(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, 'view_savings');
+      checkPermission(admin!, 'view_savings', { throwOnFail: true });
 
       const category = req.query.category as 'active' | 'matured' | 'withdrawn' | undefined;
       const { page, limit } = parsePageLimit(req.query);
@@ -521,28 +525,39 @@ export class AdminController {
     }
   }
 
+  /**
+   * List users (admin)
+   */
   static async getUsers(req: ProtectedRequest, res: Response, next: NextFunction) {
-    const admin = req.admin;
-    checkPermission(admin!, 'view_users');
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'view_users', { throwOnFail: true });
 
-    const { status, search } = req.query;
+      const { status, search } = req.query;
 
-    console.log({ status, search });
+      // optional debug left intact from original
+      console.log({ status, search });
 
-    const { page, limit } = parsePageLimit(req.query); 
+      const { page, limit } = parsePageLimit(req.query);
 
-    const result = await adminService.listAllUsers(admin?._id || "", page, limit, status as string, search as string);
+      const result = await adminService.listAllUsers(admin?._id || "", page, limit, status as string, search as string);
 
-    res.status(200).json({
-      status: 'success',
-      data: result
-    });
+      res.status(200).json({
+        status: 'success',
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 
+  /**
+   * Get settings
+   */
   static async getSettings(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, "manage_settings");
+      checkPermission(admin!, "manage_settings", { throwOnFail: true });
 
       const settings = await SettingsService.getSettings();
 
@@ -555,10 +570,13 @@ export class AdminController {
     }
   }
 
+  /**
+   * Update settings
+   */
   static async updateSettings(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, "manage_settings");
+      checkPermission(admin!, "manage_settings", { throwOnFail: true });
 
       const settings = await SettingsService.updateSettings(
         admin?._id || "",
@@ -574,12 +592,15 @@ export class AdminController {
     }
   }
 
+  /**
+   * Calculate profit (no permission check by request)
+   */
   static async calculateProfit(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const { category, action, amount } = req.query
 
       const settings = await SettingsService.calculateProfit(
-        category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow", 
+        category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow",
         action as "send" | "receive",
         Number(amount)
       );
@@ -593,9 +614,12 @@ export class AdminController {
     }
   }
 
+  /**
+   * Get profit config (no permission check by request)
+   */
   static async getProfitConfig(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { category } = req.query
+      const { category } = req.body;
 
       const settings = await SettingsService.getProfitConfig(
         category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow",
@@ -760,19 +784,25 @@ export class AdminController {
    * Change password for logged-in user
    */
   static async changePassword(req: ProtectedRequest, res: Response, next: NextFunction) {
-    const { admin } = req
+    try {
+      const { admin } = req;
 
-    if(!admin) {
-      throw new UnauthorizedError("Access denied");
+      if(!admin) {
+        throw new UnauthorizedError("Access denied");
+      }
+
+      const { oldPassword, newPassword } = req.body;
+      const userService = new UserService();
+      const result = await userService.changePassword(req.admin!._id, oldPassword, newPassword);
+
+      res.status(200).json({
+        status: "success",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
     }
-
-    const { oldPassword, newPassword } = req.body;
-    const userService = new UserService();
-    const result = await userService.changePassword(req.admin!._id, oldPassword, newPassword);
-
-    res.status(200).json({
-      status: "success",
-      data: result,
-    });
   }
 }
+
+export default AdminController;

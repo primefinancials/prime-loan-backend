@@ -2,11 +2,11 @@
  * Savings Controller - V2 savings endpoints
  * Handles savings plan creation, withdrawals, and admin analytics
  */
-import { Response, NextFunction } from 'express';
-import { ProtectedRequest } from '../../interfaces';
-import { SavingsService } from './savings.service';
-import { SettingsService } from '../admin/settings.service';
-import { checkPermission } from '../../shared/utils/checkPermission';
+import { Response, NextFunction } from "express";
+import { ProtectedRequest } from "../../interfaces";
+import { SavingsService } from "./savings.service";
+import { SettingsService } from "../admin/settings.service";
+import { checkPermission } from "../../shared/utils/checkPermission";
 
 export class SavingsController {
   /**
@@ -14,25 +14,24 @@ export class SavingsController {
    */
   static async createPlan(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { 
-        planType, 
+      const {
+        planType,
         planName,
-        targetAmount, 
-        durationDays, 
+        targetAmount,
+        durationDays,
         amount,
         interestRate,
-        renew
+        renew,
       } = req.body;
-      
+
       const userId = req.user!._id;
       const idempotencyKey = req.idempotencyKey!;
 
       const setting = await SettingsService.getSettings();
-
       if (!setting.savingsEnabled) {
         return res.status(400).json({
-          status: 'failed',
-          message: "Savings is currently in-active, try again later."
+          status: "failed",
+          message: "Savings is currently inactive, try again later.",
         });
       }
 
@@ -45,12 +44,12 @@ export class SavingsController {
         amount,
         interestRate,
         renew,
-        idempotencyKey
+        idempotencyKey,
       });
 
       res.status(201).json({
-        status: 'success',
-        data: result
+        status: "success",
+        data: result,
       });
     } catch (error) {
       next(error);
@@ -68,11 +67,10 @@ export class SavingsController {
       const idempotencyKey = req.idempotencyKey!;
 
       const setting = await SettingsService.getSettings();
-
       if (!setting.savingsEnabled) {
         return res.status(400).json({
-          status: 'failed',
-          message: "Savings is currently in-active, try again later."
+          status: "failed",
+          message: "Savings is currently inactive, try again later.",
         });
       }
 
@@ -80,12 +78,12 @@ export class SavingsController {
         planId: id,
         userId,
         amount,
-        idempotencyKey
+        idempotencyKey,
       });
 
       res.status(200).json({
-        status: 'success',
-        data: result
+        status: "success",
+        data: result,
       });
     } catch (error) {
       next(error);
@@ -98,14 +96,15 @@ export class SavingsController {
   static async getUserPlans(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const userId = req.user!._id;
+
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
 
       const plans = await SavingsService.getUserPlans(userId, page, limit);
 
       res.status(200).json({
-        status: 'success',
-        data: plans
+        status: "success",
+        data: plans,
       });
     } catch (error) {
       next(error);
@@ -113,12 +112,22 @@ export class SavingsController {
   }
 
   /**
-   * Get all users savings plans for the logged-in admin
+   * Admin: Get all users' savings plans
    */
   static async getPlans(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, 'view_savings');
+
+      // 🔐 Permission chain: view_savings → view_active_savings → manage_savings
+      if (
+        !checkPermission(admin!, "view_savings") &&
+        !checkPermission(admin!, "manage_savings")
+      ) {
+        return res.status(403).json({
+          status: "failed",
+          message: "You are not authorized to view savings plans.",
+        });
+      }
 
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
@@ -126,8 +135,8 @@ export class SavingsController {
       const plans = await SavingsService.getAllPlans(page, limit);
 
       res.status(200).json({
-        status: 'success',
-        data: plans
+        status: "success",
+        data: plans,
       });
     } catch (error) {
       next(error);
@@ -140,13 +149,23 @@ export class SavingsController {
   static async getAdminStats(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, 'view_savings');
+
+      // 🔐 Permission chain: view_savings_stats → view_savings → manage_savings
+      if (
+        !checkPermission(admin!, "view_savings") &&
+        !checkPermission(admin!, "manage_savings")
+      ) {
+        return res.status(403).json({
+          status: "failed",
+          message: "You are not authorized to view savings statistics.",
+        });
+      }
 
       const stats = await SavingsService.getAdminSavingsStats();
 
       res.status(200).json({
-        status: 'success',
-        data: stats
+        status: "success",
+        data: stats,
       });
     } catch (error) {
       next(error);
@@ -159,20 +178,35 @@ export class SavingsController {
   static async getSavingsByCategory(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-      checkPermission(admin!, 'view_savings');
 
-      const category = String(req.query.category || 'active') as 'active' | 'matured' | 'withdrawn';
+      // 🔐 Permission chain: view_savings → view_active_savings → manage_savings
+      if (
+        !checkPermission(admin!, "view_savings") &&
+        !checkPermission(admin!, "manage_savings")
+      ) {
+        return res.status(403).json({
+          status: "failed",
+          message: "You are not authorized to view savings by category.",
+        });
+      }
+
+      const category = String(req.query.category || "active") as
+        | "active"
+        | "matured"
+        | "withdrawn";
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
 
       const result = await SavingsService.getSavingsByCategory(category, page, limit);
 
       res.status(200).json({
-        status: 'success',
-        data: result
+        status: "success",
+        data: result,
       });
     } catch (error) {
       next(error);
     }
   }
 }
+
+export default SavingsController;

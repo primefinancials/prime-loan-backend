@@ -20,56 +20,55 @@ export class TransferController {
    * Initiate a transfer
    */
   static async initiate(req: ProtectedRequest, res: Response, next: NextFunction) {
-    const { 
-      fromAccount, 
-      fromClientId, 
-      fromClient, 
-      fromSavingsId,
-      fromBvn,
-      toClient,
-      toClientId,
-      toSession,
-      toAccount,
-      toSavingsId,
-      toBvn,
-      toBank,
-      toKyc,
-      amount, 
-      transferType,
-      remark, 
-    } = req.body;
-    const userId = req.user!._id;
-    const idempotencyKey = req.idempotencyKey!;
-
-    console.log({ body: req.body, idempotencyKey })
-
-    if (Number(req.user?.user_metadata?.wallet || 0) < amount) {
-      return res.status(400).json({
-        status: "error",
-        message: "Insufficient wallet balance",
-      });
-    }
-
-    const userAccount =  await TransferController.vfdProvider.getAccountInfo(fromAccount);
-
-    const result = await TransferService.initiateTransfer({
-      fromAccount,
-      userId,
-      toAccount,
-      beneficiaryName: toClient,
-      amount,
-      transferType,
-      bankCode: toBank,
-      remark,
-      idempotencyKey,
-      walletBalance: String(userAccount.data.accountBalance)
-    });
-
-    const profit = await SettingsService.calculateProfit("transfer", "send", Number(amount))
-
     try {
+      const { 
+        fromAccount, 
+        fromClientId, 
+        fromClient, 
+        fromSavingsId,
+        fromBvn,
+        toClient,
+        toClientId,
+        toSession,
+        toAccount,
+        toSavingsId,
+        toBvn,
+        toBank,
+        toKyc,
+        amount, 
+        transferType,
+        remark, 
+      } = req.body;
+
+      const userId = req.user!._id;
+      const idempotencyKey = req.idempotencyKey!;
+
+      if (Number(req.user?.user_metadata?.wallet || 0) < amount) {
+        return res.status(400).json({
+          status: "error",
+          message: "Insufficient wallet balance",
+        });
+      }
+
+      const userAccount = await TransferController.vfdProvider.getAccountInfo(fromAccount);
+
+      const result = await TransferService.initiateTransfer({
+        fromAccount,
+        userId,
+        toAccount,
+        beneficiaryName: toClient,
+        amount,
+        transferType,
+        bankCode: toBank,
+        remark,
+        idempotencyKey,
+        walletBalance: String(userAccount.data.accountBalance),
+      });
+
+      const profit = await SettingsService.calculateProfit("transfer", "send", Number(amount));
+
       const transferReq: TransferRequest = {
-        uniqueSenderAccountId: toBank == '999999'? fromSavingsId : "",
+        uniqueSenderAccountId: toBank == "999999" ? fromSavingsId : "",
         fromAccount,
         fromClientId,
         fromClient,
@@ -77,7 +76,7 @@ export class TransferController {
         toAccount,
         toClient,
         toSession,
-        ...(toBank == '999999'? { toClientId } : { fromBvn, toBvn, toKyc }),
+        ...(toBank == "999999" ? { toClientId } : { fromBvn, toBvn, toKyc }),
         toSavingsId,
         toBank,
         signature: sha512.hex(`${fromAccount}${toAccount}`),
@@ -89,14 +88,14 @@ export class TransferController {
 
       const providerResp = await TransferController.vfdProvider.transfer(transferReq);
 
-      if(providerResp.status === "00") {
+      if (providerResp.status === "00") {
         await TransferService.completeTransfer(result.reference, "transfer");
 
         await TransferController.profitService.recordRealizedProfit({
           amount: profit,
           source: "transaction",
           userId,
-          reference: UuidService.generate()
+          reference: UuidService.generate(),
         });
 
         return res.status(200).json({
@@ -108,7 +107,6 @@ export class TransferController {
       await TransferService.failTransfer(result.reference);
       throw new APIError(409, providerResp.message);
     } catch (error) {
-      await TransferService.failTransfer(result.reference);
       next(error);
     }
   }
@@ -142,9 +140,11 @@ export class TransferController {
     try {
       const { id } = req.params;
       const transfer = await TransferService.transfer(id);
+
       if (!transfer) {
         return res.status(404).json({ status: "error", message: "Transfer not found" });
       }
+
       res.status(200).json({ status: "success", data: transfer });
     } catch (error) {
       next(error);
@@ -168,13 +168,13 @@ export class TransferController {
   }
 
   /**
-   * Get paginated transfers for authenticated user
+   * Get my account info
    */
   static async getMyAccountInfo(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const userAccount = req.user!.user_metadata.accountNo;
-
       const result = await TransferController.vfdProvider.getAccountInfo(userAccount);
+
       res.status(200).json({ status: "success", data: result });
     } catch (error) {
       next(error);
@@ -182,18 +182,20 @@ export class TransferController {
   }
 
   /**
-   * Get paginated transfers for authenticated user
+   * Get beneficiary account info
    */
   static async getBeneficiaryAccountInfo(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const {
         userAccount,
         bankCode,
-        transferType
-      } = req.query as { userAccount: string; bankCode: string; transferType: 'intra' | 'inter' };
+        transferType,
+      } = req.query as { userAccount: string; bankCode: string; transferType: "intra" | "inter" };
 
-      if(!userAccount || !bankCode || !transferType) {
-        return res.status(400).json({ status: "error", message: "userAccount, bankCode and transferType are required" });
+      if (!userAccount || !bankCode || !transferType) {
+        return res
+          .status(400)
+          .json({ status: "error", message: "userAccount, bankCode and transferType are required" });
       }
 
       const result = await TransferController.vfdProvider.getBeneficiary(userAccount, bankCode, transferType);
@@ -202,14 +204,13 @@ export class TransferController {
       next(error);
     }
   }
-  
+
   /**
-   * Get paginated transfers for authenticated user
+   * Get banks
    */
   static async getBanks(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const result = await TransferController.vfdProvider.getBanks();
-
       res.status(200).json({ status: "success", data: result });
     } catch (error) {
       next(error);
@@ -221,10 +222,9 @@ export class TransferController {
    */
   static async walletAlert(req: any, res: Response, next: NextFunction) {
     try {
-      console.log({ body: req.body })
-      const profit = await SettingsService.calculateProfit("transfer", "receive", Number(req.body.amount))
-      const txn = await TransferService.walletAlerts({ ...req.body, amount: (Number(req.body.amount) - profit) });
-      
+      const profit = await SettingsService.calculateProfit("transfer", "receive", Number(req.body.amount));
+      const txn = await TransferService.walletAlerts({ ...req.body, amount: Number(req.body.amount) - profit });
+
       if (!txn) {
         return res.status(404).json({ status: "error", message: "User account not found" });
       }
@@ -233,8 +233,9 @@ export class TransferController {
         amount: profit,
         source: "transaction",
         userId: txn.userId,
-        reference: UuidService.generate()
+        reference: UuidService.generate(),
       });
+
       res.status(200).json({ status: "success", data: txn });
     } catch (error) {
       next(error);

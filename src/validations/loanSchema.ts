@@ -40,7 +40,5 @@ export const createClientLoanSchema = Joi.object({
 
 
 export const repayLoanSchema = Joi.object({
-  transactionId: Joi.string().required(),
   amount: Joi.string().required(),
-  outstanding: Joi.string().required(),
 });

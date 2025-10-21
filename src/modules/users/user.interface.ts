@@ -18,6 +18,8 @@ export type AdminPermission =
 
   // Loans
   | "view_loans"
+  | "view_overdue"
+  | "view_pending"
   | "manage_loans"
 
   // Transactions
@@ -26,6 +28,7 @@ export type AdminPermission =
 
   // Reports / Settings
   | "view_reports"
+  | "view_profits"
   | "manage_settings"
 
   // Savings

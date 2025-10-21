@@ -5,23 +5,27 @@
  * - Leverages LoanService (business logic) and LoanEligibilityService (rules)
  * - Transaction + Idempotency aware
  */
+
 import { Request, Response, NextFunction } from "express";
 import { ProtectedRequest } from "../../interfaces";
-import { LoanService, CreateLoanParams, RepayParams, DisburseParams } from "./loan.service";
+import { LoanService, CreateLoanParams, RepayParams } from "./loan.service";
 import { LoanEligibilityService } from "./loan-eligibility";
 import { LoanLadder } from "./loan-ladder.model";
 import { SettingsService } from "../admin/settings.service";
-import { checkPermission } from "../../shared/utils/checkPermission";
-import { getMailsByPermission } from "../../shared/utils/checkPermission";
+import { checkPermission, getMailsByPermission } from "../../shared/utils/checkPermission";
 import { NotificationService } from "../notifications/notification.service";
 import { UserService } from "../users/user.service";
 import { ProfitService } from "../profits/profits.service";
+import { UnauthorizedError } from "../../exceptions";
+import crypto from "crypto";
 
 export class LoanController {
   private static profitService = new ProfitService();
 
   /**
-   * Request a new loan
+   * ────────────────────────────────────────────────
+   * 🧾 USER: Request a new loan
+   * ────────────────────────────────────────────────
    */
   static async requestLoan(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
@@ -94,10 +98,7 @@ export class LoanController {
       const settings = await SettingsService.getSettings();
 
       if (!settings.autoLoanApproval) {
-        res.status(201).json({
-          status: "success",
-          data: loan,
-        });
+        return res.status(201).json({ status: "success", data: loan });
       }
 
       // Eligibility check
@@ -107,68 +108,51 @@ export class LoanController {
       if (eligibility.eligible) {
         if (eligibility.notifyAdmin) {
           await NotificationService.sendLoanApplicationAdmin(
-            req.user!, 
+            req.user!,
             `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
-            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount} although eligible, system require admin intervention because: ${eligibility.reason}.`,
+            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount}. System requires admin intervention because: ${eligibility.reason}.`,
             admins,
             loan
           );
         } else {
-          const amount = await LoanLadder.findOne({ step: req.user?.user_metadata.ladderIndex || 0 });
-
-          if (amount) {
-            // const disburseLoan = await LoanService.disburseLoan({
-            //   loanId: loan._id,
-            //   adminId: "system",
-            //   amount: amount.amount,
-            // });
-
-            return res.status(201).json({
-              status: "success",
-              data: loan,
-            });
+          const ladder = await LoanLadder.findOne({ step: req.user?.user_metadata.ladderIndex || 0 });
+          if (ladder) {
+            return res.status(201).json({ status: "success", data: loan });
           }
 
           await NotificationService.sendLoanApplicationAdmin(
-            req.user!, 
-            `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
-            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount} although eligible, system could not determine amount to disburse due to invalid ladder score: ${req.user?.user_metadata.ladderIndex}.`,
+            req.user!,
+            `Invalid Loan Ladder Configuration`,
+            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} applied for a loan but ladder score ${req.user?.user_metadata.ladderIndex} was invalid.`,
             admins,
             loan
           );
         }
-      }
-
-      if (!eligibility.eligible) {
+      } else {
         if (eligibility.notifyAdmin) {
           await NotificationService.sendLoanApplicationAdmin(
-            req.user!, 
-            `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
-            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount} and is not eligible, but system require admin intervention because: ${eligibility.reason}.`,
+            req.user!,
+            `Ineligible Loan Application Requiring Review`,
+            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} applied for a loan of ${amount} and is not eligible. Reason: ${eligibility.reason}.`,
             admins,
             loan
           );
         } else {
-          await LoanService.rejectLoan("system", loan._id, eligibility?.reason || "");
-
-          return res.status(400).json({
-            status: "failed",
-            message: eligibility.reason,
-          });
+          await LoanService.rejectLoan("system", loan._id, eligibility.reason || "");
+          return res.status(400).json({ status: "failed", message: eligibility.reason });
         }
       }
 
-      res.status(201).json({
-        status: "success",
-        data: loan,
-      });
+      res.status(201).json({ status: "success", data: loan });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Repay an existing loan
+   * ────────────────────────────────────────────────
+   * 💸 USER: Repay an existing loan
+   * ────────────────────────────────────────────────
    */
   static async repayLoan(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
@@ -180,26 +164,24 @@ export class LoanController {
       const result = await LoanService.repayLoan({
         loanId: id,
         userId,
-        amount,
+        amount: Number(amount),
         mandatory,
         idempotencyKey,
       } as RepayParams);
 
       const profit = await LoanController.profitService.getProfitByReference(id);
-      if(profit?.amount || 0 >= amount) {
+
+      if ((profit?.amount || 0) >= amount) {
         await LoanController.profitService.deleteProfit(id);
         await LoanController.profitService.recordProfit({
           amount,
           source: "loan",
           userId: result.loan.userId,
           reference: result.loan._id,
-          type: "realized"
+          type: "realized",
         });
-      }  else { 
-        const [figure, outstanding] = [
-          amount,
-          profit?.amount || 0 - amount
-        ];
+      } else {
+        const [figure, outstanding] = [amount, (profit?.amount || 0) - amount];
 
         await LoanController.profitService.deleteProfit(id);
 
@@ -208,7 +190,7 @@ export class LoanController {
           source: "loan",
           userId: result.loan.userId,
           reference: crypto.randomUUID(),
-          type: "realized"
+          type: "realized",
         });
 
         await LoanController.profitService.recordProfit({
@@ -216,58 +198,56 @@ export class LoanController {
           source: "loan",
           userId: result.loan.userId,
           reference: result.loan._id,
-          type: "unrealized"
+          type: "unrealized",
         });
       }
 
-      res.status(200).json({
-        status: "success",
-        data: result,
-      });
+      res.status(200).json({ status: "success", data: result });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Admin: Disburse a loan
+   * ────────────────────────────────────────────────
+   * 🏦 ADMIN: Disburse a loan
+   * ────────────────────────────────────────────────
    */
   static async disburseLoan(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { loanId, amount } = req.body;
       const admin = req.admin;
+      if (!checkPermission(admin, "manage_loans")) {
+        throw new UnauthorizedError("You do not have permission to disburse loans.");
+      }
+
+      const { loanId, amount } = req.body;
       const idempotencyKey = req.idempotencyKey;
 
-      checkPermission(admin, "manage_loans");
-
       const result = await LoanService.disburseLoan({
-        adminId: admin?._id || "",
+        adminId: admin!._id,
         loanId,
         amount,
         idempotencyKey,
-      } as DisburseParams);
+      });
 
-      const profit = await SettingsService.calculateProfit("loan", "send", amount)
+      const profit = await SettingsService.calculateProfit("loan", "send", amount);
 
       await LoanController.profitService.recordProfit({
         amount: profit,
         source: "loan",
         userId: result.loan.userId,
         reference: result.loan._id,
-        type: "unrealized"
+        type: "unrealized",
       });
 
-      res.status(200).json({
-        status: "success",
-        data: result,
-      });
+      res.status(200).json({ status: "success", data: result });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Admin: Reject a loan
+   * 🛑 ADMIN: Reject a loan
    */
   static async rejectLoan(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
@@ -275,21 +255,19 @@ export class LoanController {
       const { reason } = req.body;
       const admin = req.admin;
 
-      checkPermission(admin, "manage_loans");
+      if (!checkPermission(admin, "manage_loans")) {
+        throw new UnauthorizedError("You do not have permission to reject loans.");
+      }
 
       const loan = await LoanService.rejectLoan(admin?._id || "", id, reason);
-
-      res.status(200).json({
-        status: "success",
-        data: loan,
-      });
+      res.status(200).json({ status: "success", data: loan });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * User: Cancel a loan
+   * 👤 USER: Cancel a loan
    */
   static async cancelLoan(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
@@ -298,39 +276,28 @@ export class LoanController {
       const user = req.user;
 
       const loan = await LoanService.cancelLoan(user?._id || "", id, reason);
-
-      res.status(200).json({
-        status: "success",
-        data: loan,
-      });
+      res.status(200).json({ status: "success", data: loan });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Get single loan status
+   * 📄 Get single loan status
    */
   static async getLoanStatus(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const loan = await LoanService.getLoanById(id);
-
-      if (!loan) {
-        return res.status(404).json({ status: "failed", message: "Loan not found" });
-      }
-
-      res.status(200).json({
-        status: "success",
-        data: loan,
-      });
+      if (!loan) return res.status(404).json({ status: "failed", message: "Loan not found" });
+      res.status(200).json({ status: "success", data: loan });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * List loans for a user (paginated)
+   * 📋 USER: List user's loans (paginated)
    */
   static async listUserLoans(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
@@ -339,232 +306,200 @@ export class LoanController {
       const limit = Number(req.query.limit) || 10;
 
       const result = await LoanService.listLoansForUser(userId, page, limit);
-
-      res.status(200).json({
-        status: "success",
-        ...result,
-      });
+      res.status(200).json({ status: "success", ...result });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Admin: List all loans (paginated, with filter)
+   * 🧾 ADMIN: List all loans with fallback permissions
    */
   static async listAllLoans(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
-      const filter: any = req.query || {};
 
-      checkPermission(admin, "view_loans");
+      if (checkPermission(admin, "view_loans")) {
+        const result = await LoanService.listAllLoans(page, limit);
+        return res.status(200).json({ status: "success", ...result });
+      }
 
-      const result = await LoanService.listAllLoans(page, limit, filter);
+      if (checkPermission(admin, "view_pending")) {
+        const result = await LoanService.getLoansByCategory("pending", page, limit);
+        return res.status(200).json({ status: "success", ...result });
+      }
 
-      res.status(200).json({
-        status: "success",
-        ...result,
-      });
+      if (checkPermission(admin, "view_overdue")) {
+        const result = await LoanService.getLoansByCategory("overdue", page, limit);
+        return res.status(200).json({ status: "success", ...result });
+      }
+
+      throw new UnauthorizedError("You do not have permission to view loans.");
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Admin: single loan history (paginated)
+   * 🧾 ADMIN: Single loan history + user info
    */
   static async singleLoanHistory(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
       const admin = req.admin;
 
-      checkPermission(admin, "view_loans");
+      if (!checkPermission(admin, ["view_loans", "view_pending", "view_overdue"])) {
+        throw new UnauthorizedError("You do not have permission to view loan history.");
+      }
 
       const loan = await LoanService.getLoanById(id);
-
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
-
-      let history = await LoanService.listLoansForUser(loan?.userId || "trx-id", page, limit);
-
-      let user = await UserService.getUser(loan?.userId || "ux-id");
+      const history = await LoanService.listLoansForUser(loan?.userId || "", page, limit);
+      const user = await UserService.getUser(loan?.userId || "");
 
       if (history.data.length > 0) {
         history.data = history.data.filter((item) => item._id !== id);
       }
 
-      res.status(200).json({
-        status: "success",
-        data: {
-          loan,
-          user,
-          history,
-        },
-      });
+      res.status(200).json({ status: "success", data: { loan, user, history } });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Admin: Get Loan Statistics
+   * 📊 ADMIN: Get loan statistics
    */
   static async getAdminLoanStats(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
-
-      checkPermission(admin, "view_loans");
-
-      const loan = await LoanService.getAdminLoanStats();
-
-      if (!loan) {
-        return res.status(404).json({ status: "failed", message: "Loan not found" });
+      if (!checkPermission(admin, ["view_loans", "manage_loans"])) {
+        throw new UnauthorizedError("You do not have permission to view loan statistics.");
       }
 
-      res.status(200).json({
-        status: "success",
-        data: loan,
-      });
+      const stats = await LoanService.getAdminLoanStats();
+      res.status(200).json({ status: "success", data: stats });
     } catch (error) {
       next(error);
     }
   }
 
   /**
-   * Admin: Get Loans By Category
+   * 🧾 ADMIN: Get loans by category
    */
   static async getLoansByCategory(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
-      const category = req.query.category as "active" | "due" | "overdue" | "completed" | "pending" | "rejected" | undefined;
+      const category = req.query.category as
+        | "active"
+        | "due"
+        | "overdue"
+        | "completed"
+        | "pending"
+        | "rejected"
+        | undefined;
       const search = req.query.search as string | undefined;
 
-      checkPermission(admin, "view_loans");
+      // Determine what subset the admin can view
+      const canView = checkPermission(admin, "view_loans");
+      const viewPending = checkPermission(admin, "view_pending");
+      const viewOverdue = checkPermission(admin, "view_overdue");
 
-      const data = await LoanService.getLoansByCategory(category, page, limit, search);
+      if (!canView && !viewPending && !viewOverdue) {
+        throw new UnauthorizedError("You do not have permission to view loans.");
+      }
 
-      res.status(200).json({
-        status: "success",
-        data
-      });
+      const data = await LoanService.getLoansByCategory(
+        canView
+          ? category
+          : viewPending
+          ? "pending"
+          : viewOverdue
+          ? "overdue"
+          : "active",
+        page,
+        limit,
+        search
+      );
+
+      res.status(200).json({ status: "success", data });
     } catch (error) {
       next(error);
     }
   }
 
-    /**
-   * ────────────────────────────────────────────────
-   * 📊 Loan Ladder Management
-   * ────────────────────────────────────────────────
-   */
-
   /**
-   * Admin: Create a new Loan Ladder step
+   * ────────────────────────────────────────────────
+   * 📈 Loan Ladder Management (Admin)
+   * ────────────────────────────────────────────────
    */
   static async createLoanLadder(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
+      if (!checkPermission(admin, "manage_loans")) {
+        throw new UnauthorizedError("You do not have permission to manage loan ladders.");
+      }
+
       const { step, amount, adminNotes } = req.body;
-
-      checkPermission(admin, "manage_loans");
-
-      const ladder = await LoanService.createLoanLadder(
-        admin?._id || "",
-        Number(step),
-        Number(amount),
-        adminNotes
-      );
-
-      res.status(201).json({
-        status: "success",
-        message: "Loan ladder step created successfully",
-        data: ladder,
-      });
+      const ladder = await LoanService.createLoanLadder(admin?._id || "", Number(step), Number(amount), adminNotes);
+      res.status(201).json({ status: "success", message: "Loan ladder step created successfully", data: ladder });
     } catch (error) {
       next(error);
     }
   }
 
-  /**
-   * Admin: Update an existing Loan Ladder step
-   */
   static async updateLoanLadder(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
+      if (!checkPermission(admin, "manage_loans")) {
+        throw new UnauthorizedError("You do not have permission to update loan ladders.");
+      }
+
       const { id } = req.params;
       const updates = req.body;
-
-      checkPermission(admin, "manage_loans");
-
       const ladder = await LoanService.updateLoanLadder(admin?._id || "", id, updates);
-
-      res.status(200).json({
-        status: "success",
-        message: "Loan ladder updated successfully",
-        data: ladder,
-      });
+      res.status(200).json({ status: "success", message: "Loan ladder updated successfully", data: ladder });
     } catch (error) {
       next(error);
     }
   }
 
-  /**
-   * Admin: Delete a Loan Ladder step
-   */
   static async deleteLoanLadder(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const admin = req.admin;
+      if (!checkPermission(admin, "manage_loans")) {
+        throw new UnauthorizedError("You do not have permission to delete loan ladders.");
+      }
+
       const { id } = req.params;
-
-      checkPermission(admin, "manage_loans");
-
       const result = await LoanService.deleteLoanLadder(admin?._id || "", id);
-
-      res.status(200).json({
-        status: "success",
-        message: result.message,
-      });
+      res.status(200).json({ status: "success", message: result.message });
     } catch (error) {
       next(error);
-    }  
+    }
   }
 
-  /**
-   * Get all Loan Ladder steps (Admin + User)
-   */
   static async getLoanLadders(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
-
       const ladders = await LoanService.getLoanLadders(page, limit);
-
-      res.status(200).json({
-        status: "success",
-        ...ladders,
-      });
+      res.status(200).json({ status: "success", ...ladders });
     } catch (error) {
       next(error);
     }
   }
 
-  /**
-   * Get a specific Loan Ladder step (Admin + User)
-   */
   static async getLoanLadderById(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-
       const ladder = await LoanService.getLoanLadderById(id);
-
-      res.status(200).json({
-        status: "success",
-        data: ladder,
-      });
+      res.status(200).json({ status: "success", data: ladder });
     } catch (error) {
       next(error);
     }
