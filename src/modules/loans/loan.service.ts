@@ -566,7 +566,7 @@ export class LoanService {
 
         loan.outstanding = newOutstanding;
         loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-        await loan.save({ session });
+        loan.save();
 
         // 5) ledger double entry: user_wallet -> platform_cash
         await LedgerService.createDoubleEntry(
