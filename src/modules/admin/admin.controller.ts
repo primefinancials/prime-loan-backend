@@ -447,11 +447,12 @@ export class AdminController {
         throw new UnauthorizedError('Only super admins can update admin permissions');
       }
 
+      const { adminId } = req.params;
       const { permissions } = req.body;
 
       if (!Array.isArray(permissions)) return res.status(400).json({ status: 'failed', message: 'permissions must be an array' });
 
-      const updated = await adminService.updateAdminPermissions(actingAdmin?._id || "", permissions);
+      const updated = await adminService.updateAdminPermissions(adminId || "", permissions);
 
       res.status(200).json({
         status: 'success',
