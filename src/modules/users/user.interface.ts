@@ -45,7 +45,7 @@ export type AdminPermission =
   | "manage_notifications";
 
 
-export interface User {
+export interface User extends Document {
   _id: string;
   confirmation_sent_at: string; 
   confirmed_at: string;

@@ -890,118 +890,63 @@ export class LoanService {
   /**
    * Get loans & users by category for admin
    */
-  static async getLoansByCategory(
-    category?: "active" | "due" | "overdue" | "completed" | "pending" | "rejected",
-    page = 1,
-    limit = 20,
-    search?: string
-  ) {
+  static async getLoansByCategory(category?: "active" | "due" | "overdue" | "completed" | "pending" | "rejected", page = 1, limit = 20, search?: string) {
     const now = new Date();
-    const skip = Math.max(0, (page - 1) * limit);
+    let filter: any = {};
 
-    // 🧩 Base filter
-    const filter: Record<string, any> = {};
+    console.log({ category, page, limit, search });
 
-    switch (category) {
-      case "active":
-        // 🟢 Active loans: either not-started or in-progress and not past due
-        filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
-        filter.status = "accepted";
-        filter.repayment_date = { $gte: now };
-        break;
-
-      case "due":
-        // 🟡 Due today
-        filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
-        filter.status = "accepted";
-        filter.$expr = {
-          $eq: [
-            { $dateToString: { format: "%Y-%m-%d", date: "$repayment_date" } },
-            now.toISOString().slice(0, 10),
-          ],
-        };
-        break;
-
-      case "overdue":
-        // 🔴 Past due
-        filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
-        filter.status = "accepted";
-        filter.repayment_date = { $lt: now };
-        break;
-
-      case "completed":
-        // ✅ Fully repaid
-        filter.loan_payment_status = "complete";
-        break;
-
-      case "pending":
-        // ⏳ Awaiting approval
-        filter.status = "pending";
-        break;
-
-      case "rejected":
-        // ❌ Rejected applications
-        filter.status = "rejected";
-        break;
+    if (category === "active") {
+      filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
+    } else if (category === "due") {
+      filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
+      filter.repayment_date = { $lte: now };
+    } else if (category === "overdue") {
+      filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
+      filter.repayment_date = { $lt: now };
+    } else if (category === "completed") {
+      filter.loan_payment_status = "complete";
+    } else if (category === "pending") {
+      filter.status = "pending";
+    } else if (category === "rejected") {
+      filter.status = "rejected";
     }
 
-    // 🔍 Case-insensitive search across user and loan fields
-    if (search?.trim()) {
-      const regex = new RegExp(search.trim(), "i");
+    if (search) {
+      const regex = new RegExp(search, "i"); // case-insensitive search
       filter.$or = [
-        { first_name: regex },
-        { last_name: regex },
+        { "first_name": regex },
+        { "last_name": regex },
         { email: regex },
-        { full_name: regex },
+        {
+          $expr: {
+            $regexMatch: {
+              input: { $concat: ["$first_name", " ", "$last_name"] },
+              regex: search,
+              options: "i",
+            },
+          },
+        },
       ];
     }
 
-    // ⚙️ Efficient aggregation pipeline (single query)
-    const [result] = await Loan.aggregate([
-      { $match: filter },
-      {
-        $lookup: {
-          from: "users",
-          localField: "userId",
-          foreignField: "_id",
-          as: "user",
-        },
-      },
-      { $unwind: { path: "$user", preserveNullAndEmptyArrays: true } },
-      {
-        $project: {
-          _id: 1,
-          amount: 1,
-          repayment_amount: 1,
-          outstanding: 1,
-          loan_payment_status: 1,
-          repayment_date: 1,
-          status: 1,
-          createdAt: 1,
-          first_name: 1,
-          last_name: 1,
-          email: 1,
-          "user.email": 1,
-          "user.user_metadata": 1,
-        },
-      },
-      { $sort: { createdAt: -1 } },
-      {
-        $facet: {
-          loans: [{ $skip: skip }, { $limit: limit }],
-          totalCount: [{ $count: "count" }],
-        },
-      },
+    const skip = (page - 1) * limit;
+
+    const [loans, total] = await Promise.all([
+      Loan.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }),
+      Loan.countDocuments(filter)
     ]);
 
-    const loans = result?.loans || [];
-    const total = result?.totalCount?.[0]?.count || 0;
+    // Join with user details (admin wants to see who owes what)
+    const userIds = loans.map(l => l.userId);
+    const users = await User.find({ _id: { $in: userIds } }, { email: 1, user_metadata: 1 });
 
     return {
       loans,
+      users,
       total,
       page,
-      pages: Math.max(1, Math.ceil(total / limit)),
+      pages: Math.max(1, Math.ceil(total / limit))
     };
   }
 
