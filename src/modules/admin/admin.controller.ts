@@ -620,7 +620,7 @@ export class AdminController {
    */
   static async getProfitConfig(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { category } = req.body;
+      const { category } = req.query;
 
       const settings = await SettingsService.getProfitConfig(
         category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow",
