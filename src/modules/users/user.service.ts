@@ -149,15 +149,6 @@ export class UserService {
         if (user.status !== "active")
             throw new UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
 
-        // Get real-time wallet balance from ledger
-        const walletBalance = await LedgerService.getUserWalletBalance(userId);
-        
-        // Update user wallet if different
-        if (parseInt(user.user_metadata.wallet || "0") !== walletBalance) {
-            user.user_metadata.wallet = String(walletBalance);
-            await user.save();
-        }
-
         return user;
     }
 
