@@ -354,7 +354,7 @@ export class LoanService {
         // 4️⃣ Initiate transfer
         const transferRecord = await TransferService.initiateTransfer({
           fromAccount: primeInfo.accountNo,
-          userId: String(loan.userId),
+          userId: loan.userId,
           beneficiaryName: userAccTyped.client,
           toAccount: userAccTyped.accountNo,
           amount: amountNaira,
