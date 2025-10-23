@@ -115,7 +115,7 @@ export class LoanController {
             loan
           );
         } else {
-          const ladder = await LoanLadder.findOne({ step: req.user?.user_metadata.ladderIndex || 0 });
+          const ladder = await LoanLadder.findOne({ step: req.user?.user_metadata.ladderIndex || 1 });
           if (ladder) {
             return res.status(201).json({ status: "success", data: loan });
           }

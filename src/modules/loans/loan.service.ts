@@ -342,8 +342,8 @@ export class LoanService {
         }
 
         // 3️⃣ Get account details
-        const primeInfo = (await this.vfd.getPrimeAccountInfo()).data;
-        const userAccTyped = (await this.vfd.getAccountInfo(user.user_metadata.accountNo)).data;
+        const primeInfo = (await this.vfd.getPrimeAccountInfo())?.data;
+        const userAccTyped = (await this.vfd.getAccountInfo(user.user_metadata.accountNo))?.data;
 
         if (!primeInfo?.accountNo || !userAccTyped?.accountNo) {
           throw new Error("Unable to get account info for disbursement");
@@ -397,7 +397,7 @@ export class LoanService {
         const ok =
           providerResponse &&
           (providerResponse.status === "00" ||
-            providerResponse.data?.txnId ||
+            providerResponse?.data?.txnId ||
             providerResponse.txnId);
 
         if (!ok) {
