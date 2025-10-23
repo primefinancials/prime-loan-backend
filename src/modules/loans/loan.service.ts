@@ -823,8 +823,9 @@ export class LoanService {
         ["in-progress", "not-started"].includes(loan.loan_payment_status)
       ) {
         if (dueDate) {
-          const sum = sumRepayments(loan.repayment_history);
-          const penalties = sumPenalties(loan.repayment_history);
+          console.log({ loan })
+          const sum = sumRepayments((loan?.repayment_history || []));
+          const penalties = sumPenalties(loan?.repayment_history || []);
 
           if (dueDate > now) {
             stats.activeLoans++;
