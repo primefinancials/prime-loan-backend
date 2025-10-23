@@ -53,7 +53,7 @@ export class LoanEligibilityService {
     }
 
     // Get user's ladder index (default to 0 for new users)
-    const ladderIndex = user.user_metadata.ladderIndex || 0;
+    const ladderIndex = user.user_metadata.ladderIndex || 1;
     
     // Use custom ladder or default system ladder
     let ladderSteps = await LoanLadder.find();
