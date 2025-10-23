@@ -322,7 +322,7 @@ export default class BillPaymentService {
           remark: `${req.serviceType} purchase refund`,
           walletBalance: String(to.accountBalance),
           idempotencyKey
-        });
+        }, "bill-payment");
 
         // 2) Send transfer to VFD (the banking provider)
         const transferReq: TransferRequest = {
