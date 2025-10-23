@@ -721,12 +721,12 @@ export class LoanService {
   }
 
   /**
-   * Admin loan portfolio analytics
-  */
+   * Admin loan portfolio analytics (consistent principal-based version)
+   */
   static async getAdminLoanStats() {
     const now = new Date();
 
-    // ⚙️ Cache loan profit config once (avoid N+1)
+    // ⚙️ Cache loan profit config once
     const loanProfitConfigs = await SettingsService.getProfitConfig("loan");
 
     // 📊 Only fetch required fields
@@ -734,8 +734,8 @@ export class LoanService {
       {},
       {
         amount: 1,
-        repayment_amount: 1,
         outstanding: 1,
+        repayment_amount: 1,
         loan_payment_status: 1,
         repayment_date: 1,
         status: 1,
@@ -744,14 +744,15 @@ export class LoanService {
       }
     );
 
-    // Initialize stats
     const stats = {
       totalApplied: 0,
       appliedUsers: 0,
       totalDisbursed: 0,
       disbursedUsers: 0,
+
       realizedProfit: 0,
       unrealizedProfit: 0,
+
       activeLoans: 0,
       activeAmount: 0,
       dueLoans: 0,
@@ -761,20 +762,18 @@ export class LoanService {
       overdueLoans: 0,
       overdueAmount: 0,
       repaidLoans: 0,
-      repaidAmount: 0,
+      repaidAmount: 0, // principal repaid
       repaidingLoans: 0,
-      repaidingAmount: 0,
+      repaidingAmount: 0, // principal repaid
       notStarted: 0,
     };
 
-    // Keep track of unique users (optional)
     const uniqueAppliedUsers = new Set<string>();
     const uniqueDisbursedUsers = new Set<string>();
 
     let expectedProfit = 0;
     let realizedProfit = 0;
 
-    // 🧠 Helper: compute expected profit once per loan
     const computeExpectedProfit = (amount: number): number => {
       let total = 0;
       for (const config of loanProfitConfigs) {
@@ -785,15 +784,13 @@ export class LoanService {
       return total;
     };
 
-    // 🧠 Helper: sum valid payments
     const sumRepayments = (repayments: any[] = []) =>
       repayments.reduce((acc, p) => {
-        if (p.action === "overdue_fee") return acc; // ignore penalties
+        if (p.action === "overdue_fee") return acc;
         const val = Number(p.amount);
         return acc + (isNaN(val) ? 0 : val);
       }, 0);
 
-    // 🧠 Helper: sum penalties
     const sumPenalties = (repayments: any[] = []) =>
       repayments.reduce((acc, p) => {
         if (p.action === "overdue_fee") {
@@ -804,26 +801,24 @@ export class LoanService {
       }, 0);
 
     for (const loan of loans) {
-      const amount = loan.amount || 0;
-      const outstanding = loan.outstanding || 0;
+      const amount = Number(loan.amount || 0);
+      const outstanding = Number(loan.outstanding || 0);
       const dueDate = loan.repayment_date ? new Date(loan.repayment_date) : null;
 
       stats.totalApplied += amount;
       uniqueAppliedUsers.add(String(loan.userId));
 
-      // ✅ Disbursed loans
       if (loan.status === "accepted") {
         stats.totalDisbursed += amount;
         uniqueDisbursedUsers.add(String(loan.userId));
       }
 
-      // ✅ Pending loans
       if (loan.status === "pending") {
         stats.pendingLoans++;
         stats.pendingAmount += amount;
       }
 
-      // ✅ Loan states
+      // Loan stage classification (principal outstanding)
       if (
         loan.status === "accepted" &&
         ["in-progress", "not-started"].includes(loan.loan_payment_status)
@@ -842,27 +837,29 @@ export class LoanService {
         }
       }
 
-      // ✅ Repaid loans
+      // ---- Repaid / In-progress logic (principal-based) ----
+      const principalRepaid = Math.max(0, Math.min(amount, amount - outstanding));
+
       if (loan.loan_payment_status === "complete") {
         stats.repaidLoans++;
+        stats.repaidAmount += principalRepaid;
+
         const sum = sumRepayments(loan.repayment_history);
         const penalties = sumPenalties(loan.repayment_history);
-        stats.repaidAmount += sum;
-        realizedProfit += sum - amount;
+        realizedProfit += Math.max(0, sum - amount);
         expectedProfit += computeExpectedProfit(amount) + penalties;
       }
 
-      // ✅ In-progress loans
       if (loan.loan_payment_status === "in-progress") {
         stats.repaidingLoans++;
+        stats.repaidingAmount += principalRepaid;
+
         const sum = sumRepayments(loan.repayment_history);
         const penalties = sumPenalties(loan.repayment_history);
-        stats.repaidingAmount += sum;
         if (sum > amount) realizedProfit += sum - amount;
         expectedProfit += computeExpectedProfit(amount) + penalties;
       }
 
-      // ✅ Not started
       if (
         loan.status === "accepted" &&
         loan.loan_payment_status === "not-started"
@@ -873,18 +870,99 @@ export class LoanService {
       }
     }
 
-    // 🧾 Assign unique user counts
     stats.appliedUsers = uniqueAppliedUsers.size;
     stats.disbursedUsers = uniqueDisbursedUsers.size;
 
-    // ✅ Profit calculations
     stats.realizedProfit = Math.max(realizedProfit, 0);
     stats.unrealizedProfit = Math.max(expectedProfit - realizedProfit, 0);
+
+    // 🔍 Internal consistency checks
+    const totalPrincipalOutstanding =
+      stats.activeAmount +
+      stats.dueAmount +
+      stats.overdueAmount;
+
+    const totalPrincipalRepaid =
+      stats.repaidAmount + stats.repaidingAmount;
+
+    const totalPrincipalCheck = Math.round(
+      (totalPrincipalOutstanding + totalPrincipalRepaid) * 100
+    ) / 100;
+
+    const principalIsBalanced =
+      Math.abs(totalPrincipalCheck - stats.totalDisbursed) < 1;
+
+    if (!principalIsBalanced) {
+      console.warn("⚠️ Principal mismatch detected", {
+        totalDisbursed: stats.totalDisbursed,
+        totalPrincipalOutstanding,
+        totalPrincipalRepaid,
+        difference:
+          stats.totalDisbursed -
+          (totalPrincipalOutstanding + totalPrincipalRepaid),
+      });
+    }
 
     return {
       totalLoans: loans.length,
       ...stats,
+      debug: {
+        totalPrincipalOutstanding,
+        totalPrincipalRepaid,
+        totalPrincipalCheck,
+        principalIsBalanced,
+      },
     };
+  }
+
+
+  /**
+    * Debug inconsistent loan data for principal vs repayment mismatch.
+  */
+  static async debugLoanBreakdown() {
+    const loans = await Loan.find(
+      {},
+      {
+        amount: 1,
+        outstanding: 1,
+        loan_payment_status: 1,
+        status: 1,
+        repayment_history: 1,
+        repayment_date: 1,
+      }
+    );
+
+    const sumRepayments = (reps: any[] = []) =>
+      reps.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
+
+    const anomalies: any[] = [];
+
+    for (const loan of loans) {
+      const amount = Number(loan.amount || 0);
+      const outstanding = Number(loan.outstanding || 0);
+      const repaid = sumRepayments(loan.repayment_history);
+      const principalRepaid = Math.max(0, amount - outstanding);
+      const totalPrincipalCheck = principalRepaid + outstanding;
+      const diff = Number((amount - totalPrincipalCheck).toFixed(2));
+
+      if (Math.abs(diff) > 1) {
+        anomalies.push({
+          id: loan._id,
+          status: loan.status,
+          payment_status: loan.loan_payment_status,
+          amount,
+          outstanding,
+          principalRepaid,
+          repaid, // actual repayment sum
+          diff,
+        });
+      }
+    }
+
+    console.log(`🔍 Found ${anomalies.length} inconsistent loans`);
+    if (anomalies.length) {
+      console.table(anomalies.slice(0, 10)); // show first 10
+    }
   }
 
   /**
