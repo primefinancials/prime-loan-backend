@@ -33,7 +33,7 @@ export class ProfitController {
 
       res.json({
         status: "success",
-        data: result,
+        data: { ...result.data, pagination: result.pagination },
       });
     } catch (error) {
       res.status(500).json({ status: "failure", message: "Error fetching profits", error });
@@ -68,7 +68,7 @@ export class ProfitController {
 
       res.json({
         status: "success",
-        data: result,
+        data: { ...result.data, pagination: result.pagination },
       });
     } catch (error) {
       res.status(500).json({ status: "failure", message: "Error fetching profits", error });

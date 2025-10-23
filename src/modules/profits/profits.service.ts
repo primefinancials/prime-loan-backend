@@ -136,7 +136,6 @@ export class ProfitService {
       Profit.countDocuments(query),
     ]);
     return {
-      status: "success",
       data,
       pagination: {
         page,
@@ -168,7 +167,6 @@ export class ProfitService {
     ]);
 
     return {
-      status: "success",
       data,
       pagination: {
         page,
@@ -198,7 +196,6 @@ export class ProfitService {
     ]);
 
     return {
-      status: "success",
       total: result[0]?.total || 0,
     };
   }
@@ -208,9 +205,7 @@ export class ProfitService {
    */
   async deleteProfit(reference: string) {
     const result = await Profit.deleteOne({ reference });
-    return {
-      status: result.deletedCount ? "success" : "failure",
-    };
+    return result;
   }
 }
 
