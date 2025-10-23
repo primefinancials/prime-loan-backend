@@ -802,7 +802,6 @@ export class LoanService {
 
     for (const loan of loans) {
       const amount = Number(loan.amount || 0);
-      const outstanding = Number(loan.outstanding || 0);
       const dueDate = loan.repayment_date ? new Date(loan.repayment_date) : null;
 
       stats.totalApplied += amount;
@@ -824,27 +823,27 @@ export class LoanService {
         ["in-progress", "not-started"].includes(loan.loan_payment_status)
       ) {
         if (dueDate) {
+          const sum = sumRepayments(loan.repayment_history);
+          const penalties = sumPenalties(loan.repayment_history);
+
           if (dueDate > now) {
             stats.activeLoans++;
-            stats.activeAmount += outstanding;
+            stats.activeAmount += (loan.repayment_amount - sum) + penalties;
           } else if (dueDate.toDateString() === now.toDateString()) {
             stats.dueLoans++;
-            stats.dueAmount += outstanding;
+            stats.dueAmount += (loan.repayment_amount - sum) + penalties;;
           } else {
             stats.overdueLoans++;
-            stats.overdueAmount += outstanding;
+            stats.overdueAmount += (loan.repayment_amount - sum) + penalties;
           }
         }
       }
 
-      // ---- Repaid / In-progress logic (principal-based) ----
-      const principalRepaid = Math.max(0, Math.min(amount, amount - outstanding));
-
       if (loan.loan_payment_status === "complete") {
         stats.repaidLoans++;
-        stats.repaidAmount += principalRepaid;
-
         const sum = sumRepayments(loan.repayment_history);
+
+        stats.repaidAmount += sum;
         const penalties = sumPenalties(loan.repayment_history);
         realizedProfit += Math.max(0, sum - amount);
         expectedProfit += computeExpectedProfit(amount) + penalties;
@@ -852,9 +851,9 @@ export class LoanService {
 
       if (loan.loan_payment_status === "in-progress") {
         stats.repaidingLoans++;
-        stats.repaidingAmount += principalRepaid;
-
         const sum = sumRepayments(loan.repayment_history);
+
+        stats.repaidingAmount += sumRepayments(sum);
         const penalties = sumPenalties(loan.repayment_history);
         if (sum > amount) realizedProfit += sum - amount;
         expectedProfit += computeExpectedProfit(amount) + penalties;
