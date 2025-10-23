@@ -109,10 +109,6 @@ export class TransferService {
           reference
         };
 
-        if(request.idempotencyKey) {
-          await saveIdempotentResponse(request.idempotencyKey, request.userId, result);
-        }
-
         return result;
       });
     } finally {
