@@ -588,9 +588,10 @@ export class LoanService {
           if (dueDateISO) {
             const dueDate = new Date(dueDateISO);
             const daysLate = daysBetween(now, dueDate); // positive -> late
-            const [newScore, ladderIndex, category, message] = LoanService.computeCreditScoreFromTimeliness(daysLate, user.user_metadata.ladderIndex || 0);
-            await UserService.update(user._id, "user_metadata.creditScore", newScore);
-            await UserService.update(user._id, "user_metadata.ladderIndex", ladderIndex);
+            const [newScore, ladderIndex, category, message] = LoanService.computeCreditScoreFromTimeliness(daysLate, user.user_metadata.ladderIndex || 1);
+            user.user_metadata.creditScore = newScore;
+            user.user_metadata.ladderIndex = ladderIndex;
+            user.save();
 
             await NotificationService.sendLoanRepayment(user, repayAmount, message);
           }
@@ -615,12 +616,12 @@ export class LoanService {
    * >7 days late -> 0.3
    */
   private static computeCreditScoreFromTimeliness(daysLate: number, ladderIndex: number): [number, number, string, string] {
-    if (daysLate < 0) return [1.0, ladderIndex + 1, "before_due_date", "Continue making payment before due date to keep a perfect credit score and unlock larger loan amounts"];
-    if (daysLate === 0) return [0.9, ladderIndex + 1, "on_due_date", "Make sure to pay on or before the due date to maintain a good credit score and unlock larger loan amounts"];
-    if (daysLate <= 3) return [0.6, ladderIndex, "1-3_days_late", "Paying within 1-3 days after the due date may impact your credit score and may result in higher interest rates as well as inability to unlock larger loan amounts"];
-    if (daysLate <= 5) return [0.5, ladderIndex > 0 ? ladderIndex - 1 : 0, "4-5_days_late", "Paying 4-5 days late will negatively affect your credit score and may result in higher interest rates as well as inability to unlock larger loan amounts"];
-    if (daysLate <= 7) return [0.4, ladderIndex > 0 ? ladderIndex - 1 : 0, "6-7_days_late", "Paying 6-7 days late will further impact your credit score and may result in higher interest rates as well as inability to unlock larger loan amounts"];
-    return [0.3, ladderIndex > 1 ? ladderIndex - 2 : 0, "over_7_days_late", "Paying over 7 days late will significantly harm your credit score and may result in higher interest rates as well as loan denial"];
+    if (daysLate < 0) return [1000, ladderIndex + 1, "before_due_date", "Continue making payment before due date to keep a perfect credit score and unlock larger loan amounts"];
+    if (daysLate === 0) return [900, ladderIndex + 1, "on_due_date", "Make sure to pay on or before the due date to maintain a good credit score and unlock larger loan amounts"];
+    if (daysLate <= 3) return [600, ladderIndex, "1-3_days_late", "Paying within 1-3 days after the due date may impact your credit score and may result in higher interest rates as well as inability to unlock larger loan amounts"];
+    if (daysLate <= 5) return [500, ladderIndex > 0 ? ladderIndex - 1 : 0, "4-5_days_late", "Paying 4-5 days late will negatively affect your credit score and may result in higher interest rates as well as inability to unlock larger loan amounts"];
+    if (daysLate <= 7) return [400, ladderIndex > 0 ? ladderIndex - 1 : 0, "6-7_days_late", "Paying 6-7 days late will further impact your credit score and may result in higher interest rates as well as inability to unlock larger loan amounts"];
+    return [300, ladderIndex > 1 ? ladderIndex - 2 : 0, "over_7_days_late", "Paying over 7 days late will significantly harm your credit score and may result in higher interest rates as well as loan denial"];
   }
 
   /* ---------------------
