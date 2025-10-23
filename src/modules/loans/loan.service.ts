@@ -817,56 +817,46 @@ export class LoanService {
         stats.pendingAmount += amount;
       }
 
-      // Loan stage classification (principal outstanding)
-      if (
-        loan.status === "accepted" &&
-        ["in-progress", "not-started"].includes(loan.loan_payment_status)
-      ) {
-        if (dueDate) {
-          console.log({ loan })
-          const sum = sumRepayments((loan?.repayment_history || []));
-          const penalties = sumPenalties(loan?.repayment_history || []);
+      const repayments = Array.isArray(loan.repayment_history) ? loan.repayment_history : [];
+      const sum = sumRepayments(repayments);
+      const penalties = sumPenalties(repayments);
 
+      // 🔹 Active / Due / Overdue
+      if (loan.status === "accepted" && ["in-progress", "not-started"].includes(loan.loan_payment_status)) {
+        if (dueDate) {
           if (dueDate > now) {
             stats.activeLoans++;
-            stats.activeAmount += (loan.repayment_amount - sum) + penalties;
+            stats.activeAmount += Math.max(0, amount - sum);
           } else if (dueDate.toDateString() === now.toDateString()) {
             stats.dueLoans++;
-            stats.dueAmount += (loan.repayment_amount - sum) + penalties;;
+            stats.dueAmount += Math.max(0, amount - sum);
           } else {
             stats.overdueLoans++;
-            stats.overdueAmount += (loan.repayment_amount - sum) + penalties;
+            stats.overdueAmount += Math.max(0, amount - sum) + penalties;
           }
         }
       }
 
+      // 🔹 Repaid
       if (loan.loan_payment_status === "complete") {
         stats.repaidLoans++;
-        const sum = sumRepayments(loan.repayment_history);
-
         stats.repaidAmount += sum;
-        const penalties = sumPenalties(loan.repayment_history);
         realizedProfit += Math.max(0, sum - amount);
         expectedProfit += computeExpectedProfit(amount) + penalties;
       }
 
+      // 🔹 In progress
       if (loan.loan_payment_status === "in-progress") {
         stats.repaidingLoans++;
-        const sum = sumRepayments(loan.repayment_history);
-
-        stats.repaidingAmount += sumRepayments(sum);
-        const penalties = sumPenalties(loan.repayment_history);
+        stats.repaidingAmount += sum;
         if (sum > amount) realizedProfit += sum - amount;
         expectedProfit += computeExpectedProfit(amount) + penalties;
       }
 
-      if (
-        loan.status === "accepted" &&
-        loan.loan_payment_status === "not-started"
-      ) {
+      // 🔹 Not started
+      if (loan.status === "accepted" && loan.loan_payment_status === "not-started") {
         stats.notStarted++;
-        expectedProfit += computeExpectedProfit(amount);
-        expectedProfit += sumPenalties(loan.repayment_history);
+        expectedProfit += computeExpectedProfit(amount) + penalties;
       }
     }
 
@@ -914,7 +904,6 @@ export class LoanService {
       },
     };
   }
-
 
   /**
     * Debug inconsistent loan data for principal vs repayment mismatch.
