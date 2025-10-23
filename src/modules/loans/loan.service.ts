@@ -400,6 +400,8 @@ export class LoanService {
             providerResponse?.data?.txnId ||
             providerResponse.txnId);
 
+        console.log({ providerResponse })
+
         if (!ok) {
           await TransferService.failTransfer(transferRecord.reference);
           await Loan.findByIdAndUpdate(loanId, { status: "pending" }, { session });
