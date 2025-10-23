@@ -549,26 +549,23 @@ export class LoanService {
         const trxnRes = await TransferService.completeTransfer(transferRecord.reference, "loan-repayment");
 
         // 4) update loan outstanding & history
-        let newOutstanding = 0;
-
-        if(loan.outstanding && loan.outstanding >= params.amount){
-          newOutstanding = loan.outstanding - params.amount;
-        }
+        let newOutstanding = Number(loan.outstanding) - Number(params.amount);
 
         const paidInFull = newOutstanding <= 0;
 
         const now = new Date();
-        loan.repayment_history = loan.repayment_history || [];
-        loan.repayment_history.push({
+        loan.repayment_history = [...loan.repayment_history, {
           amount: params.amount,
           outstanding: newOutstanding,
           action: "repayment",
           date: now.toISOString()
-        });
+        }];
 
         loan.outstanding = newOutstanding;
         loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
         loan.save();
+
+        console.log({ newOutstanding, paidInFull, loan })
 
         // 5) ledger double entry: user_wallet -> platform_cash
         await LedgerService.createDoubleEntry(
@@ -599,11 +596,6 @@ export class LoanService {
           }
         } catch (err) {
           console.warn("Failed updating credit score (non-fatal):", err);
-        }
-
-        // 9) idempotent response
-        if (params.idempotencyKey) {
-          await saveIdempotentResponse(params.idempotencyKey, params.userId, { status: "success", loan, providerResponse });
         }
 
         return { loan, providerResponse, trxnRes };
