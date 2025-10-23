@@ -391,7 +391,8 @@ export class LoanService {
         } catch (err: any) {
           await TransferService.failTransfer(transferRecord.reference);
           await Loan.findByIdAndUpdate(loanId, { status: "pending" }, { session });
-          throw new APIError(409, `Provider disbursement failed: ${String(err)}`);
+          console.log({ err })
+          throw new APIError(409, `Provider disbursement failed: ${err.message}`);
         }
 
         const ok =
