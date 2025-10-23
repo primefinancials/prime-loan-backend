@@ -781,7 +781,7 @@ export class LoanService {
       let total = 0;
       for (const config of loanProfitConfigs) {
         if (amount < config.minAmount || amount > config.maxAmount) continue;
-        if (config.type === "percentage") total += (config.amount! / 100) * amount;
+        if (config.type === "percentage") total += (config.amount) * amount;
         else total += config.amount || 0;
       }
       return total;
