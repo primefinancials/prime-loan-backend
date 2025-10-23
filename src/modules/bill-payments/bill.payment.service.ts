@@ -326,7 +326,7 @@ export default class BillPaymentService {
 
         // 2) Send transfer to VFD (the banking provider)
         const transferReq: TransferRequest = {
-          uniqueSenderAccountId: to.accountId,
+          uniqueSenderAccountId: "",
           fromAccount: to.accountNo,
           fromClientId: to.clientId,
           fromClient: to.client,
