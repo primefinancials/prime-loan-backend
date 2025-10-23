@@ -111,6 +111,6 @@ const LoanSchema: Schema = new Schema(
 );
 
 // Create the LoanApplication model
-const Loan = model<ILoan>('new-loans', LoanSchema);
+const Loan = model<ILoan>('loans', LoanSchema);
 
 export default Loan;
