@@ -146,16 +146,6 @@ export class UserService {
 
         if (!user) throw new NotFoundError(`No user found`);
 
-        // const vfdUser = await UserService.vfdProvider.getAccountInfo(user.user_metadata.accountNo);
-
-        // console.log({vfdUser})
-
-        // // Update last sign in
-        // if(vfdUser?.data && Number(user.user_metadata.wallet) != Number(vfdUser.data.accountBalance)) {
-        //     user.user_metadata = { ...user.user_metadata, wallet: vfdUser.data.accountBalance }
-        //     user.save();
-        // }
-
         if (user.status !== "active")
             throw new UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
 
@@ -226,6 +216,16 @@ export class UserService {
         delete (userObj as any).password;
         delete (userObj as any).__v;
         delete (userObj as any).refresh_tokens;
+
+        const vfdUser = await UserService.vfdProvider.getAccountInfo(user.user_metadata.accountNo);
+
+        console.log({vfdUser})
+
+        // Update last sign in
+        if(vfdUser?.data && Number(user.user_metadata.wallet) != Number(vfdUser.data.accountBalance)) {
+            user.user_metadata = { ...user.user_metadata, wallet: vfdUser.data.accountBalance }
+            user.save();
+        }
 
         console.log({
             ...userObj,

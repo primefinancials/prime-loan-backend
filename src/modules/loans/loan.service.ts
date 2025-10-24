@@ -429,7 +429,7 @@ export class LoanService {
         loan.status = "accepted";
         loan.loan_date = loanDate.toISOString();
         loan.repayment_date = repaymentDate.toISOString();
-        loan.loan_payment_status = "in-progress";
+        loan.loan_payment_status = "not-started";
         loan.adminAction = {
           adminId,
           action: "Approve",
