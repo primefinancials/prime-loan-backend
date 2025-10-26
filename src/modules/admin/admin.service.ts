@@ -19,6 +19,8 @@ import { LedgerEntry } from "../ledger/LedgerEntry.model";
 import { getCurrentTimestamp } from "../../shared/utils/convertDate";
 import { AdminPermission } from "../users/user.interface";
 import { LoanService } from "../loans/loan.service";
+import profitsModel from "../profits/profits.model";
+import { profitService } from "../profits/profits.service";
 
 export interface AdminStats {
   users: {
@@ -190,6 +192,20 @@ export class AdminService {
   async getDashboardStats(): Promise<AdminStats> {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    let filterActive: any = {};
+    let filterOverdue: any = {};
+
+    filterOverdue.status = "accepted";
+    filterOverdue.loan_payment_status = { $in: ["in-progress", "not-started"] };
+    filterOverdue.$expr = {
+      $lt: [{ $toDate: "$repayment_date" }, now],
+    };
+
+    filterActive.status = "accepted";
+    filterActive.loan_payment_status = { $in: ["in-progress", "not-started"] };
+    filterActive.$expr = {
+      $gt: [{ $toDate: "$repayment_date" }, now],
+    };
 
     const [totalUsers, activeUsers, newUsersThisMonth] = await Promise.all([
       User.countDocuments({ role: 'user' }),
@@ -200,8 +216,8 @@ export class AdminService {
     const [totalLoans, pendingLoans, activeLoans, overdueLoans] = await Promise.all([
       Loan.countDocuments(),
       Loan.countDocuments({ status: 'pending' }),
-      Loan.countDocuments({ loan_payment_status: 'in-progress' }),
-      Loan.countDocuments({ loan_payment_status: 'in-progress', repayment_date: { $lt: now } })
+      Loan.countDocuments(filterActive),
+      Loan.countDocuments(filterOverdue)
     ]);
 
     const loanAggregation = await Loan.aggregate([
@@ -257,21 +273,16 @@ export class AdminService {
       }
     ]);
 
-    const revenueAggregation = await LedgerEntry.aggregate([
-      {
-        $match: {
-          account: 'platform_revenue',
-          entryType: 'CREDIT',
-          status: 'COMPLETED'
-        }
-      },
-      { $group: { _id: '$category', total: { $sum: '$amount' } } }
+    const revenueAggregation = await profitsModel.aggregate([
+      { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
 
-    const revenueMap = (revenueAggregation || []).reduce((acc: any, item: any) => {
-      acc[item._id] = item.total;
-      return acc;
-    }, {});
+    const [ loanRevenue, billPaymentRevenue, transactionRevenue, savingsRevenue ] = await Promise.all([
+      profitService.getTotalProfits({ source: "loan" }),
+      profitService.getTotalProfits({ source: "bill-payment" }),
+      profitService.getTotalProfits({ source: "transaction" }),
+      profitService.getTotalProfits({ source: "savings" })
+    ]);
 
     const safe = (v: any) => (typeof v === 'number' ? v : Number(v) || 0);
 
@@ -311,11 +322,11 @@ export class AdminService {
         totalInterestEarned: savingsAggregation[0]?.totalInterestEarned || 0
       },
       revenue: {
-        totalRevenue: Object.values(revenueMap).reduce((sum: number, val: any) => sum + safe(val), 0),
-        loanInterest: revenueMap.loan || 0,
-        billPaymentFees: revenueMap['bill-payment'] || 0,
-        transferFees: revenueMap.transfer || 0,
-        savingsPenalties: revenueMap.savings || 0
+        totalRevenue: revenueAggregation[0]?.total || 0,
+        loanInterest: loanRevenue?.total || 0,
+        billPaymentFees: billPaymentRevenue?.total || 0,
+        transferFees: transactionRevenue?.total || 0,
+        savingsPenalties: savingsRevenue?.total || 0
       }
     };
   }

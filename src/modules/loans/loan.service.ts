@@ -897,7 +897,7 @@ export class LoanService {
    * Get loans & users by category for admin
    */
   static async getLoansByCategory(
-    category?: "active" | "due" | "overdue" | "completed" | "pending" | "rejected",
+    category?: "active" | "due" | "overdue" | "completed" | "pending" | "rejected" | "canceled",
     page = 1,
     limit = 20,
     search?: string
@@ -939,6 +939,10 @@ export class LoanService {
 
       case "rejected":
         filter.status = "rejected";
+        break;
+
+      case "canceled":
+        filter.status = "canceled";
         break;
     }
 
