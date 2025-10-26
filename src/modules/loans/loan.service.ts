@@ -420,8 +420,10 @@ export class LoanService {
         const total = Number(params.amount) + fee;
 
         const loanDate = new Date();
+
+        // Add duration (in days) to the repayment date
         const repaymentDate = new Date(loanDate);
-        repaymentDate.setDate(loanDate.getDate() + Number(duration));
+        repaymentDate.setDate(repaymentDate.getDate() + Number(duration));
 
         loan.outstanding = total;
         loan.amount = params.amount;
@@ -435,6 +437,7 @@ export class LoanService {
           action: "Approve",
           date: new Date().toISOString(),
         };
+        
         loan.save();
 
         // 7️⃣ Ledger entry
