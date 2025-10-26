@@ -256,6 +256,12 @@ export class LoanService {
     const mono = await this.monoCreditLookup(params.bvn || user.user_metadata?.bvn);
     const creditScoreObj = this.convertToCreditScore(mono);
 
+    const loanDate = new Date();
+
+    // Add duration (in days) to the repayment date
+    const repaymentDate = new Date(loanDate);
+    repaymentDate.setDate(repaymentDate.getDate() + Number(params.duration));
+
     // Build and persist loan record
     const loanPayload: Partial<ILoan> = {
       ...params,
@@ -265,6 +271,8 @@ export class LoanService {
       userId: params.userId,
       requested_amount: params.amount,
       amount: params.amount, // store Naira
+      loan_date: loanDate.toISOString(),
+      repayment_date: repaymentDate.toISOString(),
       loan_payment_status: "not-started",
       outstanding: params.amount,
       credit_message: mono?.error || "available",
