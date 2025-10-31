@@ -861,7 +861,7 @@ export class LoanService {
       const sum = sumRepayments(loan.repayment_history);
 
       // ✅ In-progress loans
-      if (loan.loan_payment_status === "in-progress" && sum > 0) {
+      if (loan.loan_payment_status === "in-progress" && sum > 0 && loan.status === "accepted") {
         stats.repaidingLoans++;
         const penalties = sumPenalties(loan.repayment_history);
         stats.repaidingAmount += sum;
