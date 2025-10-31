@@ -858,10 +858,11 @@ export class LoanService {
         expectedProfit += computeExpectedProfit(amount) + penalties;
       }
 
+      const sum = sumRepayments(loan.repayment_history);
+
       // ✅ In-progress loans
-      if (loan.loan_payment_status === "in-progress" && loan.repayment_history.length > 0) {
+      if (loan.loan_payment_status === "in-progress" && sum > 0) {
         stats.repaidingLoans++;
-        const sum = sumRepayments(loan.repayment_history);
         const penalties = sumPenalties(loan.repayment_history);
         stats.repaidingAmount += sum;
         if (sum > amount) realizedProfit += sum - amount;
