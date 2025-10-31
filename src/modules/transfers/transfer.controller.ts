@@ -229,12 +229,14 @@ export class TransferController {
         return res.status(404).json({ status: "error", message: "User account not found" });
       }
 
-      await TransferController.profitService.recordRealizedProfit({
-        amount: profit,
-        source: "transaction",
-        userId: txn.userId,
-        reference: UuidService.generate(),
-      });
+      if(profit) {
+        await TransferController.profitService.recordRealizedProfit({
+          amount: profit,
+          source: "transaction",
+          userId: txn.userId,
+          reference: UuidService.generate(),
+        });
+      }
 
       res.status(200).json({ status: "success", data: txn });
     } catch (error) {
