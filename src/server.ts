@@ -16,6 +16,7 @@ import createApp from "./app";
 import { LoanPenaltiesCron } from "./workers/loans/penaltiesCron";
 import { TransfersPoller } from "./workers/pollers/transfersPoller";
 import { SavingsMaturitiesWorker } from "./workers/savings/maturitiesWorker";
+import { ProfitRealizationCron } from "./workers/profits/profitsCron";
 import { QueueService } from "./shared/queue";
 
 const logger = pino({ name: "prime-finance-server" });
@@ -77,6 +78,7 @@ async function startBackgroundWorkers() {
       LoanPenaltiesCron.start(),
       TransfersPoller.start(),
       SavingsMaturitiesWorker.start(),
+      ProfitRealizationCron.start(),
     ]);
     logger.info("✅ Background workers started successfully");
   } catch (err) {

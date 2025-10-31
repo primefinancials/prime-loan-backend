@@ -20,13 +20,31 @@ export class ProfitService {
     description?: string;
   }): Promise<ProfitDoc> {
     const user = await UserService.getUser(params.userId);
-    if (!user || Array.isArray(user) || !user._id) throw new NotFoundError("User not found");
+    if (!user || Array.isArray(user) || !user._id) {
+      throw new NotFoundError("User not found");
+    }
 
-    const primeInfo = (await ProfitService.vfd.getPrimeAccountInfo()).data;
-    const userAcc = (await ProfitService.vfd.getAccountInfo(user.user_metadata.accountNo)).data;
+    // Try to find existing profit by reference (avoid duplicates)
+    let profit = await Profit.findOne({ reference: params.reference });
+    if (!profit) {
+      profit = new Profit({
+        ...params,
+        type: "unrealized",
+        isRealized: false,
+      });
+    }
+
+    // Fetch both account infos concurrently for speed
+    const [primeRes, userRes] = await Promise.all([
+      ProfitService.vfd.getPrimeAccountInfo(),
+      ProfitService.vfd.getAccountInfo(user.user_metadata.accountNo),
+    ]);
+
+    const primeInfo = primeRes?.data;
+    const userAcc = userRes?.data;
 
     if (!primeInfo?.accountNo || !userAcc?.accountNo) {
-      throw new Error("Could not fetch account info to perform repayment");
+      throw new Error("Could not fetch valid account information for transfer");
     }
 
     const transferRequest: TransferRequest = {
@@ -45,34 +63,38 @@ export class ProfitService {
       signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
       remark: `${params.source} Profit`,
       transferType: "intra",
-      reference: params.reference
+      reference: params.reference,
     } as any;
 
-    let providerResponse: any;
     try {
-      providerResponse = await ProfitService.vfd.transfer(transferRequest);
+      const providerResponse = await ProfitService.vfd.transfer(transferRequest);
+
+      if (providerResponse?.status === "00") {
+        profit.type = "realized";
+        profit.isRealized = true;
+        profit.realizedAt = new Date();
+      } else {
+        console.warn(
+          `Profit realization failed for reference ${params.reference}:`,
+          providerResponse?.message || "Unknown error"
+        );
+      }
     } catch (err: any) {
-      console.log((`Failed to send profit: ${String(err.response.data.message || err.message)}`));
-      throw new Error(`Failed to send profit: ${String(err)}`);
+      console.error(
+        `Error realizing profit for ${params.reference}:`,
+        err.response?.data?.message || err.message
+      );
     }
-
-    const ok = providerResponse && providerResponse.status === "00";
-    if (!ok) {
-      throw new APIError(providerResponse.message);
-    }
-
-    const profit = new Profit({
-      ...params,
-      type: "realized",
-      isRealized: true
-    });
 
     return await profit.save();
   }
 
+
   /**
    * Record a new unrealized or realized profit
    */
+
+  
   async recordProfit(params: {
     reference: string;
     userId: string;

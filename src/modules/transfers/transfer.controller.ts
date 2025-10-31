@@ -43,7 +43,9 @@ export class TransferController {
       const userId = req.user!._id;
       const idempotencyKey = req.idempotencyKey!;
 
-      if (Number(req.user?.user_metadata?.wallet || 0) < amount) {
+      const profit = await SettingsService.calculateProfit("transfer", "send", Number(amount));
+
+      if (Number(req.user?.user_metadata?.wallet || 0) < (Number(amount) + profit)) {
         return res.status(400).json({
           status: "error",
           message: "Insufficient wallet balance",
@@ -65,8 +67,6 @@ export class TransferController {
         walletBalance: String(userAccount.data.accountBalance),
       });
 
-      const profit = await SettingsService.calculateProfit("transfer", "send", Number(amount));
-
       const transferReq: TransferRequest = {
         uniqueSenderAccountId: toBank == "999999" ? fromSavingsId : "",
         fromAccount,
@@ -80,7 +80,7 @@ export class TransferController {
         toSavingsId,
         toBank,
         signature: sha512.hex(`${fromAccount}${toAccount}`),
-        amount: Number(amount) - profit,
+        amount: Number(amount),
         remark: remark || "",
         transferType,
         reference: result.reference,

@@ -11,6 +11,7 @@ import { UuidService } from '../../shared/utils/uuid';
 import { NotificationService } from '../../modules/notifications/notification.service';
 import { UserService } from '../../modules/users/user.service';
 import pino from 'pino';
+import { LoanService } from '../../modules/loans/loan.service';
 
 const logger = pino({ name: 'loan-penalties-cron' });
 
@@ -26,7 +27,7 @@ export class LoanPenaltiesCron {
         await this.processLoans();
       },
       {
-        repeat: { pattern: '0 0 * * *' }, // Every midnight
+        repeat: { pattern: '0 */2 * * *' }, // Every midnight
         removeOnComplete: 5,
         removeOnFail: 10
       }
@@ -68,6 +69,18 @@ export class LoanPenaltiesCron {
           if (repaymentDateISO < todayISO) {
             // OVERDUE
             await this.applyPenaltyToLoan(loan, penaltyRate);
+
+            if(user && Number(user.user_metadata.wallet || 0) > 0)
+              try {
+                await LoanService.repayLoan({
+                  loanId: loan._id,
+                  userId: user._id,
+                  amount: Number(user.user_metadata.wallet)
+                })
+              } catch(error: any) {
+                logger.error({ loanId: loan._id, error: error.message }, 'Error repaying loan');
+              }
+
             await NotificationService.sendLoanOverdue(user, loan);
           } else if (repaymentDateISO === todayISO) {
             // DUE TODAY
