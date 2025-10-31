@@ -816,7 +816,7 @@ export class LoanService {
       // ✅ Disbursed loans
       if (loan.status === "accepted") {
         stats.totalDisbursed += amount;
-        stats.disbursedUsers;
+        stats.disbursedUsers++;
       }
 
       // ✅ Pending loans
