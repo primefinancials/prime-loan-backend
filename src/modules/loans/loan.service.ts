@@ -859,7 +859,7 @@ export class LoanService {
       }
 
       // ✅ In-progress loans
-      if (loan.loan_payment_status === "in-progress") {
+      if (loan.loan_payment_status === "in-progress" && loan.repayment_history.length > 0) {
         stats.repaidingLoans++;
         const sum = sumRepayments(loan.repayment_history);
         const penalties = sumPenalties(loan.repayment_history);
