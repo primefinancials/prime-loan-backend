@@ -849,7 +849,7 @@ export class LoanService {
       }
 
       // ✅ Repaid loans
-      if (loan.loan_payment_status === "complete") {
+      if (loan.loan_payment_status === "complete" && loan.status === "accepted") {
         stats.repaidLoans++;
         const sum = sumRepayments(loan.repayment_history);
         const penalties = sumPenalties(loan.repayment_history);
