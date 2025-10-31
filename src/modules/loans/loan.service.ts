@@ -773,10 +773,6 @@ export class LoanService {
       notStarted: 0,
     };
 
-    // Keep track of unique users (optional)
-    const uniqueAppliedUsers = new Set<string>();
-    const uniqueDisbursedUsers = new Set<string>();
-
     let expectedProfit = 0;
     let realizedProfit = 0;
 
@@ -815,12 +811,12 @@ export class LoanService {
       const dueDate = loan.repayment_date ? new Date(loan.repayment_date) : null;
 
       stats.totalApplied += amount;
-      uniqueAppliedUsers.add(String(loan.userId));
+      stats.appliedUsers++;
 
       // ✅ Disbursed loans
       if (loan.status === "accepted") {
         stats.totalDisbursed += amount;
-        uniqueDisbursedUsers.add(String(loan.userId));
+        stats.activeLoans++;
       }
 
       // ✅ Pending loans
@@ -879,10 +875,6 @@ export class LoanService {
         expectedProfit += sumPenalties(loan.repayment_history);
       }
     }
-
-    // 🧾 Assign unique user counts
-    stats.appliedUsers = uniqueAppliedUsers.size;
-    stats.disbursedUsers = uniqueDisbursedUsers.size;
 
     // ✅ Profit calculations
     stats.realizedProfit = Math.max(realizedProfit, 0);
