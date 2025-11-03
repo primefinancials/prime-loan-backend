@@ -81,7 +81,7 @@ export class TransferController {
         toBank,
         signature: sha512.hex(`${fromAccount}${toAccount}`),
         amount: Number(amount),
-        remark: remark || "",
+        remark: `${remark} trxn` || "",
         transferType,
         reference: result.reference,
       };
@@ -229,7 +229,9 @@ export class TransferController {
         return res.status(404).json({ status: "error", message: "User account not found" });
       }
 
-      if(profit) {
+      const isRefund = req.body.originator_narration.toLowerCase().includes("purchase refund") && !req.body.originator_narration.toLowerCase().includes("trxn");
+
+      if(profit && !isRefund) {
         await TransferController.profitService.recordRealizedProfit({
           amount: profit,
           source: "transaction",
