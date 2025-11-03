@@ -109,7 +109,7 @@ export class TransferController {
         throw new APIError(409, providerResp.message);
       } catch (error: any) {
         await TransferService.failTransfer(result.reference);
-        console.log({ error });
+        console.log({ error: error?.response?.data?.data, message: error?.response?.data?.message }, "Transfer Provider Error");
         throw new APIError(409, error?.response?.data?.message || error.message);
       }
     } catch (error) {
