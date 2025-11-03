@@ -54,7 +54,7 @@ export class TransferController {
 
       const userAccount = await TransferController.vfdProvider.getAccountInfo(fromAccount);
 
-      const result = await TransferService.initiateTransfer({
+      const result: any = toBank != "999999"? await TransferService.initiateTransfer({
         fromAccount,
         userId,
         toAccount,
@@ -65,7 +65,7 @@ export class TransferController {
         remark,
         idempotencyKey,
         walletBalance: String(userAccount.data.accountBalance),
-      });
+      }) : {};
 
       const transferReq: TransferRequest = {
         uniqueSenderAccountId: toBank == "999999" ? fromSavingsId : "",
@@ -83,14 +83,14 @@ export class TransferController {
         amount: Number(amount),
         remark: `${remark} trxn` || "",
         transferType,
-        reference: result.reference,
+        reference: toBank != "999999"? result.reference : UuidService.generate(),
       };
 
       try {
         const providerResp = await TransferController.vfdProvider.transfer(transferReq);
 
         if (providerResp.status === "00") {
-          await TransferService.completeTransfer(result.reference, "transfer");
+          toBank != "999999" && await TransferService.completeTransfer(result.reference, "transfer");
 
           await TransferController.profitService.recordRealizedProfit({
             amount: profit,
@@ -105,10 +105,10 @@ export class TransferController {
           });
         }
 
-        await TransferService.failTransfer(result.reference);
+        toBank != "999999" && await TransferService.failTransfer(result.reference);
         throw new APIError(409, providerResp.message);
       } catch (error: any) {
-        await TransferService.failTransfer(result.reference);
+        toBank != "999999" && await TransferService.failTransfer(result.reference);
         console.log({ error, data: error?.response?.data?.data, message: error?.response?.data?.message }, "Transfer Provider Error");
         throw new APIError(409, error?.response?.data?.message || error.message);
       }
