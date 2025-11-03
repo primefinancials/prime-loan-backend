@@ -17,6 +17,7 @@ import { LoanPenaltiesCron } from "./workers/loans/penaltiesCron";
 import { TransfersPoller } from "./workers/pollers/transfersPoller";
 import { SavingsMaturitiesWorker } from "./workers/savings/maturitiesWorker";
 import { ProfitRealizationCron } from "./workers/profits/profitsCron";
+import { BillPaymentsPoller } from "./workers/pollers/billPaymentsPoller";
 import { QueueService } from "./shared/queue";
 
 const logger = pino({ name: "prime-finance-server" });
@@ -79,6 +80,7 @@ async function startBackgroundWorkers() {
       TransfersPoller.start(),
       SavingsMaturitiesWorker.start(),
       ProfitRealizationCron.start(),
+      BillPaymentsPoller.start(),
     ]);
     logger.info("✅ Background workers started successfully");
   } catch (err) {
