@@ -139,6 +139,47 @@ export async function processTransaction({
             message: "Bill payment completed successfully",
           };
         } else {
+          if (providerStatus !== "success" && (providerStatus !== "failed" || providerStatus !== "error")) {
+            // 4️⃣ Complete transaction (mark completed)
+            await TransferService.completeTransfer(
+              txnResponse.reference,
+              "bill-payment"
+            );
+
+            billPayment.meta = {
+              ...billPayment.meta,
+              txnResponse,
+              providerResponse,
+            };
+            await billPayment.save({ session });
+
+            // Ledger update
+            await LedgerService.createDoubleEntry(
+              traceId,
+              `user_wallet:${userId}`,
+              `bill-payment:${serviceType}`,
+              amount,
+              "bill-payment",
+              {
+                userId,
+                subtype: serviceType,
+                idempotencyKey,
+                session,
+                meta: {
+                  billPaymentId: billPayment._id,
+                  transactionId: txnResponse.reference,
+                },
+              }
+            );
+
+            return {
+              traceId,
+              status: "PENDING",
+              billPayment,
+              message: "Bill payment is pending",
+            };
+          }
+
           // ❌ Provider failed → trigger refund
           await TransferService.failTransfer(txnResponse?.reference || "");
           throw new Error(providerResponse.message || "Provider transaction failed");
@@ -149,6 +190,23 @@ export async function processTransaction({
         // 5️⃣ Attempt refund
         try {
           refundResponse = await refundProvider();
+          await LedgerService.createDoubleEntry(
+            UuidService.generate(),
+            `bill-payment:${serviceType}`,
+            `user_wallet:${userId}`,
+            amount,
+            "bill-payment",
+            {
+              userId,
+              subtype: serviceType,
+              idempotencyKey: UuidService.generate(),
+              session,
+              meta: {
+                billPaymentId: billPayment._id,
+                transactionId: txnResponse.reference,
+              },
+            }
+          );
           console.log("Refund Response:", refundResponse);
         } catch (refundErr: any) {
           console.error("Refund Failed:", refundErr?.response?.data?.message || refundErr.message);
