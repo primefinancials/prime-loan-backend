@@ -86,26 +86,31 @@ export class TransferController {
         reference: result.reference,
       };
 
-      const providerResp = await TransferController.vfdProvider.transfer(transferReq);
+      try {
+        const providerResp = await TransferController.vfdProvider.transfer(transferReq);
 
-      if (providerResp.status === "00") {
-        await TransferService.completeTransfer(result.reference, "transfer");
+        if (providerResp.status === "00") {
+          await TransferService.completeTransfer(result.reference, "transfer");
 
-        await TransferController.profitService.recordRealizedProfit({
-          amount: profit,
-          source: "transaction",
-          userId,
-          reference: UuidService.generate(),
-        });
+          await TransferController.profitService.recordRealizedProfit({
+            amount: profit,
+            source: "transaction",
+            userId,
+            reference: UuidService.generate(),
+          });
 
-        return res.status(200).json({
-          status: "success",
-          data: { ...result, provider: providerResp },
-        });
+          return res.status(200).json({
+            status: "success",
+            data: { ...result, provider: providerResp },
+          });
+        }
+
+        await TransferService.failTransfer(result.reference);
+        throw new APIError(409, providerResp.message);
+      } catch (error: any) {
+        await TransferService.failTransfer(result.reference);
+        throw new APIError(409, error.message);
       }
-
-      await TransferService.failTransfer(result.reference);
-      throw new APIError(409, providerResp.message);
     } catch (error) {
       next(error);
     }
