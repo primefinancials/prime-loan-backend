@@ -413,7 +413,8 @@ export class TransferService {
       reference: body.reference,
       remark: body.originator_narration,
       bankCode: body.originator_bank,
-      providerRef: body.session_id
+      providerRef: body.session_id,
+      beneficiaryName: body.originator_account_name
     });
 
     await User.findOneAndUpdate(
