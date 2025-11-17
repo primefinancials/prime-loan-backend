@@ -140,8 +140,8 @@ export class UserService {
 
         await NotificationService.sendAdminNewUserAlert(
             admins,
-            user.user_metadata.first_name,
-            user.user_metadata.surname
+            user.user_metadata.first_name || "",
+            user.user_metadata.surname || ""
         )
 
         return user;
