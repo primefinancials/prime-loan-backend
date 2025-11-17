@@ -103,7 +103,7 @@ export class LoanController {
 
       // Eligibility check
       const eligibility = await LoanEligibilityService.calculateEligibility(req.user!, amount);
-      c
+      const admins = await getMailsByPermission("manage_loans"); 
 
       if (eligibility.eligible) {
         if (eligibility.notifyAdmin) {
