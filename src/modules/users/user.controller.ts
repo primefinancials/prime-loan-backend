@@ -9,13 +9,43 @@ import { ProtectedRequest } from "../../interfaces";
 import { UserService } from "./user.service";
 import { User } from "./user.interface";
 
+function formatDob(dob: string): string {
+  // Expecting "MM/DD/YYYY" or "MM-DD-YYYY"
+  const parts = dob.includes("/") ? dob.split("/") : dob.split("-");
+
+  if (parts.length !== 3) {
+    throw new Error("Invalid DOB format. Expected MM/DD/YYYY");
+  }
+
+  const [month, day, year] = parts;
+
+  const date = new Date(`${year}-${month}-${day}`);
+
+  if (isNaN(date.getTime())) {
+    throw new Error("Invalid DOB provided");
+  }
+
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", 
+                  "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  const formatted = `${String(date.getDate()).padStart(2, "0")}-${months[date.getMonth()]}-${date.getFullYear()}`;
+
+  return formatted;
+}
+
 export class UserController {
   /**
    * Register a new user
    */
   static async register(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = await UserService.createClientAccount(req.body);
+      // Convert dob BEFORE sending to service
+      const formattedDob = formatDob(req.body.dob);
+
+      const user = await UserService.createClientAccount({
+        ...req.body,
+        dob: formattedDob, // overwrite with formatted DOB
+      });
 
       res.status(201).json({
         status: "success",
@@ -25,6 +55,7 @@ export class UserController {
       next(error);
     }
   }
+
 
   /**
    * Login
