@@ -17,7 +17,7 @@ function formatDob(dob: string): string {
     throw new Error("Invalid DOB format. Expected MM/DD/YYYY");
   }
 
-  const [month, day, year] = parts;
+  const [day, month, year] = parts;
 
   const date = new Date(`${year}-${month}-${day}`);
 
