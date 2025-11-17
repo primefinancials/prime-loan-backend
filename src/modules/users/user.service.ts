@@ -16,6 +16,7 @@ import BillPaymentService from "../bill-payments/bill.payment.service";
 import { SavingsService } from "../savings/savings.service";
 import { LoanService } from "../loans/loan.service";
 import { ActivityEvent } from "./user.interface";
+import { getMailsByPermission } from "../../shared/utils/checkPermission";
 
 export class UserService {
     private static vfdProvider = new VfdProvider();
@@ -129,11 +130,19 @@ export class UserService {
         // Credit signup bonus (async)
         TransferService.createUserBonus(user._id, 50).catch(console.error); // ₦50 bonus
 
+        const admins = await getMailsByPermission("manage_users");
+
         // Send welcome email (async)
         await NotificationService.sendWelcomeEmail(
             user.email,
             user.user_metadata.first_name || ""
         );
+
+        await NotificationService.sendAdminNewUserAlert(
+            admins,
+            user.user_metadata.first_name,
+            user.user_metadata.surname
+        )
 
         return user;
     }

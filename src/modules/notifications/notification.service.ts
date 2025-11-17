@@ -117,6 +117,17 @@ export class NotificationService {
     return this.sendEmail(to, "Welcome to Prime Finance", html);
   }
 
+  static async sendAdminNewUserAlert(to: string, firstName: string, lastName: string) {
+    const html = `
+      <div style="font-family: Arial, sans-serif; padding:20px;">
+        <h2 style="color:#2563eb;">New User SignUp 🎉</h2>
+        <p>A new user has just signed up: <b>${firstName} ${lastName}</b></p>
+        <p style="margin-top:20px;">Best regards,<br/>Prime Finance System</p>
+      </div>
+    `;
+    return this.sendEmail(to, "Welcome to Prime Finance", html);
+  }
+
   static async sendLoginAlert(to: string, firstName: string) {
     const html = `
       <div style="font-family: Arial, sans-serif; padding:20px;">
