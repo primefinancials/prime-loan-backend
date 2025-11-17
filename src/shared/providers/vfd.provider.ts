@@ -145,7 +145,7 @@ export class VfdProvider {
     this.circuitBreaker = new CircuitBreaker({
       failureThreshold: 5,
       resetTimeout: 60000,
-      monitoringPeriod: 300000,
+      windowDuration: 300000,
     });
   }
 
