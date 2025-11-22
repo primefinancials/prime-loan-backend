@@ -13,7 +13,8 @@ export const generateBearerToken = async (consumerKey: string, consumerSecret: s
   }
 
   const requestBody: TokenRequestBody = {
-    consumerKey,
+    // consumerKey,
+    consumerKey: '12345abc',
     consumerSecret,
     validityTime: "-1",
   };
