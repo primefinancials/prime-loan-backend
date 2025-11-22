@@ -301,7 +301,7 @@ export class AdminController {
       if (!Array.isArray(loanIds) || loanIds.length === 0) return res.status(400).json({ status: 'failed', message: 'loanIds (array) is required' });
       if (!['approve', 'reject'].includes(action)) return res.status(400).json({ status: 'failed', message: 'action must be approve or reject' });
 
-      const results = await adminService.bulkLoanAction(loanIds, action, String(admin!._id), reason);
+      const results = await adminService.bulkLoanAction(loanIds, action, String(admin!._id as any), reason);
 
       res.status(200).json({
         status: 'success',
@@ -474,7 +474,7 @@ export class AdminController {
 
       const { page, limit } = parsePageLimit(req.query);
 
-      const logs = await adminService.getAdminActivityLogs(admin?._id || undefined, page, limit);
+      const logs = await adminService.getAdminActivityLogs(admin?._id as any || undefined, page, limit);
 
       res.status(200).json({
         status: 'success',
@@ -541,7 +541,7 @@ export class AdminController {
 
       const { page, limit } = parsePageLimit(req.query);
 
-      const result = await adminService.listAllUsers(admin?._id || "", page, limit, status as string, search as string);
+      const result = await adminService.listAllUsers(admin?._id as any || "", page, limit, status as string, search as string);
 
       res.status(200).json({
         status: 'success',
@@ -580,7 +580,7 @@ export class AdminController {
       checkPermission(admin!, "manage_settings", { throwOnFail: true });
 
       const settings = await SettingsService.updateSettings(
-        admin?._id || "",
+        admin?._id as any || "",
         req.body
       );
 
@@ -670,7 +670,7 @@ export class AdminController {
         throw new UnauthorizedError("Access denied");
       }
 
-      const user = await UserService.getUser(admin!._id);
+      const user = await UserService.getUser(admin!._id as any);
 
       res.status(200).json({
         status: "success",
@@ -693,7 +693,7 @@ export class AdminController {
         throw new UnauthorizedError("Access denied");
       }
 
-      const updatedUser = await UserService.update(admin!._id, field, value);
+      const updatedUser = await UserService.update(admin!._id as any, field, value);
 
       res.status(200).json({
         status: "success",
@@ -794,7 +794,7 @@ export class AdminController {
 
       const { oldPassword, newPassword } = req.body;
       const userService = new UserService();
-      const result = await userService.changePassword(req.admin!._id, oldPassword, newPassword);
+      const result = await userService.changePassword(req.admin!._id as any, oldPassword, newPassword);
 
       res.status(200).json({
         status: "success",

@@ -3,9 +3,10 @@
  * Ensures external calls are made reliably using transactional outbox pattern
  */
 import mongoose, { Document, Schema } from 'mongoose';
+import { ObjectId } from 'mongodb';
 
 export interface IOutboxEvent extends Document {
-  _id: string;
+  _id: ObjectId;
   topic: string;
   payload: any;
   processed: boolean;

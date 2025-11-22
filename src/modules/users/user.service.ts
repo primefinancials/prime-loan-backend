@@ -114,9 +114,9 @@ export class UserService {
 
         // Initialize user wallet in ledger
         await LedgerService.createEntry({
-            traceId: `user_init_${user._id}`,
-            userId: user._id,
-            account: `user_wallet:${user._id}`,
+            traceId: `user_init_${user._id as any}`,
+            userId: user._id as any,
+            account: `user_wallet:${user._id as any}`,
             entryType: 'CREDIT',
             category: 'transfer',
             subtype: 'wallet_initialization',
@@ -128,7 +128,7 @@ export class UserService {
         });
 
         // Credit signup bonus (async)
-        TransferService.createUserBonus(user._id, 50).catch(console.error); // ₦50 bonus
+        TransferService.createUserBonus(user._id as any, 50).catch(console.error); // ₦50 bonus
 
         const admins = await getMailsByPermission("manage_users");
 
@@ -139,7 +139,7 @@ export class UserService {
         );
 
         await NotificationService.sendAdminNewUserAlert(
-            admins, 
+            admins,
             user.user_metadata.first_name || "",
             user.user_metadata.surname || ""
         )
@@ -186,18 +186,18 @@ export class UserService {
         // JWT payload
         const userToSign = {
             accountType: user.role,
-            id: user._id
+            id: user._id as any
         };
 
         // Create JWTs
         const accessToken = jwt.sign(
-            { accountType: user.role, id: user._id },
+            { accountType: user.role, id: user._id as any },
             ACCESS_TOKEN_SECRET as Secret,
             { expiresIn: ACCESS_TOKEN_EXPIRES_IN } as SignOptions
         );
 
         const refreshToken = jwt.sign(
-            { accountType: user.role, id: user._id },
+            { accountType: user.role, id: user._id as any },
             REFRESH_TOKEN_SECRET as Secret,
             { expiresIn: REFRESH_TOKEN_EXPIRES } as SignOptions
         );
@@ -309,7 +309,7 @@ export class UserService {
 
         await NotificationService.sendOtpEmail(email, foundUser.user_metadata.first_name, pin);
 
-        const res = await User.findByIdAndUpdate(foundUser._id, { updates });
+        const res = await User.findByIdAndUpdate(foundUser._id as any, { updates });
 
         return res;
     };
@@ -341,12 +341,12 @@ export class UserService {
         // Check if PIN is correct and within 10-minute window
         if (String(lastUpdate.pin) !== pin || timeDiff > 10 * 60 * 1000) { // 10 minutes in milliseconds
           lastUpdate.status = "invalid";
-          await User.findByIdAndUpdate(foundUser._id, { updates });
+          await User.findByIdAndUpdate(foundUser._id as any, { updates });
           throw new BadRequestError('Invalid or expired OTP');
         }
     
         lastUpdate.status = "validated";
-        await User.findByIdAndUpdate(foundUser._id, { updates });
+        await User.findByIdAndUpdate(foundUser._id as any, { updates });
 
         return foundUser;
     };
@@ -378,7 +378,7 @@ export class UserService {
             throw new BadRequestError("Password must be at least 8 characters long");
           }
           const hashedPassword = encryptPassword(newPassword);
-          await User.findByIdAndUpdate(foundUser._id, { password: hashedPassword }); // Save password
+          await User.findByIdAndUpdate(foundUser._id as any, { password: hashedPassword }); // Save password
           return true;
         }
     
@@ -387,7 +387,7 @@ export class UserService {
           if (newPin.length !== 4 || !/^\d+$/.test(newPin)) {
             throw new BadRequestError("PIN must be exactly 4 digits");
           }
-          await User.findByIdAndUpdate(foundUser._id, { "user_metadata.pin": newPin }); // Save PIN (if you have a separate update mechanism)
+          await User.findByIdAndUpdate(foundUser._id as any, { "user_metadata.pin": newPin }); // Save PIN (if you have a separate update mechanism)
           return true;
         }
 
@@ -449,25 +449,25 @@ export class UserService {
      */
     static async getUserFinancialSummary(user: User | null) {
         const [walletBalance, activeLoans, pendingLoans, savingsPlans] = await Promise.all([
-            LedgerService.getUserWalletBalance(user?._id || ""),
+            LedgerService.getUserWalletBalance(user?._id as any || ""),
             Loan.find({ 
-                userId: user?._id || "", 
+                userId: user?._id as any || "", 
                 status: "accepted",
                 loan_payment_status: { $in: ["in-progress", "not-started"] } 
             }),
             Loan.find({ 
-                userId: user?._id || "", 
+                userId: user?._id as any || "", 
                 status: "pending",
             }),
-            SavingsPlan.find({ userId: user?._id || "", status: "ACTIVE" })
+            SavingsPlan.find({ userId: user?._id as any || "", status: "ACTIVE" })
         ]);
 
         const totalLoanOutstanding = activeLoans.reduce((sum, loan) => sum + (loan.outstanding || 0), 0);
         const totalSavings = savingsPlans.reduce((sum, plan) => sum + plan.principal, 0);
         
-        const billPayments = await BillPaymentService.getUserBillPayments(user?._id || "");
-        const savings = await SavingsService.getUserPlans(user?._id || "");
-        const transfers = await TransferService.transfers(user?._id || "");
+        const billPayments = await BillPaymentService.getUserBillPayments(user?._id as any || "");
+        const savings = await SavingsService.getUserPlans(user?._id as any || "");
+        const transfers = await TransferService.transfers(user?._id as any || "");
 
         // Normalize to unified activity format
         const activity: ActivityEvent[] = [];
@@ -476,11 +476,11 @@ export class UserService {
         activeLoans.forEach((loan) => {
             activity.push({
                 type: "loan",
-                id: loan._id,
+                id: loan._id as any,
                 amount: loan.amount,
                 status: loan.loan_payment_status,
                 date: new Date(loan.loan_date),
-                isUser: loan.userId == user?._id,
+                isUser: loan.userId == user?._id as any,
                 description: `Loan request of ₦${loan.amount} (${loan.status})`,
                 meta: { reason: loan.reason }
             });
@@ -490,11 +490,11 @@ export class UserService {
         savings.forEach((plan) => {
             activity.push({
                 type: "savings",
-                id: plan._id,
+                id: plan._id as any,
                 amount: plan.principal,
                 status: plan.status,
                 date: new Date(plan.createdAt),
-                isUser: plan.userId == user?._id,
+                isUser: plan.userId == user?._id as any,
                 description: `Savings plan "${plan.planName}" started with ₦${plan.principal}`,
                 meta: { planType: plan.planType }
             });
@@ -504,12 +504,12 @@ export class UserService {
         billPayments.billPayments.forEach((bill) => {
             activity.push({
                 type: "bill_payment",
-                id: bill._id,
+                id: bill._id as any,
                 amount: bill.amount,
                 status: bill.status,
                 date: new Date(bill.createdAt),
                 description: `Bill payment of ₦${bill.amount} (${bill.serviceType})`,
-                isUser: bill.userId == user?._id,
+                isUser: bill.userId == user?._id as any,
                 meta: { providerRef: bill.providerRef }
             });
         });
@@ -518,7 +518,7 @@ export class UserService {
         transfers.data.forEach((t) => {
             activity.push({
                 type: "transfer",
-                id: t._id,
+                id: t._id as any,
                 amount: t.amount,
                 status: t.status,
                 date: new Date(t.createdAt),
@@ -538,7 +538,7 @@ export class UserService {
             activeLoansCount: activeLoans.length,
             pendingLoansCount: pendingLoans.length,
             activeSavingsCount: savingsPlans.length,
-            creditScore: await this.getUserCreditScore(user?._id || ""),
+            creditScore: await this.getUserCreditScore(user?._id as any || ""),
             activity
         };
     }

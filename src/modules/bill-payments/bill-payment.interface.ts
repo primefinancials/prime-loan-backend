@@ -1,3 +1,5 @@
+import { ObjectId } from 'mongodb';
+
 export type MOBILENETWORKS = '01' | '02' | '04' | '03';
 export type BONUSTYPE = '01' | '02';
 export type CABLETV = 'dstv' | 'gotv' | 'startimes';
@@ -266,7 +268,7 @@ export interface BillPaymentResult {
 }
 
 export interface IBillPayment extends Document {
-  _id: string;
+  _id: ObjectId;
   userId: string;
   traceId: string; // v2 addition
   serviceType: string;

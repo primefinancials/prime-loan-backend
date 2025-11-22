@@ -29,7 +29,7 @@ export class LoanController {
    */
   static async requestLoan(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const userId = req.user!._id;
+      const userId = req.user!._id as any;
       const idempotencyKey = req.idempotencyKey;
 
       const {
@@ -138,7 +138,7 @@ export class LoanController {
             loan
           );
         } else {
-          await LoanService.rejectLoan("system", loan._id, eligibility.reason || "");
+          await LoanService.rejectLoan("system", loan._id as any, eligibility.reason || "");
           return res.status(400).json({ status: "failed", message: eligibility.reason });
         }
       }
@@ -158,7 +158,7 @@ export class LoanController {
     try {
       const { id } = req.params;
       const { amount, mandatory } = req.body;
-      const userId = req.user!._id;
+      const userId = req.user!._id as any;
       const idempotencyKey = req.idempotencyKey;
 
       const result = await LoanService.repayLoan({
@@ -177,7 +177,7 @@ export class LoanController {
           amount,
           source: "loan",
           userId: result.loan.userId,
-          reference: result.loan._id,
+          reference: result.loan._id as any,
           type: "realized",
         });
       } else {
@@ -197,7 +197,7 @@ export class LoanController {
           amount: outstanding,
           source: "loan",
           userId: result.loan.userId,
-          reference: result.loan._id,
+          reference: result.loan._id as any,
           type: "unrealized",
         });
       }
@@ -224,7 +224,7 @@ export class LoanController {
       const idempotencyKey = req.idempotencyKey;
 
       const result = await LoanService.disburseLoan({
-        adminId: admin!._id,
+        adminId: admin!._id as any,
         loanId,
         amount,
         idempotencyKey,
@@ -236,7 +236,7 @@ export class LoanController {
         amount: profit,
         source: "loan",
         userId: result.loan.userId,
-        reference: result.loan._id,
+        reference: result.loan._id as any,
         type: "unrealized",
       });
 
@@ -259,7 +259,7 @@ export class LoanController {
         throw new UnauthorizedError("You do not have permission to reject loans.");
       }
 
-      const loan = await LoanService.rejectLoan(admin?._id || "", id, reason);
+      const loan = await LoanService.rejectLoan(admin?._id as any || "", id, reason);
       res.status(200).json({ status: "success", data: loan });
     } catch (error) {
       next(error);
@@ -275,7 +275,7 @@ export class LoanController {
       const { reason } = req.body;
       const user = req.user;
 
-      const loan = await LoanService.cancelLoan(user?._id || "", id, reason);
+      const loan = await LoanService.cancelLoan(user?._id as any || "", id, reason);
       res.status(200).json({ status: "success", data: loan });
     } catch (error) {
       next(error);
@@ -301,7 +301,7 @@ export class LoanController {
    */
   static async listUserLoans(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const userId = req.user!._id;
+      const userId = req.user!._id as any;
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
 
@@ -361,7 +361,7 @@ export class LoanController {
       const user = await UserService.getUser(loan?.userId || "");
 
       if (history.data.length > 0) {
-        history.data = history.data.filter((item) => item._id !== id);
+        history.data = history.data.filter((item) => item._id as any !== id);
       }
 
       res.status(200).json({ status: "success", data: { loan, user, history } });
@@ -439,7 +439,7 @@ export class LoanController {
       }
 
       const { step, amount, adminNotes } = req.body;
-      const ladder = await LoanService.createLoanLadder(admin?._id || "", Number(step), Number(amount), adminNotes);
+      const ladder = await LoanService.createLoanLadder(admin?._id as any || "", Number(step), Number(amount), adminNotes);
       res.status(201).json({ status: "success", message: "Loan ladder step created successfully", data: ladder });
     } catch (error) {
       next(error);
@@ -455,7 +455,7 @@ export class LoanController {
 
       const { id } = req.params;
       const updates = req.body;
-      const ladder = await LoanService.updateLoanLadder(admin?._id || "", id, updates);
+      const ladder = await LoanService.updateLoanLadder(admin?._id as any || "", id, updates);
       res.status(200).json({ status: "success", message: "Loan ladder updated successfully", data: ladder });
     } catch (error) {
       next(error);
@@ -470,7 +470,7 @@ export class LoanController {
       }
 
       const { id } = req.params;
-      const result = await LoanService.deleteLoanLadder(admin?._id || "", id);
+      const result = await LoanService.deleteLoanLadder(admin?._id as any || "", id);
       res.status(200).json({ status: "success", message: result.message });
     } catch (error) {
       next(error);

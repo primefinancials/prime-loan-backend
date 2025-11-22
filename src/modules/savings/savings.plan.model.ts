@@ -3,9 +3,10 @@
  * Supports both locked and flexible savings with interest calculations
  */
 import mongoose, { Document, Schema } from 'mongoose';
+import { ObjectId } from 'mongodb';
 
 export interface ISavingsPlan extends Document {
-  _id: string;
+  _id: ObjectId;
   userId: string;
   planName: string;
   planType: 'LOCKED' | 'FLEXIBLE';

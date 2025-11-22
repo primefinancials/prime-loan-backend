@@ -3,9 +3,10 @@
  * Every money movement in the system must create corresponding ledger entries
  */
 import mongoose, { Document, Schema } from 'mongoose';
+import { ObjectId } from 'mongodb';
 
 export interface ILedgerEntry extends Document {
-  _id: string;
+  _id: ObjectId;
   traceId: string;
   userId?: string;
   account: string; // 'user_wallet:<id>' | 'provider:<name>' | 'platform_revenue' | 'savings_pool'

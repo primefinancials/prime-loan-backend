@@ -1,9 +1,11 @@
+import { ObjectId } from "mongodb";
+
 export type TransactionType = "loan" | "paybills" | "transfer";
 export type TransactionCategory = "credit" | "debit" | "airtime" | "data" | "betting" | "tv" | "power" | "internet" | "waec" | "jamb" ;
 export type TransactionStatus = "success" | "pending" | "failed";
 
 export interface Transaction {
-  _id: string; // Unique transaction identifier (UUID)
+  _id: ObjectId; // Unique transaction identifier (UUID)
   name: string; // Transaction name or description
   user: string; // User ID (UUID)
   type: TransactionType; // Restricted to "loan" or "paybills"
@@ -46,7 +48,7 @@ export interface UPDATETRANSACTION {
 }
 
 export interface Transfer {
-  _id: string;
+  _id: ObjectId;
   userId: string;
   traceId: string;
   fromAccount: string;

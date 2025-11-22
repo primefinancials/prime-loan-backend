@@ -3,9 +3,10 @@
  * Stores responses for idempotent endpoints to return cached results
  */
 import mongoose, { Document, Schema } from 'mongoose';
+import { ObjectId } from 'mongodb';
 
 export interface IIdempotencyKey extends Document {
-  _id: string;
+  _id: ObjectId;
   key: string;
   userId?: string;
   response: any;

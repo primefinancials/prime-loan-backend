@@ -83,7 +83,7 @@ export class TransferService {
           // Create debit ledger entry
           await LedgerService.createEntry({
             traceId,
-            userId: user._id,
+            userId: user._id as any,
             account: `user_wallet:${user._id}`,
             entryType: 'DEBIT',
             category: 'transfer',
@@ -132,7 +132,7 @@ export class TransferService {
         // Update debit ledger entry
         const ledger = await LedgerService.getByTraceId(transfer.traceId);
         if (ledger[0]) {
-          await LedgerService.updateStatus(ledger[0]._id, 'COMPLETED', session);
+          await LedgerService.updateStatus(ledger[0]._id as any, 'COMPLETED', session);
         }
 
         // Credit beneficiary account (for intra-bank)
@@ -142,7 +142,7 @@ export class TransferService {
           if (user) {
             if(type == "transfer") {
               await LedgerService.createEntry({
-                userId: user._id,
+                userId: user._id as any,
                 traceId: transfer.traceId,
                 account: `user_wallet:${transfer.toAccount}`,
                 entryType: 'CREDIT',
@@ -201,7 +201,7 @@ export class TransferService {
         // Update debit ledger entry
         const ledger = await LedgerService.getByTraceId(transfer.traceId);
         if (ledger[0]) {
-          await LedgerService.updateStatus(ledger[0]._id, 'FAILED', session);
+          await LedgerService.updateStatus(ledger[0]._id as any, 'FAILED', session);
         }
 
         transfer.status = 'FAILED';

@@ -61,15 +61,15 @@ export interface CreateLoanParams {
 }
 
 export interface DisburseParams {
-  adminId: string | "system";
-  loanId: string;
+  adminId: any | "system";
+  loanId: any;
   amount: number; // override amount (naira)
   idempotencyKey?: string;
 }
 
 export interface RepayParams {
-  userId: string;
-  loanId: string;
+  userId: any;
+  loanId: any;
   amount: number; // naira
   mandatory?: number;
   idempotencyKey?: string;
@@ -455,7 +455,7 @@ export class LoanService {
           `user_wallet:${user._id}`,
           params.amount,
           "loan",
-          { userId: user._id, subtype: "disbursement", session }
+          { userId: user._id as any, subtype: "disbursement", session }
         );
 
         // 8️⃣ Notify user (best-effort)
@@ -586,7 +586,7 @@ export class LoanService {
           repayAmount,
           "loan",
           {
-            userId: user._id,
+            userId: user._id as any,
             subtype: "repayment",
             idempotencyKey: params.idempotencyKey,
             session

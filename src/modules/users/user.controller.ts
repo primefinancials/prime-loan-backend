@@ -79,7 +79,7 @@ export class UserController {
    */
   static async profile(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const user = await UserService.getUser(req.user!._id);
+      const user = await UserService.getUser(req.user!._id as any);
 
       res.status(200).json({
         status: "success",
@@ -106,7 +106,7 @@ export class UserController {
       let updatedUser;
 
       for (const [field, value] of Object.entries(user || {})) {
-        updatedUser = await UserService.update(req.user!._id, `user_metadata.${field}`, value);
+        updatedUser = await UserService.update(req.user!._id as any, `user_metadata.${field}`, value);
       }
 
       res.status(200).json({
@@ -179,7 +179,7 @@ export class UserController {
     try {
       const { oldPassword, newPassword } = req.body;
       const userService = new UserService();
-      const result = await userService.changePassword(req.user!._id, oldPassword, newPassword);
+      const result = await userService.changePassword(req.user!._id as any, oldPassword, newPassword);
 
       res.status(200).json({
         status: "success",

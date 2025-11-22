@@ -1,4 +1,5 @@
 import { Document } from "mongoose";
+import { ObjectId } from "mongodb";
 
 export type USERROLES = "admin" | "user";
 export type USERSTATUS = "active" | "inactive";
@@ -46,7 +47,7 @@ export type AdminPermission =
 
 
 export interface User extends Document {
-  _id: string;
+  _id: ObjectId;
   confirmation_sent_at: string; 
   confirmed_at: string;
   created_at: string;

@@ -120,7 +120,7 @@ export class BillPaymentsPoller {
 
     const result = await TransferService.initiateTransfer({
       fromAccount: to.accountNo,
-      userId: user._id,
+      userId: user._id as any,
       toAccount: from.accountNo,
       beneficiaryName: from.client,
       amount: payment.amount,

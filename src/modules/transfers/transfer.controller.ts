@@ -56,7 +56,7 @@ export class TransferController {
 
       const result: any = toBank != "999999"? await TransferService.initiateTransfer({
         fromAccount,
-        userId,
+        userId: userId as any,
         toAccount,
         beneficiaryName: toClient,
         amount,
@@ -95,7 +95,7 @@ export class TransferController {
           await TransferController.profitService.recordRealizedProfit({
             amount: profit,
             source: "transaction",
-            userId,
+            userId: userId as any,
             reference: UuidService.generate(),
           });
 
@@ -166,7 +166,7 @@ export class TransferController {
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 10;
 
-      const result = await TransferService.transfers(userId, page, limit);
+      const result = await TransferService.transfers(userId as any, page, limit);
       res.status(200).json({ status: "success", data: result });
     } catch (error) {
       next(error);

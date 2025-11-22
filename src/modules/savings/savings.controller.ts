@@ -36,7 +36,7 @@ export class SavingsController {
       }
 
       const result = await SavingsService.createPlan({
-        userId,
+        userId: userId as any,
         planType,
         planName,
         targetAmount,
@@ -76,7 +76,7 @@ export class SavingsController {
 
       const result = await SavingsService.completePlan({
         planId: id,
-        userId,
+        userId: userId as any,
         amount,
         idempotencyKey,
       });
@@ -100,7 +100,7 @@ export class SavingsController {
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
 
-      const plans = await SavingsService.getUserPlans(userId, page, limit);
+      const plans = await SavingsService.getUserPlans(userId as any, page, limit);
 
       res.status(200).json({
         status: "success",

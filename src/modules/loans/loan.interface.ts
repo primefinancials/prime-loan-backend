@@ -1,4 +1,5 @@
 import { Document } from "mongoose";
+import { ObjectId } from "mongodb";
 
 export type LOANCATEGORY = "personal" | "working";
 export type LOANTYPE = "request" | "repay";
@@ -48,7 +49,7 @@ export interface ICreditScore {
 };
 
 export interface ILoan extends Document {
-  _id: string;
+  _id: ObjectId;
   first_name: string;
   last_name: string;
   email: string;

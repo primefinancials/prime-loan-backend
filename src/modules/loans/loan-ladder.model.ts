@@ -3,9 +3,10 @@
  * Stores extracted amounts from calculator images for loan approval decisions
  */
 import mongoose, { Document, Schema } from 'mongoose';
+import { ObjectId } from 'mongodb';
 
 export interface ILoanLadder extends Document {
-  _id: string;
+  _id: ObjectId;
   step: number;
   amount: number;
   verifiedBy?: string;

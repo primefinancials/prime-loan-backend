@@ -25,7 +25,7 @@ export class BillPaymentController {
   static async initiate(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const { amount, serviceType, serviceId, customerReference, itemCode, extras } = req.body;
-      const userId = req.user!._id;
+      const userId = req.user!._id as any;
       const idempotencyKey = req.idempotencyKey!;
 
       const result = await BillPaymentService.initiateBillPayment({
@@ -109,7 +109,7 @@ export class BillPaymentController {
   static async getUserPayments(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const { page = 1, limit = 20, status, type, search } = req.query;
-      const userId = req.user!._id;
+      const userId = req.user!._id as any;
 
       const result = await BillPaymentService.getUserBillPayments(
         String(userId),
