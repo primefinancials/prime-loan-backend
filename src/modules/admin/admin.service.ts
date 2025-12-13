@@ -611,7 +611,8 @@ export class AdminService {
 
     const users = await User.find(query)
       .skip((page - 1) * limit)
-      .limit(limit);
+      .limit(limit)
+      .sort({ createdAt: -1 });
 
     const total = await User.countDocuments(query);
 
