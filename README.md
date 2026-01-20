@@ -71,6 +71,15 @@ Background processing is handled by dedicated workers in `src/workers` to ensure
 - **Profits Cron** (`src/workers/profits/profitsCron.ts`):
     - Aggregates daily platform profits.
     - Generates reports for admin adjustments.
+74: 
+75: ### Worker Logging & Monitoring
+76: All workers log their activities to the database using `WorkerLogService`.
+77: - **Model**: `WorkerLog` (`src/modules/worker-logs/worker-log.model.ts`)
+78: - **Features**: Persists info, error, and warning logs with metadata.
+79: - **Usage**: Logs are accessible via the `WorkerLog` model for frontend monitoring dashboards.
+80: 
+81: ### Auto-Start
+82: Workers are automatically initialized when the application starts (`src/server.ts`). They run in non-blocking mode alongside the API server.
 
 ## Quick Start
 

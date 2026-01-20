@@ -10,6 +10,7 @@ import { DatabaseService } from "../../shared/db";
 import { ProfitService } from "../../modules/profits/profits.service";
 import Profit from "../../modules/profits/profits.model";
 import { UserService } from "../../modules/users/user.service";
+import { WorkerLogService } from "../../modules/worker-logs/worker-log.service";
 import pino from "pino";
 
 const logger = pino({ name: "profit-realization-cron" });
@@ -57,6 +58,7 @@ export class ProfitRealizationCron {
       }
 
       logger.info(`Processing ${unrealizedProfits.length} unrealized transaction profits`);
+      await WorkerLogService.log('profit-realization', 'info', `Processing ${unrealizedProfits.length} unrealized transaction profits`);
 
       const profitService = new ProfitService();
 
@@ -85,15 +87,18 @@ export class ProfitRealizationCron {
             { reference: profit.reference, userId: profit.userId },
             "Profit re-realized successfully"
           );
+          await WorkerLogService.log('profit-realization', 'info', 'Profit re-realized successfully', { reference: profit.reference, userId: profit.userId });
         } catch (err: any) {
           logger.error(
             { reference: profit.reference, error: err.message },
             "Error realizing profit"
           );
+          await WorkerLogService.log('profit-realization', 'error', `Error realizing profit: ${err.message}`, { reference: profit.reference });
         }
       }
     } catch (err: any) {
       logger.error({ error: err.message }, "Error fetching unrealized profits");
+      await WorkerLogService.log('profit-realization', 'error', `Fatal error in profit realization cron: ${err.message}`);
     }
   }
 }

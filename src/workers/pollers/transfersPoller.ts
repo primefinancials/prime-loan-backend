@@ -8,6 +8,7 @@ import { Transfer as ITransfer } from '../../modules/transfers/transfer.interfac
 import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
+import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 import pino from 'pino';
 
 const logger = pino({ name: 'transfers-poller' });
@@ -56,6 +57,7 @@ export class TransfersPoller {
     const refundTimeoutMs = parseInt(process.env.REFUND_TIMEOUT_MS || '86400000');
 
     try {
+      await WorkerLogService.log('transfers-poller', 'info', 'Starting poll cycle');
       const pendingTransfers = await Transfer.find({
         status: 'PENDING'
       })
@@ -63,6 +65,9 @@ export class TransfersPoller {
         .limit(batchSize);
 
       logger.info(`Polling ${pendingTransfers.length} pending transfers`);
+      if (pendingTransfers.length > 0) {
+        await WorkerLogService.log('transfers-poller', 'info', `Polling ${pendingTransfers.length} pending transfers`);
+      }
 
       // Process in parallel with limit
       await Promise.all(
@@ -87,6 +92,7 @@ export class TransfersPoller {
                 transferId: transfer._id,
                 error: errorMessage
               }, 'Error polling transfer');
+              await WorkerLogService.log('transfers-poller', 'error', `Error polling transfer: ${errorMessage}`, { transferId: transfer._id });
             }
           })
         )
@@ -95,6 +101,7 @@ export class TransfersPoller {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ error: errorMessage }, 'Error in transfers poller');
+      await WorkerLogService.log('transfers-poller', 'error', `Fatal error in transfers poller: ${errorMessage}`);
     }
   }
 
@@ -108,6 +115,8 @@ export class TransfersPoller {
           transfer.status = 'COMPLETED';
           transfer.processedAt = new Date();
           await transfer.save({ session });
+
+          await WorkerLogService.log('transfers-poller', 'info', 'Transfer completed', { transferId: transfer._id });
 
           // Complete ledger entries
           await LedgerService.updateStatus(transfer.traceId, 'COMPLETED', session);
@@ -176,6 +185,7 @@ export class TransfersPoller {
           userId: transfer.userId,
           amount: transfer.amount
         }, 'Transfer auto-refunded due to timeout');
+        await WorkerLogService.log('transfers-poller', 'warn', 'Transfer auto-refunded due to timeout', { transferId: transfer._id, amount: transfer.amount });
       });
     } finally {
       if (shouldEndSession) {

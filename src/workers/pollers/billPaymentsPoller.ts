@@ -12,6 +12,7 @@ import axios from 'axios';
 import { TransferService } from '../../modules/transfers/transfer.service';
 import User from '../../modules/users/user.model';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
+import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 import { UuidService } from '../../shared/utils/uuid';
 import { TransferRequest } from '../../shared/providers/vfd.provider';
 import { sha512 } from 'js-sha512';
@@ -92,6 +93,9 @@ export class BillPaymentsPoller {
         .limit(batchSize);
 
       logger.info(`Polling ${pendingPayments.length} pending bill payments`);
+      if (pendingPayments.length > 0) {
+        await WorkerLogService.log('bill-payments-poller', 'info', `Polling ${pendingPayments.length} pending bill payments`);
+      }
 
       await Promise.all(
         pendingPayments.map((payment) =>
@@ -131,6 +135,7 @@ export class BillPaymentsPoller {
                 billPaymentId: payment._id,
                 error: errorMessage
               }, 'Error polling bill payment');
+              await WorkerLogService.log('bill-payments-poller', 'error', `Error polling bill payment: ${errorMessage}`, { billPaymentId: payment._id });
             }
           })
         )
@@ -139,6 +144,7 @@ export class BillPaymentsPoller {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ error: errorMessage }, 'Error in bill payments poller');
+      await WorkerLogService.log('bill-payments-poller', 'error', `Fatal error in bill payments poller: ${errorMessage}`);
     }
   }
 
@@ -230,6 +236,7 @@ export class BillPaymentsPoller {
             userId: payment.userId,
             amount: payment.amount
           }, 'Bill payment auto-refunded due to timeout');
+          await WorkerLogService.log('bill-payments-poller', 'warn', `Bill payment auto-refunded due to timeout`, { billPaymentId: payment._id, amount: payment.amount });
         } else {
           await TransferService.failTransfer(result.reference);
           logger.info({

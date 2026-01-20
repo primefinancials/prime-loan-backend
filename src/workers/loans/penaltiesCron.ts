@@ -12,6 +12,7 @@ import { NotificationService } from '../../modules/notifications/notification.se
 import { UserService } from '../../modules/users/user.service';
 import pino from 'pino';
 import { LoanService } from '../../modules/loans/loan.service';
+import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 
 const logger = pino({ name: 'loan-penalties-cron' });
 
@@ -58,6 +59,9 @@ export class LoanPenaltiesCron {
       });
 
       logger.info(`Processing ${loans.length} loans for penalties & reminders`);
+      if (loans.length > 0) {
+        await WorkerLogService.log('loan-penalties', 'info', `Processing ${loans.length} loans for penalties & reminders`);
+      }
 
       for (const loan of loans) {
         try {
@@ -70,15 +74,16 @@ export class LoanPenaltiesCron {
             // OVERDUE
             await this.applyPenaltyToLoan(loan, penaltyRate);
 
-            if(user && Number(user.user_metadata.wallet || 0) > 0)
+            if (user && Number(user.user_metadata.wallet || 0) > 0)
               try {
                 await LoanService.repayLoan({
                   loanId: loan._id,
                   userId: user._id,
                   amount: Number(user.user_metadata.wallet)
                 })
-              } catch(error: any) {
+              } catch (error: any) {
                 logger.error({ loanId: loan._id, error: error.message }, 'Error repaying loan');
+                await WorkerLogService.log('loan-penalties', 'error', `Error repaying loan: ${error.message}`, { loanId: loan._id });
               }
 
             await NotificationService.sendLoanOverdue(user, loan);
@@ -91,10 +96,12 @@ export class LoanPenaltiesCron {
           }
         } catch (err: any) {
           logger.error({ loanId: loan._id, error: err.message }, 'Error processing loan');
+          await WorkerLogService.log('loan-penalties', 'error', `Error processing loan: ${err.message}`, { loanId: loan._id });
         }
       }
     } catch (err: any) {
       logger.error({ error: err.message }, 'Error in loan penalties cron');
+      await WorkerLogService.log('loan-penalties', 'error', `Fatal error in loan penalties cron: ${err.message}`);
     }
   }
 
@@ -157,6 +164,7 @@ export class LoanPenaltiesCron {
           penaltyAmount,
           newOutstanding: loan.outstanding
         }, 'Penalty applied to overdue loan');
+        await WorkerLogService.log('loan-penalties', 'warn', 'Penalty applied to overdue loan', { loanId: loan._id, penaltyAmount, newOutstanding: loan.outstanding });
       });
     } finally {
       await session.endSession();
