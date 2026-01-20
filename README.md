@@ -1,8 +1,6 @@
-@@ .. @@
-+# Prime Finance Backend V2
 # Prime Finance Backend V2
-+
-+A comprehensive financial services backend with clean architecture, ledger-first design, and robust reconciliation capabilities.
+
+A comprehensive financial services backend with clean architecture, ledger-first design, and robust reconciliation capabilities.
 
 ## Features
 
@@ -25,6 +23,54 @@
 - Bill payments and transfers
 - Transaction history and notifications
 - Admin user management
+
+## Detailed Implementation Breakdown
+
+### Modules
+The system is modularized into specific business domains located in `src/modules`:
+
+- **Admin**: Administrative controls, user management, and system oversight.
+- **Bill Payments**: Handles utility bill payments (electricity, airtime, data) via provider integrations (e.g., Flutterwave).
+- **Escrow**: Manages secure holding of funds for conditional transactions.
+- **Ledger**: The core double-entry bookkeeping system. Records every financial movement with `DEBIT` and `CREDIT` entries to ensure zero-sum consistency.
+- **Loans**: Manages the entire loan lifecycle:
+    - Eligibility checks (including OCR income verification).
+    - Application processing and approval workflows.
+    - Disbursal and repayment tracking.
+    - Interest calculation and penalty application.
+- **Notifications**: System for sending emails, SMS, and push notifications to users.
+- **Profits**: Tracks platform revenue (realized vs unrealized) from fees and interest.
+- **Savings**: Manages user savings plans:
+    - **Locked Savings**: Fixed-term deposits with higher interest.
+    - **Flexible Savings**: Withdrawable savings with calculated interest.
+    - Maturity handling and automated roll-overs.
+- **Transfers**: Handles internal (user-to-user) and external (bank) money transfers with robust reconciliation.
+- **Users**: User identity, authentication (JWT), profile management, and KYC verification.
+
+### Workers & Background Jobs
+Background processing is handled by dedicated workers in `src/workers` to ensure the main API remains responsive:
+
+- **Bill Payments Poller** (`src/workers/pollers/billPaymentsPoller.ts`): 
+    - Polls `PENDING` bill payments every 2 hours (configurable).
+    - Verifies status with providers.
+    - Automatically refunds users if the provider transaction failed or timed out.
+- **Transfers Poller** (`src/workers/pollers/transfersPoller.ts`):
+    - Monitors pending transfers.
+    - Reconciles status with the banking provider.
+    - Ensures ledger consistency upon completion or failure.
+- **Loan Penalties Cron** (`src/workers/loans/penaltiesCron.ts`):
+    - Runs daily (default: midnight).
+    - Identifies overdue loans.
+    - Applies late fees/penalties to the ledger and loan balance.
+    - Triggers overdue notifications.
+- **Savings Maturity Worker** (`src/workers/savings/maturitiesWorker.ts`):
+    - Checks for savings plans that have reached their maturity date.
+    - Calculates final interest.
+    - Credits principal + interest to the user's wallet.
+    - Closes or rolls over the plan.
+- **Profits Cron** (`src/workers/profits/profitsCron.ts`):
+    - Aggregates daily platform profits.
+    - Generates reports for admin adjustments.
 
 ## Quick Start
 
@@ -49,10 +95,10 @@
    ```bash
    npm run start:workers
    # Or individually:
-   # npm run workers:bill-payments
-   # npm run workers:transfers
-   # npm run workers:penalties
-   # npm run workers:savings
+   # node dist/workers/pollers/billPaymentsPoller.js
+   # node dist/workers/pollers/transfersPoller.js
+   # node dist/workers/loans/penaltiesCron.js
+   # node dist/workers/savings/maturitiesWorker.js
    ```
 
 5. **View API Documentation**
@@ -60,7 +106,7 @@
    http://localhost:3000/api-docs
    ```
 
-## API Documentation
+## API Endpoint Overview
 
 ### V1 Endpoints (Existing)
 - `POST /api/users/create-client` - User registration
@@ -173,205 +219,9 @@ Structured JSON logs with request correlation and PII redaction
 - Transaction reconciliation
 - Audit trails
 
-## API Rate Limits
+## Support
 
-- **Authentication**: 5 attempts per 15 minutes
-- **General API**: 100 requests per 15 minutes
-- **Financial Operations**: 10 requests per minute
-
-## Environment Variables
-
-Key environment variables (see `.env.example` for complete list):
-
-```bash
-# Database
-MONGODB_URI=mongodb://localhost:27017/prime-finance
-REDIS_URL=redis://localhost:6379
-
-# Server
-PORT=3000
-NODE_ENV=development
-
-# Features
-FEATURE_LEDGER=true
-FEATURE_AUTO_APPROVAL=true
-FEATURE_OCR=true
-
-# Security
-ACCESS_TOKEN_SECRET=your_jwt_secret
-REFRESH_TOKEN_SECRET=your_refresh_secret
-CRYPTOJS_KEY=your_encryption_key
-```
-
-## Deployment
-
-### Docker Deployment
-```bash
-docker build -t prime-finance-backend .
-docker run -p 3000:3000 --env-file .env prime-finance-backend
-```
-
-### Production Checklist
-- [ ] Set `NODE_ENV=production`
-- [ ] Configure proper database URLs
-- [ ] Set up Redis cluster
-- [ ] Configure monitoring and alerting
-- [ ] Set up log aggregation
-- [ ] Configure backup strategies
-- [ ] Set up SSL/TLS certificates
-- [ ] Configure rate limiting
-- [ ] Set up health checks
-
-## Support & Contributing
-
-### Getting Help
-- Check the API documentation at `/api-docs`
-- Review the architecture docs in `docs/`
-- Check existing issues and discussions
-
-### Contributing
-1. Fork the repository
-2. Create a feature branch
-3. Write tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
-
-### Code Standards
-- Follow TypeScript best practices
-- Write comprehensive tests
-- Use meaningful commit messages
-- Document new features
-- Follow the existing code style
-
-## License
-
-This project is proprietary software. All rights reserved.
-
-+
-+## Features
-+
-+### V2 Architecture (New)
-+- **Ledger-First Design**: Every financial operation creates corresponding ledger entries
-+- **OCR Loan Ladder**: Extract income steps from calculator images for loan eligibility
-+- **Auto-Approval**: Loans up to ₦50,000 can be auto-approved based on eligibility
-+- **Polling & Reconciliation**: Automatic status checking and reconciliation for pending transactions
-+- **Savings Plans**: Locked and flexible savings with interest calculations and penalties
-+- **Admin Dashboard**: Comprehensive tools for manual reviews, profit reporting, and reconciliation
-+- **Idempotency**: Prevents duplicate operations with idempotency key enforcement
-+- **Circuit Breakers**: Prevents cascading failures with provider APIs
-+
-+### V1 Features (Preserved)
-+- User registration and authentication
-+- Loan applications and management
-+- Bill payments and transfers
-+- Transaction history and notifications
-+- Admin user management
-+
-+## Quick Start
-+
-+1. **Install dependencies**
-+   ```bash
-+   npm install
-+   ```
-+
-+2. **Setup environment**
-+   ```bash
-+   cp .env.example .env
-+   # Edit .env with your configuration
-+   ```
-+
-+3. **Build and start**
-+   ```bash
-+   npm run build
-+   npm start
-+   ```
-+
-+4. **Start workers** (in separate terminals)
-+   ```bash
-+   node dist/workers/pollers/billPaymentsPoller.js
-+   node dist/workers/pollers/transfersPoller.js
-+   node dist/workers/loans/penaltiesCron.js
-+   node dist/workers/savings/maturitiesWorker.js
-+   ```
-+
-+## API Documentation
-+
-+### V1 Endpoints (Existing)
-+- `POST /api/users/create-client` - User registration
-+- `POST /api/users/login` - Authentication
-+- `POST /api/loans/create-loan` - Loan application
-+- `POST /api/paybills/*` - Bill payment services
-+- `POST /api/users/transfer` - Money transfers
-+
-+### V2 Endpoints (New)
-+- `POST /v2/bill-payments/initiate` - Initiate bill payment with ledger tracking
-+- `POST /v2/transfers` - Enhanced transfers with reconciliation
-+- `POST /v2/loans/request` - Loan request with OCR ladder extraction
-+- `POST /v2/savings/plans` - Create savings plans
-+- `GET /v2/admin/profits` - Profit reporting dashboard
-+
-+## Architecture
-+
-+### Clean Architecture Layers
-+```
-+/src
-+  /app                 # Application layer (routes, middleware)
-+  /modules            # Business modules (loans, transfers, etc.)
-+    /{module}
-+      /domain         # Business logic
-+      /application    # Use cases
-+      /infrastructure # Data access
-+      /http          # Controllers
-+  /shared            # Shared utilities and services
-+  /workers           # Background job processors
-+```
-+
-+### Key Principles
-+- **Ledger-First**: All money movements create ledger entries
-+- **Idempotency**: Duplicate operations return cached responses
-+- **Polling**: Pending transactions are automatically reconciled
-+- **Circuit Breakers**: Provider failures are handled gracefully
-+- **Audit Trail**: Complete transaction history for compliance
-+
-+## Development
-+
-+### Running in Development
-+```bash
-+npm run dev
-+```
-+
-+### Building for Production
-+```bash
-+npm run build
-+```
-+
-+### Database Migrations
-+New collections are created automatically. Existing data is preserved.
-+
-+### Testing
-+```bash
-+npm test  # When tests are added
-+```
-+
-+## Monitoring
-+
-+### Health Checks
-+- Application: `GET /health`
-+- Ledger: `GET /v2/admin/reconciliation/inconsistencies`
-+
-+### Metrics
-+Prometheus metrics available at `/metrics`
-+
-+### Logging
-+Structured JSON logs with request correlation and PII redaction
-+
-+## Support
-+
-+For technical support or questions about the V2 architecture, refer to:
-+- `docs/REFARCH.md` - Detailed architecture documentation
-+- `docs/RUNNING.md` - Operational procedures
-+- Admin dashboard at `/v2/admin/*` endpoints
-+
- # Prime Finance Backend
- 
- A comprehensive financial services backend built with Node.js, TypeScript, Express, and MongoDB.
+For technical support or questions about the V2 architecture, refer to:
+- `docs/REFARCH.md` - Detailed architecture documentation
+- `docs/RUNNING.md` - Operational procedures
+- Admin dashboard at `/v2/admin/*` endpoints

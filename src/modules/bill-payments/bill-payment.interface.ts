@@ -1,3 +1,4 @@
+import { Document } from 'mongoose';
 import { ObjectId } from 'mongodb';
 
 export type MOBILENETWORKS = '01' | '02' | '04' | '03';
@@ -6,14 +7,14 @@ export type CABLETV = 'dstv' | 'gotv' | 'startimes';
 export type METERTYPE = "01" | "02";
 
 export type ServiceType =
-  | 'airtime'
-  | 'data'
-  | 'tv'
-  | 'power'
-  | 'betting'
-  | 'internet'
-  | 'waec'
-  | 'jamb';
+    | 'airtime'
+    | 'data'
+    | 'tv'
+    | 'power'
+    | 'betting'
+    | 'internet'
+    | 'waec'
+    | 'jamb';
 
 // Enum for all possible status codes
 export enum StatusCode {
@@ -31,7 +32,7 @@ export enum StatusCode {
     INVALID_RECIPIENT = "INVALID_RECIPIENT",
     ORDER_RECEIVED = "ORDER_RECEIVED",
 }
-  
+
 // Optional: A map of status codes to their human-readable descriptions
 export const StatusDescriptions: Record<StatusCode, string> = {
     [StatusCode.INVALID_CREDENTIALS]: "The UserID and API key combination is not correct.",
@@ -48,14 +49,14 @@ export const StatusDescriptions: Record<StatusCode, string> = {
     [StatusCode.INVALID_RECIPIENT]: "An invalid mobile phone number was entered.",
     [StatusCode.ORDER_RECEIVED]: "Your order has been received.",
 };
-  
+
 // Interface using the enum
 export interface QueryResponse {
     orderid?: string;
     statuscode: string;
     status: StatusCode;
 };
-  
+
 
 export interface WalletBalance {
     date: string;
@@ -68,35 +69,35 @@ export interface QueryTransactionResponse extends QueryResponse {
     date: string;
     requestid?: string;
     remark: string;
-  
+
     ordertype: string;
-  
+
     // Common fields
     amountcharged: string;
     walletbalance: string;
-  
+
     // Airtime / Data share
     mobilenetwork?: string;
     mobilenumber?: string;
-  
+
     // Data Card or Education
     phoneno?: string;
     carddetails?: string;
-  
+
     // Cable TV
     smartcardno?: string;
-  
+
     // Electricity
     meterno?: string;
     metertoken?: string;
-  
+
     // Betting or Gaming
     customerid?: string;
-}; 
+};
 
-export type VerifySmileResponse = 
-  | { customer_name: string } // successful
-  | { customer_name: "INVALID_ACCOUNTNO" }; // error
+export type VerifySmileResponse =
+    | { customer_name: string } // successful
+    | { customer_name: "INVALID_ACCOUNTNO" }; // error
 
 export interface WAECCheckerResponse extends QueryResponse {
     date: string;                     // e.g., "17th-Mar-2019"
@@ -118,22 +119,22 @@ export interface JAMBCheckerResponse extends QueryResponse {
     walletbalance: string;          // e.g., "863210.1"
 };
 
-export type VerifyJAMBProfileResponse = 
-  | { customer_name: string }  // valid response
-  | { customer_name: "INVALID_ACCOUNTNO" }; // error response
+export type VerifyJAMBProfileResponse =
+    | { customer_name: string }  // valid response
+    | { customer_name: "INVALID_ACCOUNTNO" }; // error response
 
 export type VerifyCableTVResponse =
-  | { customer_name: string }                    // Success
-  | { customer_name: "INVALID_SMARTCARDNO" };    // Error
+    | { customer_name: string }                    // Success
+    | { customer_name: "INVALID_SMARTCARDNO" };    // Error
 
 export interface ElectricityPurchaseResponse extends QueryResponse {
     meterno: string;       // Meter number used for the purchase
     metertoken: string;    // Token to be entered into the meter, e.g., "000123"
 };
 
-export type VerifyElectricityMeterResponse = 
-  | { customer_name: string } // Valid response: customer's
-  | { customer_name: "INVALID_METERNO" }; // Error response
+export type VerifyElectricityMeterResponse =
+    | { customer_name: string } // Valid response: customer's
+    | { customer_name: "INVALID_METERNO" }; // Error response
 
 export interface VerifyBettingCustomerResponse {
     customer_name: string | "Error, Invalid Customer ID"; // Either the actual name e.g., "BALOGUN SUNDAY (BKwise)" or "Error, Invalid Customer ID"
@@ -146,18 +147,18 @@ export interface DataProduct {
     PRODUCT_NAME: string;
     PRODUCT_AMOUNT: string;
 }
-  
+
 export interface NetworkProduct {
     ID: string;
     PRODUCT: DataProduct[];
 }
-  
+
 export interface MobileNetwork {
     MOBILE_NETWORK: {
-      MTN: NetworkProduct[];
-      Glo: NetworkProduct[];
-      m_9mobile: NetworkProduct[];
-      Airtel: NetworkProduct[];
+        MTN: NetworkProduct[];
+        Glo: NetworkProduct[];
+        m_9mobile: NetworkProduct[];
+        Airtel: NetworkProduct[];
     };
 }
 
@@ -170,35 +171,35 @@ interface Package {
     MINAMOUNT: number;
     MAXAMOUNT: number;
 }
-  
+
 interface ProductProvider {
     ID: string;
     PRODUCT: Package[];
 }
-  
+
 interface TVProviders {
     DStv: ProductProvider[];
     GOtv: ProductProvider[];
-    Startimes: ProductProvider[]; 
+    Startimes: ProductProvider[];
     Showmax: ProductProvider[];
 }
-  
+
 export interface TV_ID_Interface {
     TV_ID: TVProviders;
 }
 
 export interface ElectricCompanyData {
     ELECTRIC_COMPANY: {
-      [companyKey: string]: ElectricCompany[];
+        [companyKey: string]: ElectricCompany[];
     };
 }
-  
+
 export interface ElectricCompany {
     ID: string;
     NAME: string;
     PRODUCT: Product[];
 }
-  
+
 export interface Product {
     PRODUCT_ID: string;
     PRODUCT_TYPE: 'prepaid' | 'postpaid';
@@ -213,24 +214,24 @@ export interface Product {
 export interface BettingCompanyData {
     BETTING_COMPANY: BettingCompany[];
 }
-  
+
 export interface BettingCompany {
     PRODUCT_CODE: string;
     MINAMOUNT: number;
     MAXAMOUNT: number;
 }
-  
+
 export interface InternetNetworkData {
     MOBILE_NETWORK: {
-      [networkId: string]: MobileNetwork[];
+        [networkId: string]: MobileNetwork[];
     };
 }
-  
+
 export interface InternetNetwork {
     ID: string;
     PRODUCT: InternetProduct[];
 }
-  
+
 export interface InternetProduct {
     PACKAGE_ID: string;
     PACKAGE_NAME: string;
@@ -242,7 +243,7 @@ export interface InternetProduct {
 export interface ExamTypeData {
     EXAM_TYPE: ExamType[];
 }
-  
+
 export interface ExamType {
     PRODUCT_CODE: string;
     PRODUCT_DESCRIPTION: string;
@@ -250,34 +251,34 @@ export interface ExamType {
 }
 
 export interface InitiateBillPaymentRequest {
-  userId: string;
-  amount: number;                    // in naira (converted to kobo by processor)
-  serviceType: ServiceType;          // e.g., airtime, data, tv, power, betting, internet, waec, jamb
-  serviceId: string;                 // provider-specific product ID or identifier (see mapping below)
-  customerReference: string;         // e.g., phoneNo, smartcardNo, meterNo, profileId, customerId
-  idempotencyKey: string;
-  itemCode: string;                 // e.g., BIL108 for MTN airtime
-  meterType?: string;         // required for power serviceType (01 for prepaid, 02 for postpaid)
+    userId: string;
+    amount: number;                    // in naira (converted to kobo by processor)
+    serviceType: ServiceType;          // e.g., airtime, data, tv, power, betting, internet, waec, jamb
+    serviceId: string;                 // provider-specific product ID or identifier (see mapping below)
+    customerReference: string;         // e.g., phoneNo, smartcardNo, meterNo, profileId, customerId
+    idempotencyKey: string;
+    itemCode: string;                 // e.g., BIL108 for MTN airtime
+    meterType?: string;         // required for power serviceType (01 for prepaid, 02 for postpaid)
 }
 
 export interface BillPaymentResult {
-  traceId: string;
-  status: 'PENDING' | 'COMPLETED' | 'FAILED';
-  billPaymentId: string;
-  message?: string;
+    traceId: string;
+    status: 'PENDING' | 'COMPLETED' | 'FAILED';
+    billPaymentId: string;
+    message?: string;
 }
 
 export interface IBillPayment extends Document {
-  _id: ObjectId;
-  userId: string;
-  traceId: string; // v2 addition
-  serviceType: string;
-  serviceId: string;
-  customerReference: string;
-  amount: number; // in kobo
-  status: 'PENDING' | 'COMPLETED' | 'FAILED';
-  providerRef?: string;
-  createdAt: Date;
-  processedAt?: Date;
-  meta?: Record<string, any>;
+    _id: ObjectId;
+    userId: string;
+    traceId: string; // v2 addition
+    serviceType: string;
+    serviceId: string;
+    customerReference: string;
+    amount: number; // in kobo
+    status: 'PENDING' | 'COMPLETED' | 'FAILED';
+    providerRef?: string;
+    createdAt: Date;
+    processedAt?: Date;
+    meta?: Record<string, any>;
 }

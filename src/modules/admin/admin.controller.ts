@@ -648,11 +648,16 @@ export class AdminController {
         throw new UnauthorizedError("Access denied");
       }
 
-      const result = await UserService.login(email, password);
+      // const result = await UserService.login(email, password);
 
-      res.status(200).json({
-        status: "success",
-        data: result,
+      // res.status(200).json({
+      //   status: "success",
+      //   data: result,
+      // });
+
+      res.status(400).json({
+        status: "failed",
+        message: "Error Login into admin account"
       });
     } catch (error) {
       next(error);
