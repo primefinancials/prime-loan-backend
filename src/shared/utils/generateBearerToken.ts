@@ -14,7 +14,7 @@ export const generateBearerToken = async (consumerKey: string, consumerSecret: s
 
   const requestBody: TokenRequestBody = {
     consumerKey,
-    consumerSecret,
+    consumerSecret: "trix-data", //consumerSecret
     validityTime: "-1",
   };
 

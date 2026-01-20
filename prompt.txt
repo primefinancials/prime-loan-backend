@@ -1,3 +1,0 @@
-correct swagger documentation request parameters also note protected and unprotected requests, and rewrite / correct joi validation to follow request parameters
-
-kindly go through question carefully and return full file for each solution

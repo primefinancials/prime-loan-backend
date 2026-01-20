@@ -79,22 +79,36 @@ export class TransferService {
           naration: request.naration
         }], { session });
 
-        if(user && type == "transfer") {
+        if (user) {
           // Create debit ledger entry
+          // Fix: Use the 'type' argument to determine category instead of hardcoded 'transfer'
+          // Mapping:
+          // transfer -> category: transfer
+          // bill-payment -> category: bill-payment
+          // savings-deposit -> category: savings
+          // savings-withdrawal -> category: savings
+          // loan-disbursement -> category: loan
+          // loan-repayment -> category: loan
+
+          let ledgerCategory: any = 'transfer';
+          if (type === 'bill-payment') ledgerCategory = 'bill-payment';
+          else if (type.startsWith('savings')) ledgerCategory = 'savings';
+          else if (type.startsWith('loan')) ledgerCategory = 'loan';
+
           await LedgerService.createEntry({
             traceId,
             userId: user._id as any,
             account: `user_wallet:${user._id}`,
             entryType: 'DEBIT',
-            category: 'transfer',
+            category: ledgerCategory,
             amount: request.amount,
             status: 'PENDING',
             idempotencyKey: request.idempotencyKey,
-            meta: { transferId: transfer._id, toAccount: request.toAccount }
+            meta: { transferId: transfer._id, toAccount: request.toAccount, subtype: type }
           }, session);
         }
 
-        if(user) {
+        if (user) {
           await User.findOneAndUpdate(
             { _id: user._id },
             { user_metadata: { ...user.user_metadata, wallet: String(Number(request.walletBalance || 0) - Number(transfer.amount)) } },
@@ -140,16 +154,23 @@ export class TransferService {
           const user = await User.findOne({ "user_metadata.accountNo": transfer.toAccount }).session(session);
 
           if (user) {
-            if(type == "transfer") {
+            if (type) {
+              // Fix: dynamic ledger category
+              let ledgerCategory: any = 'transfer';
+              if (type === 'bill-payment') ledgerCategory = 'bill-payment';
+              else if (type.startsWith('savings')) ledgerCategory = 'savings';
+              else if (type.startsWith('loan')) ledgerCategory = 'loan';
+
               await LedgerService.createEntry({
                 userId: user._id as any,
                 traceId: transfer.traceId,
                 account: `user_wallet:${transfer.toAccount}`,
                 entryType: 'CREDIT',
-                category: 'transfer',
+                category: ledgerCategory,
                 amount: transfer.amount,
                 status: 'COMPLETED',
-                relatedTo: String(transfer._id)
+                relatedTo: String(transfer._id),
+                meta: { subtype: type }
               }, session);
             }
 
@@ -215,7 +236,7 @@ export class TransferService {
         };
 
         const user = await User.findById(transfer.userId);
-        
+
         if (user) {
           user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(transfer.amount));
           await user.save();
@@ -236,7 +257,7 @@ export class TransferService {
 
     try {
       await DatabaseService.withTransaction(session, async () => {
-        
+
 
         if ((await counterModel.findOne({ name: 'signupBonus' }))?.count || 0 <= 100) {
           const user = await User.findById(userId).session(session);
@@ -244,10 +265,10 @@ export class TransferService {
 
           const userAccountRes = await TransferService.vfdProvider.getAccountInfo(user.user_metadata.accountNo || "");
           if (!userAccountRes.data) throw new Error(`User account not found`);
-      
+
           const userAccountData = userAccountRes.data;
           const userBalance = Number(userAccountData.accountBalance);
-      
+
           // 3. Enquire prime account (admin)
           const adminAccountRes = await TransferService.vfdProvider.getPrimeAccountInfo();
           if (!adminAccountRes.data) throw new Error("Prime account not found");
@@ -288,7 +309,7 @@ export class TransferService {
 
           const response = await TransferService.vfdProvider.transfer(transferBody);
 
-          if(response.status === "00") {
+          if (response.status === "00") {
             await TransferService.completeTransfer(res.reference, "transfer");
           }
 
@@ -301,7 +322,7 @@ export class TransferService {
           );
         }
 
-      });  
+      });
     } finally {
       await session.endSession();
     }
@@ -311,11 +332,11 @@ export class TransferService {
    * Transfer by id
   */
   static async transfer(transactionId: string): Promise<ITransfer | null> {
-    if(!transactionId) return null;
+    if (!transactionId) return null;
 
     const transaction = await Transfer.findOne({ _id: transactionId });
 
-    if(!transaction) return null;
+    if (!transaction) return null;
 
     return transaction;
   }
@@ -408,7 +429,7 @@ export class TransferService {
       fromAccount: body.originator_account_number,
       toAccount: body.account_number,
       amount: body.amount,
-      transferType: body.originator_bank === "999999"? 'intra' : "inter",
+      transferType: body.originator_bank === "999999" ? 'intra' : "inter",
       status: 'COMPLETED',
       reference: body.reference,
       remark: body.originator_narration,
