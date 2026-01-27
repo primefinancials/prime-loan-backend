@@ -43,7 +43,7 @@ export class TransferService {
    */
   static async initiateTransfer(
     request: InitiateTransferRequest,
-    type: "bill-payment" | "transfer" | "savings-deposit" | "savings-withdrawal" | "loan-disbursement" | "loan-repayment" = "transfer"
+    type: "bill-payment" | "transfer" | "savings-deposit" | "savings-withdrawal" | "loan-disbursement" | "loan-repayment" | "escrow-funding" | "escrow-payout" | "escrow-resolution" = "transfer"
   ): Promise<TransferResult> {
     const traceId = UuidService.generateTraceId();
     const reference = `TXN_${UuidService.generate().substring(0, 8).toUpperCase()}`;
@@ -133,7 +133,7 @@ export class TransferService {
   /**
    * Mark transfer as completed (credit side + finalize)
    */
-  static async completeTransfer(reference: string, type: "bill-payment" | "transfer" | "savings-deposit" | "savings-withdrawal" | "loan-disbursement" | "loan-repayment" = "transfer"): Promise<TransferResult | null> {
+  static async completeTransfer(reference: string, type: "bill-payment" | "transfer" | "savings-deposit" | "savings-withdrawal" | "loan-disbursement" | "loan-repayment" | "escrow-funding" | "escrow-payout" | "escrow-resolution" = "transfer"): Promise<TransferResult | null> {
     const session = await DatabaseService.startSession();
 
     console.log(" In Complete Transfer")

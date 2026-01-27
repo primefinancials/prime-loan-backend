@@ -9,6 +9,7 @@ import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
+import { WorkerControlService } from '../../modules/workers/worker-control.service';
 import pino from 'pino';
 
 const logger = pino({ name: 'transfers-poller' });
@@ -22,28 +23,27 @@ interface VfdTransactionResponse {
 export class TransfersPoller {
   private static vfdProvider = new VfdProvider();
 
+  static register() {
+    WorkerControlService.register('transfers-poller', async () => {
+      return QueueService.createWorker(
+        'transfers-poller',
+        async () => {
+          await this.pollPendingTransfers();
+        },
+        {
+          repeat: { every: 30000 }, // 30 seconds
+          removeOnComplete: 10,
+          removeOnFail: 50
+        }
+      );
+    });
+  }
+
   static async start() {
     await DatabaseService.connect();
     await QueueService.connect();
-
-    const worker = QueueService.createWorker(
-      'transfers-poller',
-      async () => {
-        await this.pollPendingTransfers();
-      },
-      {
-        repeat: { every: 30000 }, // 30 seconds
-        removeOnComplete: 10,
-        removeOnFail: 50
-      }
-    );
-
-    logger.info('Transfers poller started');
-
-    process.on('SIGTERM', async () => {
-      await worker.close();
-      await QueueService.closeAll();
-    });
+    this.register();
+    await WorkerControlService.start('transfers-poller');
   }
 
   private static async pollPendingTransfers() {
@@ -65,6 +65,8 @@ export class TransfersPoller {
         .limit(batchSize);
 
       logger.info(`Polling ${pendingTransfers.length} pending transfers`);
+      await WorkerControlService.reportActivity('transfers-poller', `Polling ${pendingTransfers.length} transfers`);
+
       if (pendingTransfers.length > 0) {
         await WorkerLogService.log('transfers-poller', 'info', `Polling ${pendingTransfers.length} pending transfers`);
       }

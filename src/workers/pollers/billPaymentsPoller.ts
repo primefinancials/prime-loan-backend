@@ -16,6 +16,7 @@ import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 import { UuidService } from '../../shared/utils/uuid';
 import { TransferRequest } from '../../shared/providers/vfd.provider';
 import { sha512 } from 'js-sha512';
+import { WorkerControlService } from '../../modules/workers/worker-control.service';
 
 const logger = pino({ name: 'bill-payments-poller' });
 
@@ -53,29 +54,29 @@ async function flutterwaveGet<T = any>(path: string, params?: Record<string, any
 }
 
 export class BillPaymentsPoller {
+  static register() {
+    WorkerControlService.register('bill-payments-poller', async () => {
+      // Return the worker instance from QueueService
+      return QueueService.createWorker(
+        'bill-payments-poller',
+        async () => {
+          await this.pollPendingBillPayments();
+        },
+        {
+          repeat: { every: 2 * 60 * 60 * 1000 }, // 2 hours
+          removeOnComplete: 10,
+          removeOnFail: 50
+        }
+      );
+    });
+  }
+
   static async start() {
+    // Legacy support or direct start
     await DatabaseService.connect();
     await QueueService.connect();
-
-    const worker = QueueService.createWorker(
-      'bill-payments-poller',
-      async () => {
-        await this.pollPendingBillPayments();
-      },
-      {
-        repeat: { every: 2 * 60 * 60 * 1000 }, // 2 hours
-        removeOnComplete: 10,
-        removeOnFail: 50
-      }
-    );
-
-    logger.info('Bill payments poller started');
-
-    // Graceful shutdown
-    process.on('SIGTERM', async () => {
-      await worker.close();
-      await QueueService.closeAll();
-    });
+    this.register();
+    await WorkerControlService.start('bill-payments-poller');
   }
 
   private static async pollPendingBillPayments() {
@@ -93,6 +94,9 @@ export class BillPaymentsPoller {
         .limit(batchSize);
 
       logger.info(`Polling ${pendingPayments.length} pending bill payments`);
+      // Update heartbeat
+      await WorkerControlService.reportActivity('bill-payments-poller', `Polling ${pendingPayments.length} payments`);
+
       if (pendingPayments.length > 0) {
         await WorkerLogService.log('bill-payments-poller', 'info', `Polling ${pendingPayments.length} pending bill payments`);
       }

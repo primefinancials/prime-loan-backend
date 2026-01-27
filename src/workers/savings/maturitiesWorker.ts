@@ -8,34 +8,33 @@ import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
 import { UuidService } from '../../shared/utils/uuid';
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
+import { WorkerControlService } from '../../modules/workers/worker-control.service';
 import pino from 'pino';
 
 const logger = pino({ name: 'savings-maturities' });
 
 export class SavingsMaturitiesWorker {
+  static register() {
+    WorkerControlService.register('savings-maturities', async () => {
+      return QueueService.createWorker(
+        'savings-maturities',
+        async () => {
+          await this.processMaturedPlans();
+        },
+        {
+          repeat: { pattern: '0 * * * *' }, // Every hour
+          removeOnComplete: 5,
+          removeOnFail: 10
+        }
+      );
+    });
+  }
+
   static async start() {
     await DatabaseService.connect();
     await QueueService.connect();
-
-    // Run hourly
-    const worker = QueueService.createWorker(
-      'savings-maturities',
-      async () => {
-        await this.processMaturedPlans();
-      },
-      {
-        repeat: { pattern: '0 * * * *' }, // Every hour
-        removeOnComplete: 5,
-        removeOnFail: 10
-      }
-    );
-
-    logger.info('Savings maturities worker started');
-
-    process.on('SIGTERM', async () => {
-      await worker.close();
-      await QueueService.closeAll();
-    });
+    this.register();
+    await WorkerControlService.start('savings-maturities');
   }
 
   private static async processMaturedPlans() {
@@ -46,6 +45,7 @@ export class SavingsMaturitiesWorker {
       });
 
       logger.info(`Processing ${maturedPlans.length} matured savings plans`);
+      await WorkerControlService.reportActivity('savings-maturities', `Processing ${maturedPlans.length} plans`);
       if (maturedPlans.length > 0) {
         await WorkerLogService.log('savings-maturities', 'info', `Processing ${maturedPlans.length} matured savings plans`);
       }

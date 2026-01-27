@@ -14,11 +14,9 @@ export const generateBearerToken = async (consumerKey: string, consumerSecret: s
 
   const requestBody: TokenRequestBody = {
     consumerKey,
-    consumerSecret: consumerSecret,
+    consumerSecret,
     validityTime: "-1",
   };
-
-  console.log({ authUrl })
 
   try {
     const response = await axios.post(authUrl, requestBody, {

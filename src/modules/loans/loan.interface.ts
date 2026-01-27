@@ -43,7 +43,7 @@ export interface ICreditScore {
   repaymentHistory: string;
   openedDate: string;
   lengthOfCreditHistory: string;
-  remarks: string;
+  remarks: string;
   creditors: Subscriber[];
   loan_details: LoanDetails[];
 };
@@ -102,7 +102,12 @@ export interface ILoan extends Document {
     action: "Approve" | "Reject",
     adminId: string | "system",
     date: string
-  }
+  };
+  call_history?: {
+    date: Date;
+    status: string;
+    provider: string;
+  }[];
 }
 
 export interface CREATELOAN {

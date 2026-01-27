@@ -105,7 +105,12 @@ const LoanSchema: Schema = new Schema(
     lastInterestAdded: { type: String, required: false },
     rejectionReason: { type: String, required: false },
     debit_account: { type: String },
-    adminAction
+    adminAction,
+    call_history: [{
+      date: { type: Date },
+      status: { type: String },
+      provider: { type: String }
+    }]
   },
   { timestamps: true }
 );
