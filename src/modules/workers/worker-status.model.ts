@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export interface IWorkerStatus extends Document {
   workerName: string;
@@ -17,7 +18,8 @@ const WorkerStatusSchema: Schema = new Schema({
   lastError: { type: String },
   metadata: { type: Schema.Types.Mixed }
 }, {
-  timestamps: true
+  timestamps: true,
+  collection: getCollectionName('worker_statuses')
 });
 
 export default mongoose.model<IWorkerStatus>('WorkerStatus', WorkerStatusSchema);

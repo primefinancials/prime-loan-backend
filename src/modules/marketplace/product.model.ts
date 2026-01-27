@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export enum ProductStatus {
     ACTIVE = 'ACTIVE',
@@ -43,7 +44,7 @@ const ProductSchema = new Schema<IProduct>({
     }
 }, {
     timestamps: true,
-    collection: 'marketplace_products'
+    collection: getCollectionName('marketplace_products')
 });
 
 // Text index for search

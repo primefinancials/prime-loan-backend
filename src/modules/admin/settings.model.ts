@@ -1,4 +1,5 @@
 import { Schema, model, Document } from "mongoose";
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 /**
  * Profit Range Definition
@@ -174,7 +175,7 @@ const SettingsSchema = new Schema<ISettings>(
 
     singleton: { type: String, default: "singleton", unique: true },
   },
-  { collection: "settings", timestamps: true }
+  { collection: getCollectionName("settings"), timestamps: true }
 );
 
 // ✅ Ensure there is always only one settings document

@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export interface IReview extends Document {
     userId: string; // The buyer/reviewer
@@ -18,7 +19,7 @@ const ReviewSchema = new Schema<IReview>({
     comment: { type: String, required: true },
 }, {
     timestamps: true,
-    collection: 'marketplace_reviews'
+    collection: getCollectionName('marketplace_reviews')
 });
 
 export const Review = mongoose.model<IReview>('Review', ReviewSchema);

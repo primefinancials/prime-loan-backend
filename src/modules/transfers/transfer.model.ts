@@ -1,4 +1,5 @@
 import mongoose, { Document, Schema } from 'mongoose';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 import { Transaction as ITransaction, Transfer as ITransfer } from './transfer.interface';
 /**
  * Legacy Transaction Schema (do not alter, thousands of existing docs depend on it)
@@ -19,7 +20,7 @@ const TransactionSchema = new Schema<ITransaction>({
   receiver: { type: String, required: true },
   bank: { type: String, required: true },
   account_number: { type: String, required: true },
-}, { timestamps: true, collection: 'transactions' });
+}, { timestamps: true, collection: getCollectionName('transactions') });
 
 export const Transaction = mongoose.model<ITransaction>('Transaction', TransactionSchema);
 
@@ -42,7 +43,7 @@ const TransferSchema = new Schema<ITransfer>({
   naration: { type: String },
   processedAt: { type: Date },
   meta: { type: Schema.Types.Mixed }
-}, { timestamps: true, collection: 'transfers_v2' });
+}, { timestamps: true, collection: getCollectionName('transfers_v2') });
 
 TransferSchema.index({ status: 1, createdAt: 1 });
 TransferSchema.index({ providerRef: 1 });

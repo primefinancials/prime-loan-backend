@@ -4,6 +4,7 @@
  */
 import mongoose, { Document, Schema } from 'mongoose';
 import { ObjectId } from 'mongodb';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export interface ILedgerEntry extends Document {
   _id: ObjectId;
@@ -30,9 +31,9 @@ const LedgerEntrySchema = new Schema<ILedgerEntry>({
   userId: { type: String, index: true },
   account: { type: String, required: true, index: true },
   entryType: { type: String, enum: ['DEBIT', 'CREDIT'], required: true },
-  category: { 
-    type: String, 
-    enum: ['bill-payment', 'transfer', 'loan', 'savings', 'fee', 'refund', 'settlement', 'escrow'], 
+  category: {
+    type: String,
+    enum: ['bill-payment', 'transfer', 'loan', 'savings', 'fee', 'refund', 'settlement', 'escrow'],
     required: true,
     index: true
   },
@@ -46,9 +47,9 @@ const LedgerEntrySchema = new Schema<ILedgerEntry>({
   meta: { type: Schema.Types.Mixed },
   idempotencyKey: { type: String, index: true },
   processedAt: { type: Date }
-}, { 
+}, {
   timestamps: true,
-  collection: 'ledger_entries'
+  collection: getCollectionName('ledger_entries')
 });
 
 // Compound indexes for efficient queries

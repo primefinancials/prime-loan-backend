@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export type EscrowType = 'p2p' | 'marketplace';
 export type EscrowStatus = 'PENDING' | 'LOCKED' | 'COMPLETED' | 'DISPUTED' | 'REFUNDED' | 'CANCELLED';
@@ -75,7 +76,7 @@ const EscrowTransactionSchema = new Schema<IEscrowTransaction>({
     completedAt: { type: Date }
 }, {
     timestamps: true,
-    collection: 'escrows'
+    collection: getCollectionName('escrows')
 });
 
 export const EscrowTransaction = mongoose.model<IEscrowTransaction>('EscrowTransaction', EscrowTransactionSchema);

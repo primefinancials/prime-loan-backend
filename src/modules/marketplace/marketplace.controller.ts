@@ -62,6 +62,17 @@ export class MarketplaceController {
         }
     }
 
+    static async getVendorProducts(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const { page, limit } = req.query;
+            const result = await MarketplaceService.getProductsByVendor(id, Number(page), Number(limit));
+            res.status(200).json({ status: "success", data: result });
+        } catch (error) {
+            next(error);
+        }
+    }
+
     /* =====================
        PRODUCT ENDPOINTS
     ===================== */
@@ -122,6 +133,40 @@ export class MarketplaceController {
             const product = await MarketplaceService.getProduct(id);
             if (!product) return res.status(404).json({ status: "failed", message: "Product not found" });
             res.status(200).json({ status: "success", data: product });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    // Reviews
+    static async addReview(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const userId = req.user!._id.toString();
+            const { vendorId, rating, comment, productId } = req.body;
+            const review = await MarketplaceService.addReview(userId, vendorId, rating, comment, productId);
+            res.status(201).json({ status: "success", data: review });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async getVendorReviews(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params; // Vendor ID
+            const { page, limit } = req.query;
+            const result = await MarketplaceService.getReviews(id, Number(page), Number(limit));
+            res.status(200).json({ status: "success", data: result });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    // Admin Escrows
+    static async getAdminEscrows(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { page, limit } = req.query;
+            const result = await MarketplaceService.getAdminEscrows(Number(page), Number(limit));
+            res.status(200).json({ status: "success", data: result });
         } catch (error) {
             next(error);
         }

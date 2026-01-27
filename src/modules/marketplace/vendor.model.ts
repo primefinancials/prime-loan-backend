@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export enum VendorStatus {
     PENDING = 'PENDING',
@@ -50,7 +51,7 @@ const VendorSchema = new Schema<IVendor>({
     reviewCount: { type: Number, default: 0 }
 }, {
     timestamps: true,
-    collection: 'vendors'
+    collection: getCollectionName('vendors')
 });
 
 export const Vendor = mongoose.model<IVendor>('Vendor', VendorSchema);

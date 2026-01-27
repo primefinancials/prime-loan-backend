@@ -3,6 +3,7 @@ import { Product, IProduct, ProductStatus } from './product.model';
 import User from '../users/user.model';
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../../exceptions';
 import { DatabaseService } from '../../shared/db';
+import { EscrowTransaction } from '../escrow/escrow.model';
 
 export class MarketplaceService {
     /* =========================================
@@ -211,5 +212,14 @@ export class MarketplaceService {
             Product.countDocuments({ vendorId })
         ]);
         return { data: products, total, page, pages: Math.ceil(total / limit) };
+    }
+
+    static async getAdminEscrows(page = 1, limit = 20) {
+        const skip = (page - 1) * limit;
+        const [escrows, total] = await Promise.all([
+            EscrowTransaction.find({ type: 'marketplace' }).sort({ createdAt: -1 }).skip(skip).limit(limit),
+            EscrowTransaction.countDocuments({ type: 'marketplace' })
+        ]);
+        return { data: escrows, total, page, pages: Math.ceil(total / limit) };
     }
 }
