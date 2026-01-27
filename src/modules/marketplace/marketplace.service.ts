@@ -77,6 +77,10 @@ export class MarketplaceService {
        PRODUCT MANAGEMENT
     ========================================= */
 
+    /* =========================================
+       PRODUCT MANAGEMENT
+    ========================================= */
+
     /**
      * Create Product
      * Checks if user is an Approved Vendor first
@@ -88,9 +92,24 @@ export class MarketplaceService {
         const product = await Product.create({
             vendorId: vendor._id,
             ...data,
-            status: data.status || ProductStatus.DRAFT
+            status: data.status || ProductStatus.ACTIVE // Default to ACTIVE for visibility
         });
         return product;
+    }
+
+    static async updateVendor(userId: string, vendorId: string, data: Partial<IVendor>) {
+        const vendor = await Vendor.findOne({ _id: vendorId, userId });
+        if (!vendor) throw new NotFoundError('Vendor not found or unauthorized');
+
+        // Prevent status update via this endpoint if needed, or allow everything
+        // For now, allow updating business details
+        if (data.businessName) vendor.businessName = data.businessName;
+        if (data.businessDescription) vendor.businessDescription = data.businessDescription;
+        if (data.address) vendor.address = data.address;
+        if (data.contactPhone) vendor.contactPhone = data.contactPhone;
+        // Add other fields as necessary
+
+        return vendor.save();
     }
 
     static async updateProduct(productId: string, userId: string, data: Partial<IProduct>) {
@@ -207,6 +226,7 @@ export class MarketplaceService {
     // Admin Helper
     static async getProductsByVendor(vendorId: string, page = 1, limit = 20) {
         const skip = (page - 1) * limit;
+        // NOTE: This returns ALL products (Active, Draft, etc) for the vendor dashboard
         const [products, total] = await Promise.all([
             Product.find({ vendorId }).sort({ createdAt: -1 }).skip(skip).limit(limit),
             Product.countDocuments({ vendorId })
@@ -219,6 +239,33 @@ export class MarketplaceService {
         const [escrows, total] = await Promise.all([
             EscrowTransaction.find({ type: 'marketplace' }).sort({ createdAt: -1 }).skip(skip).limit(limit),
             EscrowTransaction.countDocuments({ type: 'marketplace' })
+        ]);
+        return { data: escrows, total, page, pages: Math.ceil(total / limit) };
+    }
+
+    static async getVendorEscrows(userId: string, vendorId: string, page = 1, limit = 20) {
+        // First verify the user owns the vendor profile
+        const vendor = await Vendor.findOne({ _id: vendorId, userId });
+        if (!vendor) throw new NotFoundError('Vendor not found or unauthorized');
+
+        // Find escrows where sellerEmail matches user email?
+        // Or better: EscrowTransaction should ideally save vendorId or sellerId (userId).
+        // Current Escrow model might rely on email or userId. Let's check Escrow model.
+        // Assuming EscrowTransaction has 'sellerId' or we need to look up by email.
+        // For accurate linking, let's look up the User to get their email, then query Escrow.
+
+        const user = await User.findById(userId);
+        if (!user) throw new NotFoundError('User not found');
+
+        const skip = (page - 1) * limit;
+        const query = {
+            type: 'marketplace',
+            $or: [{ seller: user.email }, { sellerId: userId }] // Handle both potential fields
+        };
+
+        const [escrows, total] = await Promise.all([
+            EscrowTransaction.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+            EscrowTransaction.countDocuments(query)
         ]);
         return { data: escrows, total, page, pages: Math.ceil(total / limit) };
     }

@@ -120,6 +120,64 @@ Query Params: `?search=iphone&category=Electronics&minPrice=1000&maxPrice=500000
         "name": "iPhone 13",
         "price": 800000,
         "vendorId": "...",
+        "vendor": { "businessName": "Tech Haven", "avgRating": 4.5 },
+        "status": "ACTIVE"
+      }
+    ],
+    "total": 100,
+    "page": 1,
+    "pages": 5
+  }
+}
+```
+
+#### Update Vendor Profile
+**PUT** `/marketplace/vendors/:id`
+
+**Request Body:**
+```json
+{
+    "businessName": "New Name",
+    "businessDescription": "New Description",
+    "address": "New Address",
+    "contactPhone": "New Phone"
+}
+```
+
+#### Get Vendor Escrows
+**GET** `/marketplace/vendors/:id/escrows`
+Query Params: `?page=1&limit=20`
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "data": [
+      {
+        "transactionId": "TRX-...",
+        "amount": 5000,
+        "status": "COMPLETED",
+        "type": "marketplace"
+      }
+    ],
+    "total": 5,
+    "page": 1,
+    "pages": 1
+  }
+}
+```
+
+**Response (200 OK):**
+```json
+{
+  "status": "success",
+  "data": {
+    "data": [
+      {
+        "name": "iPhone 13",
+        "price": 800000,
+        "vendorId": "...",
         "vendor": { "businessName": "Tech Haven", "avgRating": 4.5 }
       }
     ],

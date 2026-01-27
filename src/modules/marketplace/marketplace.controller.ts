@@ -171,4 +171,27 @@ export class MarketplaceController {
             next(error);
         }
     }
+
+    static async updateVendor(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const userId = req.user!._id.toString();
+            const { id } = req.params;
+            const vendor = await MarketplaceService.updateVendor(userId, id, req.body);
+            res.status(200).json({ status: "success", data: vendor });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async getVendorEscrows(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const userId = req.user!._id.toString();
+            const { id } = req.params;
+            const { page, limit } = req.query;
+            const result = await MarketplaceService.getVendorEscrows(userId, id, Number(page), Number(limit));
+            res.status(200).json({ status: "success", data: result });
+        } catch (error) {
+            next(error);
+        }
+    }
 }
