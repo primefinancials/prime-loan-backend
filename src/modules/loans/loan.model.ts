@@ -1,4 +1,5 @@
 import { Schema, model } from 'mongoose';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 import { ILoan } from './loan.interface';
 
 // Subscriber Schema
@@ -105,9 +106,14 @@ const LoanSchema: Schema = new Schema(
     lastInterestAdded: { type: String, required: false },
     rejectionReason: { type: String, required: false },
     debit_account: { type: String },
-    adminAction
+    adminAction,
+    call_history: [{
+      date: { type: Date },
+      status: { type: String },
+      provider: { type: String }
+    }]
   },
-  { timestamps: true }
+  { timestamps: true, collection: getCollectionName('loans') }
 );
 
 // Create the LoanApplication model

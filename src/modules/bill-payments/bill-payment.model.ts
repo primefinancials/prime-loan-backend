@@ -4,6 +4,7 @@
  */
 import mongoose, { Document, Schema } from 'mongoose';
 import { IBillPayment } from './bill-payment.interface';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 const BillPaymentSchema = new Schema<IBillPayment>({
   userId: { type: String, required: true, index: true },
@@ -12,18 +13,18 @@ const BillPaymentSchema = new Schema<IBillPayment>({
   serviceId: { type: String, required: true },
   customerReference: { type: String, required: true },
   amount: { type: Number, required: true },
-  status: { 
-    type: String, 
-    enum: ['PENDING', 'COMPLETED', 'FAILED'], 
+  status: {
+    type: String,
+    enum: ['PENDING', 'COMPLETED', 'FAILED'],
     required: true,
     index: true
   },
   providerRef: { type: String },
   processedAt: { type: Date },
   meta: { type: Schema.Types.Mixed }
-}, { 
+}, {
   timestamps: true,
-  collection: 'bill_payments'
+  collection: getCollectionName('bill_payments')
 });
 
 BillPaymentSchema.index({ status: 1, createdAt: 1 });

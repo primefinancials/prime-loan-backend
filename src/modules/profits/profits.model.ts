@@ -1,5 +1,6 @@
 // src/models/Profit.ts
 import { Schema, model, Document } from "mongoose";
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export interface Profit extends Document {
   reference: string; // transaction or trade ID
@@ -27,7 +28,7 @@ const ProfitSchema = new Schema<Profit>(
     date: { type: Date, default: Date.now },
     description: { type: String },
   },
-  { timestamps: true }
+  { timestamps: true, collection: getCollectionName('profits') }
 );
 
 export default model<Profit>("Profit", ProfitSchema);

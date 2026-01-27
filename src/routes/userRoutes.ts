@@ -24,6 +24,8 @@ import { BillPaymentController } from "../modules/bill-payments/bill-payment.con
 import { LoanController } from "../modules/loans/loan.controller";
 import { SavingsController } from "../modules/savings/savings.controller";
 import { AdminController } from "../modules/admin/admin.controller";
+import { EscrowController } from "../modules/escrow/escrow.controller";
+import { MarketplaceController } from "../modules/marketplace/marketplace.controller";
 
 // --- Validation Schemas ---
 import {
@@ -297,6 +299,41 @@ router.get(
   validateReqQuery(userPlansQuerySchema),
   SavingsController.getUserPlans as unknown as express.RequestHandler
 );
+
+/* -------------------------------------------------------------------------- */
+/*                              ESCROW ROUTES                                 */
+/* -------------------------------------------------------------------------- */
+
+router.post("/escrow/p2p", verifyJwtRest(), EscrowController.createP2P as any);
+router.post("/escrow/marketplace", verifyJwtRest(), EscrowController.createMarketplace as any);
+router.get("/escrow", verifyJwtRest(), EscrowController.getMyEscrows as any);
+
+router.post("/escrow/:id/fund", verifyJwtRest(), EscrowController.fund as any);
+router.post("/escrow/:id/confirm", verifyJwtRest(), EscrowController.confirmDelivery as any);
+router.post("/escrow/:id/dispute", verifyJwtRest(), EscrowController.raiseDispute as any);
+
+router.post("/escrow/:id/dispute", verifyJwtRest(), EscrowController.raiseDispute as any);
+
+/* -------------------------------------------------------------------------- */
+/*                            MARKETPLACE ROUTES                              */
+/* -------------------------------------------------------------------------- */
+
+// Vendor
+router.post("/marketplace/vendor/apply", verifyJwtRest(), MarketplaceController.applyAsVendor as any);
+router.get("/marketplace/vendor/me", verifyJwtRest(), MarketplaceController.getMyVendorProfile as any);
+
+// Vendor Reviews
+router.post("/marketplace/reviews", verifyJwtRest(), MarketplaceController.addReview as any);
+router.get("/marketplace/vendors/:id/reviews", verifyJwtRest(), MarketplaceController.getVendorReviews as any);
+
+// Products (Vendor)
+router.post("/marketplace/products", verifyJwtRest(), MarketplaceController.createProduct as any);
+router.put("/marketplace/products/:id", verifyJwtRest(), MarketplaceController.updateProduct as any);
+router.delete("/marketplace/products/:id", verifyJwtRest(), MarketplaceController.deleteProduct as any);
+
+// Products (Public/User)
+router.get("/marketplace/products", verifyJwtRest(), MarketplaceController.listProducts as any);
+router.get("/marketplace/products/:id", verifyJwtRest(), MarketplaceController.getProduct as any);
 
 /* -------------------------------------------------------------------------- */
 /*                              SETTINGS ROUTES                                */

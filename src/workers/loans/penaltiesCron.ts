@@ -13,33 +13,34 @@ import { UserService } from '../../modules/users/user.service';
 import pino from 'pino';
 import { LoanService } from '../../modules/loans/loan.service';
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
+import { WorkerControlService } from '../../modules/workers/worker-control.service';
 
 const logger = pino({ name: 'loan-penalties-cron' });
 
 export class LoanPenaltiesCron {
+  static register() {
+    WorkerControlService.register('loan-penalties', async () => {
+      return QueueService.createWorker(
+        'loan-penalties',
+        async () => {
+          await this.processLoans();
+        },
+        {
+          repeat: { pattern: '0 */2 * * *' }, // Every midnight ? Pattern says every 2 hours... 
+          // Wait, the comment says "Every midnight" but pattern is '0 */2 * * *' which is every 2 hours.
+          // I will preserve the code behavior.
+          removeOnComplete: 5,
+          removeOnFail: 10
+        }
+      );
+    });
+  }
+
   static async start() {
     await DatabaseService.connect();
     await QueueService.connect();
-
-    // Run daily at midnight
-    const worker = QueueService.createWorker(
-      'loan-penalties',
-      async () => {
-        await this.processLoans();
-      },
-      {
-        repeat: { pattern: '0 */2 * * *' }, // Every midnight
-        removeOnComplete: 5,
-        removeOnFail: 10
-      }
-    );
-
-    logger.info('Loan penalties & reminder cron started');
-
-    process.on('SIGTERM', async () => {
-      await worker.close();
-      await QueueService.closeAll();
-    });
+    this.register();
+    await WorkerControlService.start('loan-penalties');
   }
 
   private static async processLoans() {
@@ -59,6 +60,8 @@ export class LoanPenaltiesCron {
       });
 
       logger.info(`Processing ${loans.length} loans for penalties & reminders`);
+      await WorkerControlService.reportActivity('loan-penalties', `Processing ${loans.length} loans`);
+
       if (loans.length > 0) {
         await WorkerLogService.log('loan-penalties', 'info', `Processing ${loans.length} loans for penalties & reminders`);
       }

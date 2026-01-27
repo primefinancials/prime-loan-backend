@@ -18,7 +18,10 @@ import { TransfersPoller } from "./workers/pollers/transfersPoller";
 import { SavingsMaturitiesWorker } from "./workers/savings/maturitiesWorker";
 import { ProfitRealizationCron } from "./workers/profits/profitsCron";
 import { BillPaymentsPoller } from "./workers/pollers/billPaymentsPoller";
+import { DefaulterCallWorker } from "./workers/loans/defaulterCallWorker";
+import { EscrowTimeoutWorker } from "./workers/escrow/escrowTimeoutWorker";
 import { QueueService } from "./shared/queue";
+import { WorkerControlService } from "./modules/workers/worker-control.service";
 
 const logger = pino({ name: "prime-finance-server" });
 
@@ -75,13 +78,19 @@ export async function startApp() {
  */
 async function startBackgroundWorkers() {
   try {
-    await Promise.all([
-      LoanPenaltiesCron.start(),
-      TransfersPoller.start(),
-      SavingsMaturitiesWorker.start(),
-      ProfitRealizationCron.start(),
-      BillPaymentsPoller.start(),
-    ]);
+    // Register all workers
+    LoanPenaltiesCron.register();
+    TransfersPoller.register();
+    SavingsMaturitiesWorker.register();
+    ProfitRealizationCron.register();
+    ProfitRealizationCron.register();
+    BillPaymentsPoller.register();
+    DefaulterCallWorker.register();
+    EscrowTimeoutWorker.register();
+
+    // Start all registered workers
+    await WorkerControlService.startAll();
+
     logger.info("✅ Background workers started successfully");
   } catch (err) {
     logger.error({ err }, "❌ Failed to start one or more workers");
