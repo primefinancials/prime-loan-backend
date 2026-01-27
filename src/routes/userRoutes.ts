@@ -321,6 +321,8 @@ router.post("/escrow/:id/dispute", verifyJwtRest(), EscrowController.raiseDisput
 // Vendor
 router.post("/marketplace/vendor/apply", verifyJwtRest(), MarketplaceController.applyAsVendor as any);
 router.get("/marketplace/vendor/me", verifyJwtRest(), MarketplaceController.getMyVendorProfile as any);
+router.put("/marketplace/vendors/:id", verifyJwtRest(), MarketplaceController.updateVendor as any);
+router.get("/marketplace/vendors/:id/escrows", verifyJwtRest(), MarketplaceController.getVendorEscrows as any);
 
 // Vendor Reviews
 router.post("/marketplace/reviews", verifyJwtRest(), MarketplaceController.addReview as any);
