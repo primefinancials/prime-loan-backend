@@ -1,4 +1,5 @@
 import { Schema, model, Document } from "mongoose";
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 /**
  * Profit Range Definition
@@ -40,6 +41,11 @@ export interface ISettings extends Document {
   maintenanceMode: boolean;  // put platform in maintenance mode
   singleton: string;
   profitRange: ProfitRange[];
+  defaulterCallConfig: {
+    enabled: boolean;
+    maxCallsPerDay: number;
+    message: string;
+  };
 }
 
 /**
@@ -91,6 +97,12 @@ const SettingsSchema = new Schema<ISettings>(
 
     updatedBy: { type: String, required: true },
     updatedAt: { type: Date, default: Date.now },
+
+    defaulterCallConfig: {
+      enabled: { type: Boolean, default: false },
+      maxCallsPerDay: { type: Number, default: 1 },
+      message: { type: String, default: "This is a reminder from Prime Finance. You have an overdue loan payment. Please pay immediately to avoid penalties." }
+    },
 
     profitRange: {
       type: [ProfitRangeSchema],
@@ -149,12 +161,21 @@ const SettingsSchema = new Schema<ISettings>(
           amount: 0.025, // 2.5%
           description: "Savings Interest"
         },
+        {
+          category: "escrow",
+          type: "percentage",
+          minAmount: 0,
+          maxAmount: 10000000,
+          action: "send",
+          amount: 0.015, // 1.5%
+          description: "Escrow Platform Fee"
+        }
       ],
     },
 
     singleton: { type: String, default: "singleton", unique: true },
   },
-  { collection: "settings", timestamps: true }
+  { collection: getCollectionName("settings"), timestamps: true }
 );
 
 // ✅ Ensure there is always only one settings document

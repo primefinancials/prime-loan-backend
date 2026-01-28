@@ -4,32 +4,35 @@ import { AdminController } from "../modules/admin/admin.controller";
 import { LoanController } from "../modules/loans/loan.controller";
 import { SavingsController } from "../modules/savings/savings.controller";
 import { profitController } from "../modules/profits/profits.controller";
+import { WorkerController } from "../modules/workers/worker.controller";
+import { EscrowController } from "../modules/escrow/escrow.controller";
+import { MarketplaceController } from "../modules/marketplace/marketplace.controller";
 import {
-  verifyJwtRest,
-  validateReqBody,
-  validateReqQuery
+   verifyJwtRest,
+   validateReqBody,
+   validateReqQuery
 } from "../shared/middlewares";
 import {
-  createAdminAccountSchema,
-  activateAdminReqBodySchema,
-  activateUserReqBodySchema,
-  getUsersQuerySchema,
-  bulkLoanActionSchema,
-  disburseLoanSchema,
-  rejectLoanSchema,
-  loanListQuerySchema,
-  businessReportQuerySchema,
-  profitReportQuerySchema,
-  flaggedQuerySchema,
-  updateAdminPermissionsSchema,
-  activityLogsQuerySchema,
-  changePasswordSchema,
-  initiateResetSchema,
-  updatePasswordOrPinSchema,
-  updateUserSchema,
-  validateResetSchema,
-  loginSchema,
-  transactionQuerySchema
+   createAdminAccountSchema,
+   activateAdminReqBodySchema,
+   activateUserReqBodySchema,
+   getUsersQuerySchema,
+   bulkLoanActionSchema,
+   disburseLoanSchema,
+   rejectLoanSchema,
+   loanListQuerySchema,
+   businessReportQuerySchema,
+   profitReportQuerySchema,
+   flaggedQuerySchema,
+   updateAdminPermissionsSchema,
+   activityLogsQuerySchema,
+   changePasswordSchema,
+   initiateResetSchema,
+   updatePasswordOrPinSchema,
+   updateUserSchema,
+   validateResetSchema,
+   loginSchema,
+   transactionQuerySchema
 } from "../validations";
 import { idempotencyMiddleware } from "../shared/idempotency/middleware";
 
@@ -128,6 +131,31 @@ router.get("/settings", verifyJwtRest(), AdminController.getSettings as any);
 router.put("/settings", verifyJwtRest(), AdminController.updateSettings as any);
 router.get("/settings/calculate-profit", verifyJwtRest(), AdminController.calculateProfit as any);
 router.get("/settings/profit-config", verifyJwtRest(), AdminController.getProfitConfig as any);
+
+/* =============================
+   WORKER MANAGEMENT
+============================= */
+router.get("/workers", verifyJwtRest(), WorkerController.listWorkers as any);
+router.post("/workers/:name/start", verifyJwtRest(), WorkerController.startWorker as any);
+router.post("/workers/:name/stop", verifyJwtRest(), WorkerController.stopWorker as any);
+router.post("/workers/:name/restart", verifyJwtRest(), WorkerController.restartWorker as any);
+
+/* =============================
+   ESCROW DISPUTES
+============================= */
+router.post("/escrow/:id/resolve", verifyJwtRest(), EscrowController.resolveDispute as any);
+router.post("/escrow/:id/resolve", verifyJwtRest(), EscrowController.resolveDispute as any);
+
+/* =============================
+   MARKETPLACE MANAGEMENT
+============================= */
+router.get("/marketplace/vendors", verifyJwtRest(), MarketplaceController.listVendors as any);
+router.post("/marketplace/vendors/:id/approve", verifyJwtRest(), MarketplaceController.approveVendor as any);
+router.post("/marketplace/vendors/:id/reject", verifyJwtRest(), MarketplaceController.rejectVendor as any);
+router.get("/marketplace/vendors/:id/products", verifyJwtRest(), MarketplaceController.getVendorProducts as any); // Products by Vendor
+
+// Admin Escrows (with vendor filter)
+router.get("/escrows", verifyJwtRest(), MarketplaceController.getAdminEscrows as any);
 
 /* =============================
    PROFITS MANAGEMENT

@@ -4,6 +4,7 @@
  */
 import mongoose, { Document, Schema } from 'mongoose';
 import { ObjectId } from 'mongodb';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export interface ISavingsPlan extends Document {
   _id: ObjectId;
@@ -36,9 +37,9 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
   targetAmount: { type: Number },
   durationDays: { type: Number },
   interestRate: { type: Number, required: true }, // annual percentage
-  status: { 
-    type: String, 
-    enum: ['ACTIVE', 'COMPLETED', 'CANCELLED'], 
+  status: {
+    type: String,
+    enum: ['ACTIVE', 'COMPLETED', 'CANCELLED'],
     default: 'ACTIVE',
     index: true
   },
@@ -50,9 +51,9 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
     penaltyRate: { type: Number },
     compoundingFrequency: { type: String, enum: ['daily', 'monthly', 'maturity'], default: 'maturity' }
   }
-}, { 
+}, {
   timestamps: true,
-  collection: 'savings_plans'
+  collection: getCollectionName('savings_plans')
 });
 
 SavingsPlanSchema.index({ userId: 1, status: 1 });

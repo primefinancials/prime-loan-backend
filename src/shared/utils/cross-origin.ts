@@ -22,6 +22,8 @@ const DefaultCorsOptions: CorsOptions = {
     'https://www.primefinance.live',
     'https://prime-loan-web-init.vercel.app',
     'https://prime-loan-web.vercel.app',
+    'https://prime-loan-web-v2-staging.vercel.app',
+    'https://prime-finance-admin-staging.vercel.app'
   ],
 
   /**

@@ -41,14 +41,14 @@ export class SavingsService {
       return await DatabaseService.withTransaction(session, async () => {
         const vfdProvider = new VfdProvider();
 
-        const maturityDate = params.durationDays 
+        const maturityDate = params.durationDays
           ? new Date(Date.now() + params.durationDays * 24 * 60 * 60 * 1000)
           : undefined;
-    
+
         const userId = params.userId;
 
         const user = await User.findById(userId);
-        const from = (await vfdProvider.getAccountInfo(user? user.user_metadata.accountNo : "trx-user")).data;
+        const from = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
         const to = (await vfdProvider.getPrimeAccountInfo()).data;
 
         // 1. Create transfer record + ledger entry (PENDING)
@@ -92,10 +92,10 @@ export class SavingsService {
 
         const providerRes = await vfdProvider.transfer(transferReq);
 
-        if(providerRes.status == "00") {
+        if (providerRes.status == "00") {
           const trxnRes = await TransferService.completeTransfer(trxn.reference, "savings-deposit");
 
-         const setting = await SettingsService.getSettings()
+          const setting = await SettingsService.getSettings()
 
           const [plan] = await SavingsPlan.create([{
             userId: params.userId,
@@ -179,14 +179,14 @@ export class SavingsService {
           const penaltyRate = plan.meta?.penaltyRate || 0.05; // 5% default
           penalty = Math.floor(amount * penaltyRate);
           netAmount = amount - penalty;
-        } 
+        }
 
         if (plan.maturityDate && new Date() > plan.maturityDate) {
           netAmount = amount + Math.floor((plan.principal * (plan.interestRate * (plan.durationDays || 0))));
         }
 
         const user = await User.findById(plan.userId);
-        const to = (await vfdProvider.getAccountInfo(user? user.user_metadata.accountNo : "trx-user")).data;
+        const to = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
         const from = (await vfdProvider.getPrimeAccountInfo()).data;
 
         // 1. Create transfer record + ledger entry (PENDING)
@@ -229,10 +229,10 @@ export class SavingsService {
 
         const providerRes = await vfdProvider.transfer(transferReq);
 
-        if(providerRes.status == "00") {
+        if (providerRes.status == "00") {
           const trxnRes = await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
 
-           // Create ledger entries for withdrawal
+          // Create ledger entries for withdrawal
           await LedgerService.createDoubleEntry(
             trxnRes?.traceId || "",
             'savings_pool',
@@ -254,10 +254,14 @@ export class SavingsService {
               userId: params.userId,
               account: 'platform_revenue',
               entryType: 'CREDIT',
-              category: 'savings',
+              category: 'savings', // Ensure category is savings
               subtype: 'penalty',
               amount: penalty,
-              status: 'COMPLETED'
+              status: 'COMPLETED',
+              meta: {
+                planId: plan._id,
+                reason: 'Early withdrawal penalty'
+              }
             }, session);
           }
 
@@ -311,7 +315,7 @@ export class SavingsService {
       .sort({ createdAt: -1 });
   }
 
-   static async getAdminSavingsStats() {
+  static async getAdminSavingsStats() {
     const now = new Date();
 
     // Fetch all savings plans

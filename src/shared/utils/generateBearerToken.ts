@@ -18,8 +18,6 @@ export const generateBearerToken = async (consumerKey: string, consumerSecret: s
     validityTime: "-1",
   };
 
-  console.log({ authUrl })
-
   try {
     const response = await axios.post(authUrl, requestBody, {
       headers: { "Content-Type": "application/json" },
