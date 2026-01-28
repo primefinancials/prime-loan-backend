@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
+import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export interface IWorkerLog extends Document {
     workerName: string;
@@ -15,7 +16,8 @@ const WorkerLogSchema: Schema = new Schema({
     metadata: { type: Schema.Types.Mixed },
     timestamp: { type: Date, default: Date.now, index: true }
 }, {
-    timestamps: true // adds createdAt and updatedAt
+    timestamps: true, // adds createdAt and updatedAt
+    collection: getCollectionName('worker_logs')
 });
 
 // Create compound index for querying logs by worker and time
