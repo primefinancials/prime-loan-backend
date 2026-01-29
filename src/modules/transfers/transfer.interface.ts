@@ -56,7 +56,7 @@ export interface Transfer extends Document {
   toAccount: string;
   amount: number;
   transferType: 'intra' | 'inter';
-  status: 'PENDING' | 'COMPLETED' | 'FAILED';
+  status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'MANUAL_REVIEW';
   providerRef?: string;
   beneficiaryName?: string;
   bankCode?: string;

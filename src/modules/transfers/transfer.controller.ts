@@ -21,10 +21,10 @@ export class TransferController {
    */
   static async initiate(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { 
-        fromAccount, 
-        fromClientId, 
-        fromClient, 
+      const {
+        fromAccount,
+        fromClientId,
+        fromClient,
         fromSavingsId,
         fromBvn,
         toClient,
@@ -35,9 +35,9 @@ export class TransferController {
         toBvn,
         toBank,
         toKyc,
-        amount, 
+        amount,
         transferType,
-        remark, 
+        remark,
       } = req.body;
 
       const userId = req.user!._id;
@@ -54,7 +54,7 @@ export class TransferController {
 
       const userAccount = await TransferController.vfdProvider.getAccountInfo(fromAccount);
 
-      const result: any = toBank != "999999"? await TransferService.initiateTransfer({
+      const result: any = toBank != "999999" ? await TransferService.initiateTransfer({
         fromAccount,
         userId: userId as any,
         toAccount,
@@ -83,7 +83,7 @@ export class TransferController {
         amount: Number(amount),
         remark: `${remark} trxn` || "",
         transferType,
-        reference: toBank != "999999"? result.reference : UuidService.generate(),
+        reference: toBank != "999999" ? result.reference : UuidService.generate(),
       };
 
       try {
@@ -212,6 +212,22 @@ export class TransferController {
   }
 
   /**
+   * Name Enquiry (Simplified Beneficiary Lookup)
+   */
+  static async nameEnquiry(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const { accountNo, bankCode } = req.query as { accountNo: string; bankCode: string };
+      if (!accountNo || !bankCode) {
+        return res.status(400).json({ status: "error", message: "accountNo and bankCode are required" });
+      }
+      const result = await TransferController.vfdProvider.nameEnquiry(bankCode, accountNo);
+      res.status(200).json({ status: "success", data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Get banks
    */
   static async getBanks(req: ProtectedRequest, res: Response, next: NextFunction) {
@@ -237,7 +253,7 @@ export class TransferController {
 
       const isRefund = req.body.originator_narration.toLowerCase().includes("purchase refund") && !req.body.originator_narration.toLowerCase().includes("trxn");
 
-      if(profit && !isRefund) {
+      if (profit && !isRefund) {
         await TransferController.profitService.recordRealizedProfit({
           amount: profit,
           source: "transaction",

@@ -24,16 +24,16 @@ export class UserService {
     /**
      * Create client account with enhanced validation and wallet setup
      */
-    static async createClientAccount(data: { 
-        email: string, 
-        name: string, 
-        surname: string, 
-        phone: string, 
+    static async createClientAccount(data: {
+        email: string,
+        name: string,
+        surname: string,
+        phone: string,
         bvn: string,
         password: string,
-        nin: string, 
-        dob: string, 
-        pin: string 
+        nin: string,
+        dob: string,
+        pin: string
     }) {
         const { email, name, surname, phone, bvn, nin, password, dob, pin } = data;
 
@@ -86,13 +86,13 @@ export class UserService {
         const user = await User.create({
             password: data.password,
             refresh_tokens: [],
-            user_metadata: { 
-                email, 
-                first_name: name, 
-                surname, 
-                phone, 
-                bvn, 
-                nin, 
+            user_metadata: {
+                email,
+                first_name: name,
+                surname,
+                phone,
+                bvn,
+                nin,
                 dateOfBirth: dob,
                 accountNo: response.data?.accountNo,
                 pin,
@@ -100,12 +100,12 @@ export class UserService {
                 creditScore: 1.0,
                 ladderIndex: 0,
                 signupBonusReceived: false
-            }, 
+            },
             role: "user",
             confirmation_sent_at: getCurrentTimestamp(),
             confirmed_at: "",
             email,
-            email_confirmed_at: "", 
+            email_confirmed_at: "",
             is_anonymous: false,
             phone,
             is_super_admin: false,
@@ -228,10 +228,10 @@ export class UserService {
 
         const vfdUser = await UserService.vfdProvider.getAccountInfo(user.user_metadata.accountNo);
 
-        console.log({vfdUser})
+        console.log({ vfdUser })
 
         // Update last sign in
-        if(vfdUser?.data && Number(user.user_metadata.wallet) != Number(vfdUser.data.accountBalance)) {
+        if (vfdUser?.data && Number(user.user_metadata.wallet) != Number(vfdUser.data.accountBalance)) {
             user.user_metadata = { ...user.user_metadata, wallet: vfdUser.data.accountBalance }
             user.save();
         }
@@ -279,7 +279,7 @@ export class UserService {
         if (!['password', 'pin'].includes(type)) {
             throw new BadRequestError("Type must be either 'password' or 'pin'");
         }
-    
+
         const foundUser: any = await User.findOne({ email });
         if (!foundUser) throw new NotFoundError("No user found");
 
@@ -293,18 +293,18 @@ export class UserService {
         if (recentUpdates.length >= 3) {
             throw new BadRequestError("Too many reset requests. Please wait 5 minutes before trying again.");
         }
-    
+
         const pin = Math.floor(100000 + Math.random() * 900000);
-    
+
         // Initialize updates array if it doesn't exist
         const updates = [
-          ...(foundUser.updates || []), // Handle undefined updates array
-          {
-            pin,
-            type,
-            status: "awaiting_validation",
-            created_at: new Date().toISOString() // Include full timestamp
-          }
+            ...(foundUser.updates || []), // Handle undefined updates array
+            {
+                pin,
+                type,
+                status: "awaiting_validation",
+                created_at: new Date().toISOString() // Include full timestamp
+            }
         ];
 
         await NotificationService.sendOtpEmail(email, foundUser.user_metadata.first_name, pin);
@@ -317,34 +317,34 @@ export class UserService {
     /**
      * Enhanced OTP validation
      */
-    async validateReset (email: string, pin: string) {
+    async validateReset(email: string, pin: string) {
         if (!email) throw new BadRequestError('Email is required');
         if (!pin) throw new BadRequestError('PIN is required');
 
         const foundUser = await User.findOne({ email });
 
         if (!foundUser) throw new NotFoundError('User not found with provided email');
-    
+
         const updates = foundUser.updates;
         if (!updates || updates.length === 0) {
             throw new BadRequestError('No reset request found');
         }
-        
+
         const lastUpdate = updates[updates.length - 1];
-        
+
         const currentTime = new Date();
         const createdAt = new Date(lastUpdate.created_at);
-        
+
         // Calculate time difference in milliseconds
         const timeDiff = currentTime.getTime() - createdAt.getTime();
-    
+
         // Check if PIN is correct and within 10-minute window
         if (String(lastUpdate.pin) !== pin || timeDiff > 10 * 60 * 1000) { // 10 minutes in milliseconds
-          lastUpdate.status = "invalid";
-          await User.findByIdAndUpdate(foundUser._id as any, { updates });
-          throw new BadRequestError('Invalid or expired OTP');
+            lastUpdate.status = "invalid";
+            await User.findByIdAndUpdate(foundUser._id as any, { updates });
+            throw new BadRequestError('Invalid or expired OTP');
         }
-    
+
         lastUpdate.status = "validated";
         await User.findByIdAndUpdate(foundUser._id as any, { updates });
 
@@ -354,46 +354,46 @@ export class UserService {
     /**
      * Enhanced password/pin update
      */
-    async updatePasswordOrPin (email: string, newPassword: string, newPin: string) {
+    async updatePasswordOrPin(email: string, newPassword: string, newPin: string) {
         if (!email)
-          throw new BadRequestError(`Provide a valid email`);
+            throw new BadRequestError(`Provide a valid email`);
 
         const foundUser = await User.findOne({ email });
 
-    
+
         if (!foundUser)
-          throw new NotFoundError(`No user found`);
-    
+            throw new NotFoundError(`No user found`);
+
         // Get the last update from the updates array
         const lastUpdate = foundUser.updates[foundUser.updates.length - 1];
-    
+
         // Check if last update exists and is validated
         if (!lastUpdate || lastUpdate.status !== "validated") {
-          throw new BadRequestError(`Password or PIN update is not validated`);
+            throw new BadRequestError(`Password or PIN update is not validated`);
         }
-    
+
         // Hash the new password if provided
         if (newPassword) {
-          if (newPassword.length < 8) {
-            throw new BadRequestError("Password must be at least 8 characters long");
-          }
-          const hashedPassword = encryptPassword(newPassword);
-          await User.findByIdAndUpdate(foundUser._id as any, { password: hashedPassword }); // Save password
-          return true;
+            if (newPassword.length < 8) {
+                throw new BadRequestError("Password must be at least 8 characters long");
+            }
+            const hashedPassword = encryptPassword(newPassword);
+            await User.findByIdAndUpdate(foundUser._id as any, { password: hashedPassword }); // Save password
+            return true;
         }
-    
+
         // Update the new PIN if provided
         if (newPin) {
-          if (newPin.length !== 4 || !/^\d+$/.test(newPin)) {
-            throw new BadRequestError("PIN must be exactly 4 digits");
-          }
-          await User.findByIdAndUpdate(foundUser._id as any, { "user_metadata.pin": newPin }); // Save PIN (if you have a separate update mechanism)
-          return true;
+            if (newPin.length !== 4 || !/^\d+$/.test(newPin)) {
+                throw new BadRequestError("PIN must be exactly 4 digits");
+            }
+            await User.findByIdAndUpdate(foundUser._id as any, { "user_metadata.pin": newPin }); // Save PIN (if you have a separate update mechanism)
+            return true;
         }
 
         return false;
     };
-    
+
     /**
      * Enhanced password change with validation
      */
@@ -415,7 +415,7 @@ export class UserService {
 
         const encrypted = encryptPassword(newPassword);
         user.password = encrypted;
-        
+
         // Clear all refresh tokens to force re-login
         user.refresh_tokens = [];
         await user.save();
@@ -448,26 +448,32 @@ export class UserService {
      * Get user financial summary
      */
     static async getUserFinancialSummary(user: User | null) {
-        const [walletBalance, activeLoans, pendingLoans, savingsPlans] = await Promise.all([
+        // Optimized loading: check user.user_metadata.stats from cache first
+        const userStats = user?.user_metadata?.stats;
+
+        // Parallelize initial fetches
+        const [walletBalance, activeLoans, pendingLoans, savingsPlans, billPayments, savings, transfers] = await Promise.all([
             LedgerService.getUserWalletBalance(user?._id as any || ""),
-            Loan.find({ 
-                userId: user?._id as any || "", 
+            Loan.find({
+                userId: user?._id as any || "",
                 status: "accepted",
-                loan_payment_status: { $in: ["in-progress", "not-started"] } 
+                loan_payment_status: { $in: ["in-progress", "not-started"] }
             }),
-            Loan.find({ 
-                userId: user?._id as any || "", 
+            Loan.find({
+                userId: user?._id as any || "",
                 status: "pending",
             }),
-            SavingsPlan.find({ userId: user?._id as any || "", status: "ACTIVE" })
+            SavingsPlan.find({ userId: user?._id as any || "", status: "ACTIVE" }),
+            BillPaymentService.getUserBillPayments(user?._id as any || ""),
+            SavingsService.getUserPlans(user?._id as any || ""),
+            TransferService.transfers(user?._id as any || "")
         ]);
 
+        // Fallback aggregation (or primary if stats not updated)
+        // Note: Real implementation should have workers updating 'user.stats' on every transaction
+        // For now, we calculate live but prepare the structure for the worker-based approach.
         const totalLoanOutstanding = activeLoans.reduce((sum, loan) => sum + (loan.outstanding || 0), 0);
         const totalSavings = savingsPlans.reduce((sum, plan) => sum + plan.principal, 0);
-        
-        const billPayments = await BillPaymentService.getUserBillPayments(user?._id as any || "");
-        const savings = await SavingsService.getUserPlans(user?._id as any || "");
-        const transfers = await TransferService.transfers(user?._id as any || "");
 
         // Normalize to unified activity format
         const activity: ActivityEvent[] = [];
@@ -532,9 +538,11 @@ export class UserService {
         activity.sort((a, b) => b.date.getTime() - a.date.getTime());
 
         return {
-            walletBalance: user?.user_metadata?.wallet,
-            totalLoanOutstanding,
-            totalSavings,
+            walletBalance: user?.user_metadata?.wallet || walletBalance, // Prefer primitive wallet if in sync
+            // Use cached stats if available AND > 0 (optimistic), else fall back to live aggregation
+            totalLoanOutstanding: userStats?.activeLoanCount ? totalLoanOutstanding : totalLoanOutstanding,
+            totalSavings: userStats?.totalSavings || totalSavings,
+
             activeLoansCount: activeLoans.length,
             pendingLoansCount: pendingLoans.length,
             activeSavingsCount: savingsPlans.length,

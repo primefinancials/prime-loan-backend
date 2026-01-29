@@ -145,8 +145,9 @@ export class MarketplaceService {
         vendorId?: string;
         minPrice?: number;
         maxPrice?: number;
+        sortBy?: 'relevance' | 'newest' | 'price_asc' | 'price_desc';
     }) {
-        const { page = 1, limit = 20, search, category, vendorId, minPrice, maxPrice } = params;
+        const { page = 1, limit = 20, search, category, vendorId, minPrice, maxPrice, sortBy = 'newest' } = params;
 
         const query: any = { status: ProductStatus.ACTIVE };
 
@@ -159,15 +160,32 @@ export class MarketplaceService {
             if (maxPrice !== undefined) query.price.$lte = maxPrice;
         }
 
+        let sort: any = { createdAt: -1 };
+
         if (search) {
-            query.$text = { $search: search };
+            // Basic text search if index exists, else Regex
+            // Use regex for partial matches if search is short or text index not robust
+            // Optimization: Search 'name' and 'description'
+            query.$or = [
+                { name: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } }
+            ];
+            // If we used $text, we'd use { score: { $meta: "textScore" } } for sort. 
+            // But for smaller catalogs, RegEx is often 'fuzzier' and easier to control without index setup issues. 
+            // We stick to simple Regex for robustness unless catalog is huge.
         }
+
+        // Sorting Logic
+        if (sortBy === 'price_asc') sort = { price: 1 };
+        else if (sortBy === 'price_desc') sort = { price: -1 };
+        else if (sortBy === 'newest') sort = { createdAt: -1 };
+        // Relevance is default if search exists but we aren't using strict text score here.
 
         const skip = (page - 1) * limit;
 
         const [products, total] = await Promise.all([
             Product.find(query)
-                .sort(search ? { score: { $meta: 'textScore' } } : { createdAt: -1 }) // Sort by relevance if search, else new
+                .sort(sort)
                 .skip(skip)
                 .limit(limit),
             Product.countDocuments(query)

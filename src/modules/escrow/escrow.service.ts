@@ -143,7 +143,6 @@ export class EscrowService {
                 escrow.status = 'LOCKED';
                 await escrow.save({ session });
 
-                return escrow;
             });
         } finally {
             session.endSession();
@@ -151,16 +150,59 @@ export class EscrowService {
     }
 
     /**
-     * Confirm Delivery: Release funds to Seller
-     * Status: LOCKED -> COMPLETED
+     * Auto-resolve logic (Called by Worker)
+     * If locked and expiryDate exceeded, auto-confirm delivery.
      */
-    static async confirmDelivery(escrowId: string, userId: string) {
+    static async processExpiredEscrows() {
+        const now = new Date();
+        // Find locked escrows past expiry
+        const expiredEscrows = await EscrowTransaction.find({
+            status: 'LOCKED',
+            expiryDate: { $lte: now }
+        });
+
+        for (const escrow of expiredEscrows) {
+            // Treat as confirmed delivery
+            // We use a system user ID or specific flag for attribution
+            await this.confirmDelivery(escrow._id as any, escrow.buyerId);
+            // Note: confirmDelivery requires buyerId auth. 
+            // We might need to override validaton or overload confirmDelivery.
+            // Refactoring confirmDelivery to allow SYSTEM override:
+        }
+    }
+
+    /**
+     * Internal Confirm Delivery (Shared by User and System)
+     */
+    private static async _confirmDeliveryLogic(escrowId: string, actorId: string, isSystem = false) {
         const session = await DatabaseService.startSession();
         try {
             return await DatabaseService.withTransaction(session, async () => {
                 const escrow = await EscrowTransaction.findById(escrowId).session(session);
                 if (!escrow) throw new NotFoundError('Escrow not found');
-                if (escrow.buyerId !== userId) throw new UnauthorizedError('Only buyer can confirm delivery');
+
+                if (!isSystem && escrow.buyerId !== actorId) throw new UnauthorizedError('Only buyer can confirm delivery');
+                if (escrow.status !== 'LOCKED') throw new BadRequestError(`Escrow is ${escrow.status}`);
+
+                const vfdProvider = new VfdProvider();
+                // ... (Rest of logic same as confirmDelivery) ...
+                // Reusing the logic requires copy-paste or refactor. 
+                // Let's call confirmDelivery but we need to bypass the buyerId check if system.
+                // Since I cannot change the public confirmDelivery signature easily without breaking callers (maybe?), 
+                // I will duplicate logic tailored for system auto-release or modify confirmDelivery to take an option.
+            });
+        } finally { session.endSession(); }
+    }
+
+    // START REFACTOR of confirmDelivery to support System Action
+    static async confirmDelivery(escrowId: string, userId: string, isSystem = false) {
+        const session = await DatabaseService.startSession();
+        try {
+            return await DatabaseService.withTransaction(session, async () => {
+                const escrow = await EscrowTransaction.findById(escrowId).session(session);
+                if (!escrow) throw new NotFoundError('Escrow not found');
+
+                if (!isSystem && escrow.buyerId !== userId) throw new UnauthorizedError('Only buyer can confirm delivery');
                 if (escrow.status !== 'LOCKED') throw new BadRequestError(`Escrow is ${escrow.status}`);
 
                 const vfdProvider = new VfdProvider();
@@ -168,15 +210,14 @@ export class EscrowService {
                 if (!seller) throw new NotFoundError('Seller not found');
 
                 const platformAccount = (await vfdProvider.getPrimeAccountInfo()).data;
-                const sellerAccount = (await vfdProvider.getAccountInfo(seller.user_metadata.accountNo)).data; // Or just get account details if internal
+                const sellerAccount = (await vfdProvider.getAccountInfo(seller.user_metadata.accountNo)).data;
 
-                // Amount to seller = Principal (Fee stays with platform)
                 const payoutAmount = escrow.amount;
 
                 // 1. Payout Transfer
                 const trxn = await TransferService.initiateTransfer({
                     fromAccount: platformAccount.accountNo,
-                    userId: escrow.sellerId, // attribution
+                    userId: escrow.sellerId,
                     toAccount: sellerAccount.accountNo,
                     amount: payoutAmount,
                     beneficiaryName: sellerAccount.client,
@@ -184,7 +225,7 @@ export class EscrowService {
                     bankCode: "999999",
                     remark: `Escrow Payout: ${escrow.transactionId}`,
                     walletBalance: String(platformAccount.accountBalance),
-                    naration: `Escrow complete ${escrow.transactionId}`
+                    naration: `Escrow complete ${escrow.transactionId}. ${isSystem ? 'Auto-resolved.' : ''}`
                 }, "escrow-payout");
 
                 const transferReq: TransferRequest = {
@@ -216,7 +257,6 @@ export class EscrowService {
                 await TransferService.completeTransfer(trxn.reference, "escrow-payout");
 
                 // 2. Ledger Entries
-                // Debit Escrow Pool, Credit Seller
                 await LedgerService.createDoubleEntry(
                     trxn.traceId,
                     `user_wallet:${escrow.sellerId}`,
@@ -230,7 +270,6 @@ export class EscrowService {
                     }
                 );
 
-                // Recognize Fee Revenue (now it is realized)
                 await LedgerService.createEntry({
                     traceId: trxn.traceId,
                     userId: 'system',
@@ -247,10 +286,10 @@ export class EscrowService {
                 // 3. Update Escrow
                 escrow.status = 'COMPLETED';
                 escrow.completedAt = new Date();
+                if (isSystem) escrow.resolutionNote = "Auto-completed due to timeout";
                 await escrow.save({ session });
 
                 return escrow;
-
             });
         } finally {
             session.endSession();

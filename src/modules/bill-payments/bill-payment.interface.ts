@@ -263,7 +263,7 @@ export interface InitiateBillPaymentRequest {
 
 export interface BillPaymentResult {
     traceId: string;
-    status: 'PENDING' | 'COMPLETED' | 'FAILED';
+    status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'MANUAL_REVIEW';
     billPaymentId: string;
     message?: string;
 }
@@ -276,7 +276,7 @@ export interface IBillPayment extends Document {
     serviceId: string;
     customerReference: string;
     amount: number; // in kobo
-    status: 'PENDING' | 'COMPLETED' | 'FAILED';
+    status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'MANUAL_REVIEW';
     providerRef?: string;
     createdAt: Date;
     processedAt?: Date;

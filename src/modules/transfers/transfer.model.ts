@@ -34,7 +34,7 @@ const TransferSchema = new Schema<ITransfer>({
   toAccount: { type: String, required: true },
   amount: { type: Number, required: true },
   transferType: { type: String, enum: ['intra', 'inter'], required: true },
-  status: { type: String, enum: ['PENDING', 'COMPLETED', 'FAILED'], required: true, index: true },
+  status: { type: String, enum: ['PENDING', 'COMPLETED', 'FAILED', 'MANUAL_REVIEW'], required: true, index: true },
   providerRef: { type: String },
   beneficiaryName: { type: String },
   bankCode: { type: String },
