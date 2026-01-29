@@ -95,7 +95,25 @@ export class SavingsService {
         if (providerRes.status == "00") {
           const trxnRes = await TransferService.completeTransfer(trxn.reference, "savings-deposit");
 
-          const setting = await SettingsService.getSettings()
+          const setting = await SettingsService.getSettings();
+
+          // Validation: Minimum amounts and duration from settings
+          if (params.planType === 'LOCKED') {
+            if (params.durationDays && params.durationDays < (setting.savings.fixed.minDuration || 30)) {
+              throw new Error(`Fixed savings must be at least ${setting.savings.fixed.minDuration} days`);
+            }
+          }
+
+          // Interest Rate Calculation
+          // Note: Interest is annualized.
+          // Fixed: Use fixed rate (e.g. 15%)
+          // Flexible: Use flexible rate (e.g. 10%)
+          const annualRate = params.planType === 'LOCKED'
+            ? setting.savings.fixed.interestRate
+            : setting.savings.flexible.interestRate;
+
+          // Store exact rate used (snapshot)
+          const interestRate = annualRate;
 
           const [plan] = await SavingsPlan.create([{
             userId: params.userId,
@@ -104,12 +122,12 @@ export class SavingsService {
             targetAmount: params.targetAmount ? params.targetAmount : undefined,
             durationDays: params.durationDays,
             principal: params.amount,
-            interestRate: Number(setting.savingsInterestRate) * Number(params?.durationDays || 0),
+            interestRate: interestRate, // Storing annualized rate
             locked: params.planType === 'LOCKED',
             maturityDate,
             status: 'ACTIVE',
             meta: {
-              penaltyRate: setting.savingsPenalty,
+              penaltyRate: setting.savings.fixed.penaltyRate,
               autoRenew: params.renew,
               compoundingFrequency: 'maturity'
             }
@@ -154,6 +172,107 @@ export class SavingsService {
       });
     } finally {
       await session.endSession();
+    }
+  }
+
+  static async topUpPlan(params: {
+    userId: string;
+    planId: string;
+    amount: number;
+    idempotencyKey: string;
+  }) {
+    const session = await DatabaseService.startSession();
+    try {
+      return await DatabaseService.withTransaction(session, async () => {
+        const vfdProvider = new VfdProvider();
+        const plan = await SavingsPlan.findById(params.planId).session(session);
+
+        if (!plan) throw new Error('Savings plan not found');
+        if (plan.userId !== params.userId) throw new Error('Unauthorized');
+        if (plan.status !== 'ACTIVE') throw new Error('Cannot top-up inactive plan');
+
+        // TODO: For Locked plans, verify if top-up is allowed by policy.
+        // For now, we allow it.
+
+        const user = await User.findById(params.userId);
+        const from = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
+        const to = (await vfdProvider.getPrimeAccountInfo()).data;
+
+        // 1. Create transfer record from User to Pool
+        const trxn = await TransferService.initiateTransfer({
+          fromAccount: from.accountNo,
+          userId: params.userId,
+          toAccount: to.accountNo,
+          amount: params.amount,
+          beneficiaryName: to.client,
+          transferType: "intra",
+          bankCode: "999999",
+          remark: `Top-up for ${plan.planName}`,
+          walletBalance: String(from.accountBalance),
+          naration: `Top-up savings plan ${plan.planName} with ${params.amount}`,
+          idempotencyKey: params.idempotencyKey,
+        }, "savings-deposit");
+
+        // 2. Execute Transfer
+        const transferReq: TransferRequest = {
+          uniqueSenderAccountId: from.accountId,
+          fromAccount: from.accountNo,
+          fromClientId: from.clientId,
+          fromClient: from.client,
+          fromSavingsId: from.accountId,
+          toAccount: to.accountNo,
+          toClient: to.client,
+          toSession: to.accountId,
+          toClientId: to.clientId,
+          toSavingsId: to.accountId,
+          toBank: "999999",
+          signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
+          amount: params.amount,
+          remark: `Top-up for ${plan.planName}`,
+          transferType: "intra",
+          reference: trxn.reference,
+        };
+
+        const providerRes = await vfdProvider.transfer(transferReq);
+
+        if (providerRes.status == "00") {
+          const trxnRes = await TransferService.completeTransfer(trxn.reference, "savings-deposit");
+
+          // 3. Update Plan
+          plan.principal += params.amount;
+          await plan.save({ session });
+
+          // 4. Ledger Entry
+          await LedgerService.createDoubleEntry(
+            trxnRes?.traceId || "",
+            `user_wallet:${params.userId}`,
+            'savings_pool',
+            params.amount,
+            'savings',
+            {
+              userId: params.userId,
+              subtype: 'topup',
+              idempotencyKey: params.idempotencyKey,
+              session,
+              meta: {
+                planId: plan._id,
+                transactionId: trxnRes?.transferId || ""
+              }
+            }
+          );
+
+          return {
+            planId: plan._id,
+            newPrincipal: plan.principal,
+            message: 'Top-up successful'
+          };
+        }
+
+        await TransferService.failTransfer(trxn.reference);
+        throw new Error(`Transfer failed: ${providerRes.message}`);
+      });
+    } finally {
+      session.endSession();
     }
   }
 

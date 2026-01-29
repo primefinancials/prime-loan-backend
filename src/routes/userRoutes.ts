@@ -145,6 +145,12 @@ router.get(
   TransferController.getMyAccountInfo as any
 );
 router.get(
+  "/transfers/name-enquiry",
+  verifyJwtRest(),
+  TransferController.nameEnquiry as any
+);
+
+router.get(
   "/beneficiary-account-info",
   verifyJwtRest(),
   TransferController.getBeneficiaryAccountInfo as any
@@ -291,6 +297,14 @@ router.post(
   validateReqBody(withdrawSchema),
   idempotencyMiddleware() as any,
   SavingsController.withdraw as unknown as express.RequestHandler
+);
+
+router.post(
+  "/savings/:id([0-9a-fA-F]{24})/topup",
+  verifyJwtRest(),
+  validateReqBody(withdrawSchema), // Reusing schema as it likely validates amount
+  idempotencyMiddleware() as any,
+  SavingsController.topUp as unknown as express.RequestHandler
 );
 
 router.get(

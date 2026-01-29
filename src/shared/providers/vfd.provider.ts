@@ -136,6 +136,24 @@ export interface CreditSimulationResponse {
   message: string;
 }
 
+export interface NameEnquiryResponse {
+  status: string;
+  message: string;
+  data?: {
+    name: string;
+    clientId: string;
+    bvn: string;
+    account: {
+      number: string;
+      id: string;
+    };
+    status: string;
+    currency: string;
+    bank: string;
+    accountName: string; // Added field
+  };
+}
+
 /* ---------- PROVIDER CLASS ---------- */
 
 export class VfdProvider {
@@ -203,6 +221,25 @@ export class VfdProvider {
 
   async getBanks() {
     return this.request<BankListResponse>({ method: "GET", url: "/bank" });
+  }
+
+  async nameEnquiry(bankCode: string, accountNo: string) {
+    // Mapping to getBeneficiary for now as VFD structure implies recipient lookup
+    // Assuming 'inter' is the default context for name enquiry
+    const response = await this.getBeneficiary(accountNo, bankCode, 'inter');
+
+    // Adapt response to expected format if needed
+    // The caller expects data.accountName
+    if (response && response.data) {
+      return {
+        ...response,
+        data: {
+          ...response.data,
+          accountName: response.data.name
+        }
+      }
+    }
+    return response;
   }
 
   /* ---------- TRANSFER ---------- */

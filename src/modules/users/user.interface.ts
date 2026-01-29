@@ -48,19 +48,19 @@ export type AdminPermission =
 
 export interface User extends Document {
   _id: ObjectId;
-  confirmation_sent_at: string; 
+  confirmation_sent_at: string;
   confirmed_at: string;
   created_at: string;
   email: string;
   password: string;
-  email_confirmed_at: string; 
-  refresh_tokens: string[]; 
-  is_anonymous: boolean; 
-  last_sign_in_at?: string; 
-  phone: string; 
-  role: USERROLES; 
-  status: USERSTATUS; 
-  updated_at: string; 
+  email_confirmed_at: string;
+  refresh_tokens: string[];
+  is_anonymous: boolean;
+  last_sign_in_at?: string;
+  phone: string;
+  role: USERROLES;
+  status: USERSTATUS;
+  updated_at: string;
   user_metadata: {
     bvn?: string;
     nin?: string;
@@ -84,6 +84,12 @@ export interface User extends Document {
     file?: string;
     types?: string;
     verified_address?: "verified" | "pending" | "unverified";
+    stats?: {
+      totalSavings: number;
+      totalLoans: number;
+      totalInterestEarned: number;
+      activeLoanCount: number;
+    };
   };
   is_super_admin?: boolean;
   updates: Update[]; // Array of update objects
@@ -97,18 +103,18 @@ export interface User extends Document {
   }[];
   permissions: AdminPermission[];
 }
-  
+
 export interface CREATEUSER {
-  confirmation_sent_at: string; 
+  confirmation_sent_at: string;
   confirmed_at: string;
   email: string;
   password: string;
-  email_confirmed_at: string; 
-  is_anonymous: boolean; 
-  last_sign_in_at?: string; 
-  phone: string; 
-  role: USERROLES; 
-  status: USERSTATUS; 
+  email_confirmed_at: string;
+  is_anonymous: boolean;
+  last_sign_in_at?: string;
+  phone: string;
+  role: USERROLES;
+  status: USERSTATUS;
   user_metadata: {
     bvn?: string;
     nin?: string;
@@ -134,10 +140,10 @@ export interface CREATEUSER {
 
 export interface UPDATEUSER {
   confirmed_at?: string;
-  email_confirmed_at?: string; 
-  last_sign_in_at?: string; 
-  role?: USERROLES; 
-  status?: USERSTATUS; 
+  email_confirmed_at?: string;
+  last_sign_in_at?: string;
+  role?: USERROLES;
+  status?: USERSTATUS;
   user_metadata?: {
     bvn?: string;
     nin?: string;

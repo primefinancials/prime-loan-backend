@@ -119,7 +119,8 @@ export class MarketplaceController {
                 category: req.query.category as string,
                 minPrice: req.query.minPrice ? Number(req.query.minPrice) : undefined,
                 maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : undefined,
-                vendorId: req.query.vendorId as string
+                vendorId: req.query.vendorId as string,
+                sortBy: req.query.sortBy as 'relevance' | 'newest' | 'price_asc' | 'price_desc'
             });
             res.status(200).json({ status: "success", data: result });
         } catch (error) {

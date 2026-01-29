@@ -65,6 +65,12 @@ const userSchema = new Schema<User>(
         enum: ["verified", "pending", "unverified"],
         required: false,
       },
+      stats: {
+        totalSavings: { type: Number, default: 0 },
+        totalLoans: { type: Number, default: 0 },
+        totalInterestEarned: { type: Number, default: 0 },
+        activeLoanCount: { type: Number, default: 0 }
+      },
     },
     linked_accounts: { type: [linkedAccountSchema], default: [] }, // <-- added here
     updates: { type: [updateSchema], default: [] },

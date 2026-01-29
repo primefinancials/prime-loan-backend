@@ -11,7 +11,7 @@ export interface CreateLedgerEntryParams {
   userId?: string;
   account: string;
   entryType: 'DEBIT' | 'CREDIT';
-  category: 'bill-payment' | 'transfer' | 'loan' | 'savings' | 'fee' | 'refund' | 'settlement' | 'escrow';
+  category: 'bill-payment' | 'transfer' | 'loan' | 'savings' | 'fee' | 'refund' | 'settlement' | 'escrow' | 'profit_distribution';
   subtype?: string;
   amount: number; // in kobo
   currency?: string;
@@ -98,7 +98,7 @@ export class LedgerService {
   ): Promise<void> {
     await LedgerEntry.findByIdAndUpdate(
       entryId,
-      { 
+      {
         status,
         processedAt: status !== 'PENDING' ? new Date() : undefined
       },
@@ -109,11 +109,14 @@ export class LedgerService {
   /**
    * Get user wallet balance from ledger
    */
-  static async getUserWalletBalance(userId: string): Promise<number> {
+  /**
+   * Get wallet balance for ANY account (user or system)
+   */
+  static async getWalletBalance(accountName: string): Promise<number> {
     const result = await LedgerEntry.aggregate([
       {
         $match: {
-          account: `user_wallet:${userId}`,
+          account: accountName,
           status: 'COMPLETED'
         }
       },
@@ -134,6 +137,13 @@ export class LedgerService {
     ]);
 
     return result[0]?.balance || 0;
+  }
+
+  /**
+   * Get user wallet balance from ledger
+   */
+  static async getUserWalletBalance(userId: string): Promise<number> {
+    return this.getWalletBalance(`user_wallet:${userId}`);
   }
 
   /**
