@@ -188,7 +188,7 @@ export class SavingsService {
         const plan = await SavingsPlan.findById(params.planId).session(session);
 
         if (!plan) throw new Error('Savings plan not found');
-        if (plan.userId !== params.userId) throw new Error('Unauthorized');
+        if (plan.userId.toString() !== params.userId.toString()) throw new Error('Unauthorized');
         if (plan.status !== 'ACTIVE') throw new Error('Cannot top-up inactive plan');
 
         // TODO: For Locked plans, verify if top-up is allowed by policy.
@@ -288,7 +288,7 @@ export class SavingsService {
 
         const plan = await SavingsPlan.findById(params.planId).session(session);
         if (!plan) throw new Error('Savings plan not found');
-        if (plan.userId !== params.userId) throw new Error('Unauthorized');
+        if (plan.userId.toString() !== params.userId.toString()) throw new Error('Unauthorized');
 
         let penalty = 0;
         let netAmount = amount;
