@@ -76,13 +76,23 @@ async function flutterwavePost<T = any>(path: string, body: any = {}) {
   return res.data;
 }
 
+import NodeCache from "node-cache";
+
+const billCache = new NodeCache({ stdTTL: 24 * 60 * 60 }); // 24 hours TTL
+
 export default class BillPaymentService {
   /**
    * Fetch high-level categories (Airtime, Mobile Data Service, Power, TV, Internet etc.)
    * GET /v3/top-bill-categories?country=NG
+   * Cached for 24h
    */
   static async getSupportedCategories(country = "NG") {
+    const cacheKey = `categories_${country}`;
+    const cached = billCache.get(cacheKey);
+    if (cached) return cached;
+
     const resp = await flutterwaveGet("/v3/top-bill-categories", { country });
+    billCache.set(cacheKey, resp.data);
     return resp.data;
   }
 
@@ -90,18 +100,30 @@ export default class BillPaymentService {
    * Get billers for a category
    * GET /v3/bills/{category}/billers
    * - category is usually the category code you got from top-bill-categories
+   * Cached for 24h
    */
   static async getBillersByCategory(categoryCode: string, country = "NG") {
+    const cacheKey = `billers_${categoryCode}_${country}`;
+    const cached = billCache.get(cacheKey);
+    if (cached) return cached;
+
     const resp = await flutterwaveGet(`/v3/bills/${encodeURIComponent(categoryCode)}/billers`, { country });
+    billCache.set(cacheKey, resp.data);
     return resp.data;
   }
 
   /**
    * Get items/products for a biller (packages, plans etc.)
    * GET /v3/billers/{biller_code}/items
+   * Cached for 24h
    */
   static async getBillItems(billerCode: string) {
+    const cacheKey = `items_${billerCode}`;
+    const cached = billCache.get(cacheKey);
+    if (cached) return cached;
+
     const resp = await flutterwaveGet(`/v3/billers/${encodeURIComponent(billerCode)}/items`);
+    billCache.set(cacheKey, resp.data);
     return resp.data;
   }
 

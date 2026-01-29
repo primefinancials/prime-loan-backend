@@ -19,7 +19,67 @@ export class SettingsService {
       settings = await Settings.create({
         singleton: "singleton",
         updatedBy: "system",
+        // Ensure defaults are populated from schema
+        savings: {
+          fixed: {
+            minDuration: 30,
+            interestRate: 10,
+            penaltyRate: 5
+          },
+          flexible: {
+            interestRate: 0
+          },
+          autoSave: {
+            retryEnabled: true,
+            maxRetries: 3
+          }
+        },
+        loan: {
+          minCreditScore: 0.4,
+          autoApprovalLimit: 50000,
+          collateral: {
+            percentage: 50
+          },
+          ladder: {
+            levels: [],
+            defaultInterest: 5
+          },
+          penalty: {
+            dailyRate: 10,
+            gracePeriod: 1
+          }
+        },
+        system: {
+          currency: "NGN",
+          maintenanceMode: false
+        }
       });
+    }
+
+    // Ensure nested objects exist for old documents (migration on read)
+    if (!settings.savings || !settings.savings.fixed) {
+      settings.savings = {
+        fixed: { minDuration: 30, interestRate: 10, penaltyRate: 5 },
+        flexible: { interestRate: 0 },
+        autoSave: { retryEnabled: true, maxRetries: 3 }
+      };
+      await settings.save();
+    }
+
+    if (!settings.loan || !settings.loan.penalty) {
+      settings.loan = {
+        minCreditScore: 0.4,
+        autoApprovalLimit: 50000,
+        collateral: { percentage: 50 },
+        ladder: { levels: [], defaultInterest: 5 },
+        penalty: { dailyRate: 10, gracePeriod: 1 }
+      };
+      await settings.save();
+    }
+
+    if (!settings.system) {
+      settings.system = { currency: "NGN", maintenanceMode: false };
+      await settings.save();
     }
 
     return settings;
@@ -97,7 +157,7 @@ export class SettingsService {
     let totalProfit = 0;
 
     for (const config of validConfigs) {
-      if(action == config.action) {
+      if (action == config.action) {
         if (config.type === "percentage") {
           totalProfit += config.amount * amount;
         } else if (config.type === "amount") {

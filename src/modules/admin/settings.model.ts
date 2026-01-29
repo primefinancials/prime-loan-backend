@@ -25,12 +25,56 @@ export interface ISettings extends Document {
   minCreditScore: number;    // minimum credit score required
   maxLoanTerm: number;       // maximum loan term (months or days)
   loanEnabled: boolean;      // toggle loan feature
+
+  // Refined Savings Settings
+  savings: {
+    fixed: {
+      minDuration: number;
+      interestRate: number; // percentage (e.g., 10 for 10%)
+      penaltyRate: number;  // percentage (e.g., 5 for 5%)
+    };
+    flexible: {
+      interestRate: number; // percentage
+    };
+    autoSave: {
+      retryEnabled: boolean;
+      maxRetries: number;
+    };
+  };
+
+  // Refined Loan Settings
+  loan: {
+    minCreditScore: number;
+    autoApprovalLimit: number;
+    collateral: {
+      percentage: number; // percentage of savings
+    };
+    ladder: {
+      levels: { minScore: number; maxAmount: number; interestRate: number; duration: number }[];
+      defaultInterest: number;
+    };
+    penalty: {
+      dailyRate: number;
+      gracePeriod: number; // days
+    };
+  };
+
+  // System Settings
+  system: {
+    currency: string;
+    maintenanceMode: boolean;
+  };
+
   transferEnabled: boolean;  // toggle transfers
   transferDailyLimit: number;// daily transfer cap
   savingsEnabled: boolean;   // toggle savings
   billPaymentEnabled: boolean;// toggle bill payments
-  savingsPenalty: number;    // penalty for early withdrawal
-  savingsInterestRate: number;// e.g., 0.025 = 2.5%
+
+  // Deprecated flat fields (kept for backward compatibility during migration)
+  savingsPenalty?: number;
+  savingsInterestRate?: number;
+  maintenanceMode?: boolean;
+
   updatedBy: string;         // adminId who last updated
   updatedAt: Date;           // last updated timestamp
   companyName: string;
@@ -38,7 +82,6 @@ export interface ISettings extends Document {
   companyEmail: string;
   companyAddress: string;
   companyTimezone: string;
-  maintenanceMode: boolean;  // put platform in maintenance mode
   singleton: string;
   profitRange: ProfitRange[];
   defaulterCallConfig: {
@@ -84,8 +127,53 @@ const SettingsSchema = new Schema<ISettings>(
     savingsEnabled: { type: Boolean, default: true },
     billPaymentEnabled: { type: Boolean, default: true },
 
-    savingsPenalty: { type: Number, default: 0.15 }, // 15%
-    savingsInterestRate: { type: Number, default: 0.025 }, // 2.5%
+    // Savings Config
+    savings: {
+      fixed: {
+        minDuration: { type: Number, default: 30 },
+        interestRate: { type: Number, default: 10 },
+        penaltyRate: { type: Number, default: 5 }
+      },
+      flexible: {
+        interestRate: { type: Number, default: 0 }
+      },
+      autoSave: {
+        retryEnabled: { type: Boolean, default: true },
+        maxRetries: { type: Number, default: 3 }
+      }
+    },
+
+    // Loan Config
+    loan: {
+      minCreditScore: { type: Number, default: 0.4 },
+      autoApprovalLimit: { type: Number, default: 50000 },
+      collateral: {
+        percentage: { type: Number, default: 50 }
+      },
+      ladder: {
+        levels: [{
+          minScore: { type: Number },
+          maxAmount: { type: Number },
+          interestRate: { type: Number },
+          duration: { type: Number }
+        }],
+        defaultInterest: { type: Number, default: 5 }
+      },
+      penalty: {
+        dailyRate: { type: Number, default: 10 },
+        gracePeriod: { type: Number, default: 1 }
+      }
+    },
+
+    // System Config
+    system: {
+      currency: { type: String, default: "NGN" },
+      maintenanceMode: { type: Boolean, default: false }
+    },
+
+    // Backward compatibility defaults
+    savingsPenalty: { type: Number, default: 0.15 },
+    savingsInterestRate: { type: Number, default: 0.025 },
 
     companyName: { type: String, default: "Prime Finance" },
     companyPhone: { type: String, default: "+234-800-000-0000" },

@@ -57,6 +57,40 @@ export class SavingsController {
   }
 
   /**
+   * Top-up an existing savings plan
+   */
+  static async topUp(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const { amount } = req.body;
+      const userId = req.user!._id;
+      const idempotencyKey = req.idempotencyKey!;
+
+      const setting = await SettingsService.getSettings();
+      if (!setting.savingsEnabled) {
+        return res.status(400).json({
+          status: "failed",
+          message: "Savings is currently inactive, try again later.",
+        });
+      }
+
+      const result = await SavingsService.topUpPlan({
+        planId: id,
+        userId: userId as any,
+        amount,
+        idempotencyKey,
+      });
+
+      res.status(200).json({
+        status: "success",
+        data: result,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Withdraw from a savings plan
    */
   static async withdraw(req: ProtectedRequest, res: Response, next: NextFunction) {

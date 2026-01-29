@@ -26,6 +26,12 @@ export interface ISavingsPlan extends Document {
     penaltyRate?: number;
     compoundingFrequency?: 'daily' | 'monthly' | 'maturity';
   };
+  autoSaveConfig?: {
+    enabled: boolean;
+    amount: number;
+    lastRun?: Date;
+    retryCount: number;
+  };
 }
 
 const SavingsPlanSchema = new Schema<ISavingsPlan>({
@@ -50,6 +56,12 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
     autoRenew: { type: Boolean, default: false },
     penaltyRate: { type: Number },
     compoundingFrequency: { type: String, enum: ['daily', 'monthly', 'maturity'], default: 'maturity' }
+  },
+  autoSaveConfig: {
+    enabled: { type: Boolean, default: false },
+    amount: { type: Number, default: 0 },
+    lastRun: { type: Date },
+    retryCount: { type: Number, default: 0 }
   }
 }, {
   timestamps: true,

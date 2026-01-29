@@ -52,38 +52,83 @@ export class LoanEligibilityService {
       };
     }
 
+    // Collateral Check (Optimization)
+    // If user has enough savings, they are eligible regardless of credit score (within ladder limits)
+    const collateralPercentage = settings.loan.collateral.percentage || 0.5; // Default 50%
+    const userSavings = user.user_metadata?.stats?.totalSavings || 0;
+
+    // Check Ladder Limit first
     // Get user's ladder index (default to 0 for new users)
-    const ladderIndex = user.user_metadata?.ladderIndex && user.user_metadata.ladderIndex > 0?  user.user_metadata.ladderIndex : 1;
-    
-    // Use custom ladder or default system ladder
-    let ladderSteps = await LoanLadder.find();
-    
-    if (ladderIndex >= ladderSteps.length) {
+    const ladderIndex = user.user_metadata?.ladderIndex && user.user_metadata.ladderIndex > 0 ? user.user_metadata.ladderIndex : 1;
+    let ladderSteps = await LoanLadder.find().sort({ step: 1 });
+    // Fallback if no ladder steps defined
+
+    let allowedAmountByLadder = 0;
+    if (ladderSteps.length > 0) {
+      if (ladderIndex > ladderSteps.length) {
+        // Exceeds defined steps -> Manual Approval / Max of last step
+        allowedAmountByLadder = ladderSteps[ladderSteps.length - 1].amount;
+        // Or maybe we flag for manual review? Existing logic says "notifyAdmin: true"
+      } else {
+        allowedAmountByLadder = ladderSteps.find(ls => ls.step === ladderIndex)?.amount || 0;
+      }
+    } else {
+      allowedAmountByLadder = 0; // Or some default
+    }
+
+
+    if (requestedAmount > allowedAmountByLadder && allowedAmountByLadder > 0) {
       return {
-        eligible: true,
-        maxAmount: 0,
-        notifyAdmin: true,
-        reason: 'Loan Need to be approved manually'
+        eligible: false,
+        maxAmount: allowedAmountByLadder,
+        notifyAdmin: false,
+        reason: `Requested amount exceeds your current loan limit of ${allowedAmountByLadder}. Repay successfully to increase limit.`
       };
     }
 
-    let maxAmount = ladderSteps.find(ls => ls.step == ladderIndex)?.amount || 0;
-    
-    // Apply credit score adjustments (placeholder logic)
+    // Collateral Check
+    const requiredCollateral = requestedAmount * collateralPercentage;
+    const hasSufficientCollateral = userSavings >= requiredCollateral;
+
     const creditScore = user.user_metadata.creditScore || 1;
-    
-    if (creditScore < 0.4) {
+
+    if (hasSufficientCollateral) {
+      // Collateral Override: Approved even if score is low (but not negative/blacklisted if that existed)
+      return {
+        eligible: true,
+        maxAmount: requestedAmount, // Or allowedAmountByLadder
+        notifyAdmin: false,
+        creditScore,
+        ladderIndex,
+        reason: "Eligibility based on sufficient collateral"
+      };
+    }
+
+    // Default Credit Score Check
+    if (creditScore < (settings.loan.minCreditScore || 0.4)) {
       return {
         eligible: false,
-        maxAmount: 0,
+        maxAmount: 0, // No valid offer if score low and no collateral
         notifyAdmin: false,
-        reason: 'Your credit score is too low, you defaulted for too long. Try again after 5 days'
+        reason: 'Credit score too low and insufficient collateral.'
+      };
+    }
+
+    // Manual Review Trigger for High Amounts (Optimization)
+    if (requestedAmount > (settings.loan.autoApprovalLimit || 50000)) {
+      return {
+        eligible: true,
+        maxAmount: requestedAmount,
+        notifyAdmin: true,
+        creditScore,
+        ladderIndex,
+        reason: "High value loan requires manual approval"
       };
     }
 
     return {
       eligible: true,
-      maxAmount,
+      maxAmount: allowedAmountByLadder,
       notifyAdmin: false,
       creditScore,
       ladderIndex

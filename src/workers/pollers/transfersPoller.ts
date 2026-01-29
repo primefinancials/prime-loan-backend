@@ -77,16 +77,26 @@ export class TransfersPoller {
           limit(async () => {
             try {
               const ageMs = Date.now() - transfer.createdAt.getTime();
+              const STALE_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
 
-              if (ageMs > refundTimeoutMs) {
-                await this.refundTransfer(transfer);
+              if (ageMs > STALE_TIMEOUT) {
+                // Optimization: Move to MANUAL_REVIEW instead of auto-refund to prevent fraud
+                transfer.status = 'MANUAL_REVIEW';
+                transfer.meta = { ...transfer.meta, reviewReason: 'Stale pending > 24h' };
+                await transfer.save();
+                await WorkerLogService.log('transfers-poller', 'warn', `Transfer ${transfer._id} moved to MANUAL_REVIEW (Stale > 24h)`);
                 return;
               }
 
               // Query provider status
+              // Optimization: Only query if we have a reference. 
+              // If no reference and old enough (e.g. 5 mins), it likely failed initiation.
               if (transfer.reference) {
                 const providerStatus = await this.vfdProvider.queryTransaction(transfer.reference);
                 await this.updateTransferStatus(transfer, providerStatus);
+              } else if (ageMs > 5 * 60 * 1000) {
+                // No reference after 5 mins? Likely failed to send to provider.
+                await this.refundTransfer(transfer);
               }
             } catch (error: unknown) {
               const errorMessage = error instanceof Error ? error.message : 'Unknown error';
@@ -112,7 +122,8 @@ export class TransfersPoller {
 
     try {
       await DatabaseService.withTransaction(session, async () => {
-        if (providerStatus.status === '00') {
+        // Optimization: Handle "Success at Provider" -> Complete
+        if (providerStatus.status === '00' || providerStatus.status === 'success' || providerStatus.status === 'successful') {
           // Transfer successful
           transfer.status = 'COMPLETED';
           transfer.processedAt = new Date();
@@ -125,10 +136,6 @@ export class TransfersPoller {
 
           // Create credit entry for beneficiary if intra-bank
           if (transfer.transferType === 'intra') {
-            // For intra-bank, we credit the beneficiary wallet
-            // Note: The 'category' should arguably be derived from transfer metadata or type,
-            // but 'transfer' is the default for generic transfers.
-            // Improvements for BillPayments specific types handled in service layer.
             await LedgerService.createEntry({
               traceId: transfer.traceId,
               account: `user_wallet:${transfer.toAccount}`,
@@ -139,7 +146,7 @@ export class TransfersPoller {
             }, session);
           }
 
-        } else if (providerStatus.status === 'FAILED') {
+        } else if (providerStatus.status === 'FAILED' || providerStatus.status === 'failed') {
           // Transfer failed - refund user
           await this.refundTransfer(transfer, session);
         }

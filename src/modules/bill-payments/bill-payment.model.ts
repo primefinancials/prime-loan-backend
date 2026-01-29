@@ -15,7 +15,7 @@ const BillPaymentSchema = new Schema<IBillPayment>({
   amount: { type: Number, required: true },
   status: {
     type: String,
-    enum: ['PENDING', 'COMPLETED', 'FAILED'],
+    enum: ['PENDING', 'COMPLETED', 'FAILED', 'MANUAL_REVIEW'],
     required: true,
     index: true
   },
