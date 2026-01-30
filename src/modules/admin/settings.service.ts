@@ -24,7 +24,11 @@ export class SettingsService {
           fixed: {
             minDuration: 30,
             interestRate: 10,
-            penaltyRate: 5
+            penaltyRate: 5,
+            earlyWithdrawal: {
+              type: 'immediate',
+              delayDays: 0
+            }
           },
           flexible: {
             interestRate: 0
@@ -59,7 +63,12 @@ export class SettingsService {
     // Ensure nested objects exist for old documents (migration on read)
     if (!settings.savings || !settings.savings.fixed) {
       settings.savings = {
-        fixed: { minDuration: 30, interestRate: 10, penaltyRate: 5 },
+        fixed: {
+          minDuration: 30,
+          interestRate: 10,
+          penaltyRate: 5,
+          earlyWithdrawal: { type: 'immediate', delayDays: 0 }
+        },
         flexible: { interestRate: 0 },
         autoSave: { retryEnabled: true, maxRetries: 3 }
       };

@@ -241,6 +241,31 @@ export class SavingsController {
       next(error);
     }
   }
+
+  /**
+   * Get Savings Configuration (Public/User)
+   * Returns interest rates, penalty rates, min duration, and early withdrawal rules.
+   */
+  static async getSavingsConfig(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const settings = await SettingsService.getSettings();
+
+      // Return only safe/relevant settings for the user
+      const config = {
+        savingsEnabled: settings.savingsEnabled,
+        fixed: settings.savings.fixed,
+        flexible: settings.savings.flexible,
+        autoSave: settings.savings.autoSave
+      };
+
+      res.status(200).json({
+        status: "success",
+        data: config,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default SavingsController;

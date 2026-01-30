@@ -159,9 +159,14 @@
 #### Withdraw
 `POST /savings/:id/withdraw`
 **Body:** `{"amount": 5000}`
+**Response:** Success object or `{ "status": "scheduled", "message": "...", "earlyWithdrawalDate": "..." }` if a delay is enforced for fixed plans.
 
 #### List Plans
 `GET /savings`
+
+#### Get Savings Configuration
+`GET /savings/config`
+**Response:** `{"fixed": {...}, "flexible": {...}, "autoSave": {...}}`
 
 ---
 ### Escrow & Marketplace
