@@ -626,4 +626,22 @@ export class SavingsService {
       pages: Math.max(1, Math.ceil(total / limit))
     };
   }
+
+  static async deletePlan(userId: string, planId: string) {
+    const plan = await SavingsPlan.findById(planId);
+    if (!plan) throw new Error('Savings plan not found');
+    if (plan.userId.toString() !== userId.toString()) throw new Error('Unauthorized');
+
+    // Only allow deletion if principal is 0
+    if (plan.principal > 0) {
+      throw new Error(`Cannot delete active plan with balance ${plan.principal}. Please withdraw funds first.`);
+    }
+
+    // We can either soft-delete (CANCELLED) or physical delete.
+    // 'CANCELLED' keeps history.
+    plan.status = 'CANCELLED';
+    await plan.save();
+
+    return { message: "Plan deleted successfully" };
+  }
 }
