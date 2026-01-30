@@ -32,6 +32,10 @@ export interface ISettings extends Document {
       minDuration: number;
       interestRate: number; // percentage (e.g., 10 for 10%)
       penaltyRate: number;  // percentage (e.g., 5 for 5%)
+      earlyWithdrawal: {
+        type: 'immediate' | 'delayed';
+        delayDays: number;
+      };
     };
     flexible: {
       interestRate: number; // percentage
@@ -132,7 +136,11 @@ const SettingsSchema = new Schema<ISettings>(
       fixed: {
         minDuration: { type: Number, default: 30 },
         interestRate: { type: Number, default: 10 },
-        penaltyRate: { type: Number, default: 5 }
+        penaltyRate: { type: Number, default: 5 },
+        earlyWithdrawal: {
+          type: { type: String, enum: ['immediate', 'delayed'], default: 'immediate' },
+          delayDays: { type: Number, default: 0 }
+        }
       },
       flexible: {
         interestRate: { type: Number, default: 0 }
