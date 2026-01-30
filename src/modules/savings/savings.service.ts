@@ -328,7 +328,7 @@ export class SavingsService {
 
         // 2. Send transfer to VFD
         const transferReq: TransferRequest = {
-          uniqueSenderAccountId: from.accountId,
+          uniqueSenderAccountId: "",
           fromAccount: from.accountNo,
           fromClientId: from.clientId,
           fromClient: from.client,
