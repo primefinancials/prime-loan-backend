@@ -343,7 +343,15 @@ export class SavingsService {
 
         // Calculate penalty for early withdrawal (Process Immediate)
         if (isEarlyWithdrawal) {
-          const penaltyRate = plan.meta?.penaltyRate || 0.05; // 5% default
+          // penaltyRate is typically stored as percentage (e.g. 5 for 5%)
+          let penaltyRate = plan.meta?.penaltyRate ?? 5;
+
+          // Heuristic: If rate > 1, assume it's a percentage (e.g. 5), so divide by 100.
+          // If <= 1, assume it's already a decimal (0.05).
+          if (penaltyRate > 1) {
+            penaltyRate = penaltyRate / 100;
+          }
+
           penalty = Math.floor(amount * penaltyRate);
           netAmount = amount - penalty;
         }
