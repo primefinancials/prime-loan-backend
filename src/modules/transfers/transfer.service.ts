@@ -202,7 +202,12 @@ export class TransferService {
 
             const fromuser = await User.findOne({ "user_metadata.accountNo": transfer.fromAccount }).session(session);
 
-            await NotificationService.sendCreditAlert(user, transfer.amount, `${fromuser?.user_metadata.first_name} ${fromuser?.user_metadata.surname}`, transfer.reference);
+            // Send credit alert notification (best-effort, non-blocking)
+            try {
+              await NotificationService.sendCreditAlert(user, transfer.amount, `${fromuser?.user_metadata.first_name} ${fromuser?.user_metadata.surname}`, transfer.reference);
+            } catch (emailError) {
+              console.warn('Failed to send credit alert email (non-fatal):', emailError);
+            }
           }
         }
 
