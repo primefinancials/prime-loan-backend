@@ -266,6 +266,25 @@ export class SavingsController {
       next(error);
     }
   }
+
+  /**
+   * Delete a savings plan (only if balance is 0)
+   */
+  static async deletePlan(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+      const userId = req.user!._id;
+
+      const result = await SavingsService.deletePlan(userId as any, id);
+
+      res.status(200).json({
+        status: "success",
+        message: result.message
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default SavingsController;

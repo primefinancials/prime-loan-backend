@@ -320,6 +320,12 @@ router.get(
   SavingsController.getUserPlans as unknown as express.RequestHandler
 );
 
+router.delete(
+  "/savings/:id([0-9a-fA-F]{24})",
+  verifyJwtRest(),
+  SavingsController.deletePlan as unknown as express.RequestHandler
+);
+
 /* -------------------------------------------------------------------------- */
 /*                              ESCROW ROUTES                                 */
 /* -------------------------------------------------------------------------- */
