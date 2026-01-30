@@ -168,6 +168,11 @@
 `GET /savings/config`
 **Response:** `{"fixed": {...}, "flexible": {...}, "autoSave": {...}}`
 
+#### Delete Plan
+`DELETE /savings/:id`
+- **Condition**: Plan balance must be 0.
+- **Response**: `{"status": "success", "message": "Plan deleted successfully"}`
+
 ---
 ### Escrow & Marketplace
 
