@@ -32,6 +32,7 @@ export interface ISavingsPlan extends Document {
     lastRun?: Date;
     retryCount: number;
   };
+  earlyWithdrawalDate?: Date;
 }
 
 const SavingsPlanSchema = new Schema<ISavingsPlan>({
