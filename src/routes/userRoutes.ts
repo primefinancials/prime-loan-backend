@@ -291,6 +291,12 @@ router.post(
   SavingsController.createPlan as unknown as express.RequestHandler
 );
 
+router.get(
+  "/savings/config",
+  verifyJwtRest(),
+  SavingsController.getSavingsConfig as unknown as express.RequestHandler
+);
+
 router.post(
   "/savings/:id([0-9a-fA-F]{24})/withdraw",
   verifyJwtRest(),

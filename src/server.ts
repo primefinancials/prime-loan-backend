@@ -20,6 +20,7 @@ import { ProfitRealizationCron } from "./workers/profits/profitsCron";
 import { BillPaymentsPoller } from "./workers/pollers/billPaymentsPoller";
 import { DefaulterCallWorker } from "./workers/loans/defaulterCallWorker";
 import { EscrowTimeoutWorker } from "./workers/escrow/escrowTimeoutWorker";
+import { SavingsEarlyWithdrawalWorker } from "./workers/savings/earlyWithdrawalWorker";
 import { QueueService } from "./shared/queue";
 import { WorkerControlService } from "./modules/workers/worker-control.service";
 
@@ -86,7 +87,9 @@ async function startBackgroundWorkers() {
     ProfitRealizationCron.register();
     BillPaymentsPoller.register();
     DefaulterCallWorker.register();
+    DefaulterCallWorker.register();
     EscrowTimeoutWorker.register();
+    SavingsEarlyWithdrawalWorker.register();
 
     // Start all registered workers
     await WorkerControlService.startAll();

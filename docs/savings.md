@@ -12,9 +12,16 @@ The Savings module allows users to save funds securely with interest-bearing acc
 - **Minimum Duration**: Enforced by system settings (e.g., 30 days).
 
 ### 2. Flexible Savings
-- **No Lock**: Funds can be withdrawn at any time without penalty.
+- **No Lock**: Funds can be withdrawn at any time without penalty, provided the user has sufficient balance (cannot withdraw if balance is 0).
 - **Lower Interest**: Earns the "Flexible" rate (e.g., 10% p.a.).
 - **Frequency**: Interest is calculated daily/monthly but compounded at maturity or payout.
+
+## Withdrawal Rules
+- **Flexible Plans**: Users can withdraw any amount up to their saved balance. If the balance is 0, withdrawals are blocked until a top-up occurs.
+- **Fixed Plans (Early Withdrawal)**: 
+    - If a user withdraws before maturity, they **MUST withdraw the entire principal**. Partial withdrawals are not allowed for broken plans.
+    - **Early Withdrawal Delay**: The admin can configure a delay (e.g., 2 days) for early withdrawals. In this case, the withdrawal is scheduled and funds are released after the delay.
+    - **Penalty**: Applicable as per settings.
 
 ## Features
 
