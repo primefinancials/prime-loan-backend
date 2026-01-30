@@ -96,7 +96,7 @@ export class SavingsController {
   static async withdraw(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const { id } = req.params;
-      const { amount } = req.body;
+      const amount = Number(req.body?.amount || 0);
       const userId = req.user!._id;
       const idempotencyKey = req.idempotencyKey!;
 
