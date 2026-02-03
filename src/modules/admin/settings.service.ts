@@ -65,11 +65,12 @@ export class SettingsService {
       settings.savings = {
         fixed: {
           minDuration: 30,
+          minDurationMonths: 3,
           interestRate: 10,
           penaltyRate: 5,
           earlyWithdrawal: { type: 'immediate', delayDays: 0 }
         },
-        flexible: { interestRate: 0 },
+        flexible: { interestRate: 0, locked: true, penaltyRate: 5 },
         autoSave: { retryEnabled: true, maxRetries: 3 }
       };
       await settings.save();
