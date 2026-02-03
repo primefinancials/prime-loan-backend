@@ -76,7 +76,7 @@ export class SavingsService {
           const minMonths = setting.savings.fixed.minDurationMonths || 3;
 
           if (!durationMonths || durationMonths < minMonths) {
-            throw new Error(`Fixed savings must be at least ${minMonths} months`);
+            throw new Error(`Fixed savings must be at least ${minMonths} months -> durationMonths: ${durationMonths}, minMonths: ${minMonths}`);
           }
 
           maturityDate = new Date();
