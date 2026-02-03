@@ -32,6 +32,10 @@ export class SavingsController {
         renew,
       } = req.body;
 
+      // Debug: Log received body
+      console.log('CreatePlan body:', JSON.stringify(req.body));
+      console.log('Extracted durationMonths:', durationMonths);
+
       const userId = req.user!._id;
       const idempotencyKey = req.idempotencyKey!;
 
