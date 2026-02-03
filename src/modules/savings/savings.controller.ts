@@ -11,13 +11,21 @@ import { checkPermission } from "../../shared/utils/checkPermission";
 export class SavingsController {
   /**
    * Create a savings plan
+   * - Fixed (LOCKED): targetAmount, durationMonths
+   * - Flexible: maturityDate, contribution config
    */
   static async createPlan(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const {
         planType,
         planName,
+        // Fixed plan fields
         targetAmount,
+        durationMonths,
+        // Flexible plan fields
+        maturityDate,
+        contribution,
+        // Deprecated (backward compat)
         durationDays,
         amount,
         interestRate,
@@ -39,12 +47,18 @@ export class SavingsController {
         userId: userId as any,
         planType,
         planName,
+        idempotencyKey,
+        // Fixed
         targetAmount,
+        durationMonths,
+        // Flexible
+        maturityDate: maturityDate ? new Date(maturityDate) : undefined,
+        contribution,
+        // Deprecated
         durationDays,
         amount,
         interestRate,
         renew,
-        idempotencyKey,
       });
 
       res.status(201).json({
