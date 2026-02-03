@@ -142,19 +142,35 @@
 ---
 ### Savings
 
-#### Create Plan
+#### Create Fixed Plan
 `POST /savings/create`
 **Body:**
 ```json
 {
-    "name": "Car",
-    "amount": 100000,
-    "type": "fixed",
-    "duration": 6,
-    "autoSave": true,
-    "frequency": "monthly"
+    "planName": "Car Savings",
+    "planType": "LOCKED",
+    "targetAmount": 100000,
+    "durationMonths": 6
 }
 ```
+**Response:** Plan object with `planId`, `maturityDate`, `interestRate`.
+
+#### Create Flexible Plan
+`POST /savings/create`
+**Body:**
+```json
+{
+    "planName": "Emergency Fund",
+    "planType": "FLEXIBLE",
+    "maturityDate": "2026-12-31",
+    "contribution": {
+        "frequency": "weekly",
+        "amount": 5000,
+        "dayOfWeek": 5
+    }
+}
+```
+**Response:** Plan object with `planId`, `contribution` config.
 
 #### Withdraw
 `POST /savings/:id/withdraw`

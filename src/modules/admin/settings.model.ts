@@ -29,7 +29,8 @@ export interface ISettings extends Document {
   // Refined Savings Settings
   savings: {
     fixed: {
-      minDuration: number;
+      minDuration: number; // deprecated, use minDurationMonths
+      minDurationMonths: number; // minimum months (e.g., 3)
       interestRate: number; // percentage (e.g., 10 for 10%)
       penaltyRate: number;  // percentage (e.g., 5 for 5%)
       earlyWithdrawal: {
@@ -39,6 +40,8 @@ export interface ISettings extends Document {
     };
     flexible: {
       interestRate: number; // percentage
+      locked: boolean; // if true, penalty applies on early withdrawal
+      penaltyRate: number; // percentage
     };
     autoSave: {
       retryEnabled: boolean;
@@ -134,7 +137,8 @@ const SettingsSchema = new Schema<ISettings>(
     // Savings Config
     savings: {
       fixed: {
-        minDuration: { type: Number, default: 30 },
+        minDuration: { type: Number, default: 30 }, // deprecated
+        minDurationMonths: { type: Number, default: 3 }, // 3 months minimum
         interestRate: { type: Number, default: 10 },
         penaltyRate: { type: Number, default: 5 },
         earlyWithdrawal: {
@@ -143,7 +147,9 @@ const SettingsSchema = new Schema<ISettings>(
         }
       },
       flexible: {
-        interestRate: { type: Number, default: 0 }
+        interestRate: { type: Number, default: 0 },
+        locked: { type: Boolean, default: true }, // Flexible is locked by default
+        penaltyRate: { type: Number, default: 5 } // 5% penalty
       },
       autoSave: {
         retryEnabled: { type: Boolean, default: true },

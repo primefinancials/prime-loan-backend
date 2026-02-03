@@ -21,6 +21,7 @@ import { BillPaymentsPoller } from "./workers/pollers/billPaymentsPoller";
 import { DefaulterCallWorker } from "./workers/loans/defaulterCallWorker";
 import { EscrowTimeoutWorker } from "./workers/escrow/escrowTimeoutWorker";
 import { SavingsEarlyWithdrawalWorker } from "./workers/savings/earlyWithdrawalWorker";
+import { SavingsContributionWorker } from "./workers/savings/contributionWorker";
 import { QueueService } from "./shared/queue";
 import { WorkerControlService } from "./modules/workers/worker-control.service";
 
@@ -84,12 +85,11 @@ async function startBackgroundWorkers() {
     TransfersPoller.register();
     SavingsMaturitiesWorker.register();
     ProfitRealizationCron.register();
-    ProfitRealizationCron.register();
     BillPaymentsPoller.register();
-    DefaulterCallWorker.register();
     DefaulterCallWorker.register();
     EscrowTimeoutWorker.register();
     SavingsEarlyWithdrawalWorker.register();
+    SavingsContributionWorker.register(); // Flexible savings contributions
 
     // Start all registered workers
     await WorkerControlService.startAll();
