@@ -549,12 +549,6 @@ export class SavingsService {
             newPrincipal: plan.principal
           };
 
-          await saveIdempotentResponse(
-            params.idempotencyKey,
-            params.userId,
-            result
-          );
-
           return result;
         }
 
