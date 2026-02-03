@@ -17,13 +17,27 @@ import { SettingsService } from '../admin/settings.service';
 export interface CreatePlanParams {
   userId: string;
   planType: 'LOCKED' | 'FLEXIBLE';
-  targetAmount?: number;
   planName: string;
-  durationDays?: number;
-  amount: number; // in naira
-  interestRate: number;
   idempotencyKey: string;
-  renew: boolean;
+
+  // Fixed (LOCKED) Plan Fields
+  targetAmount?: number; // in naira - one-time deposit for Fixed
+  durationMonths?: number; // Fixed: duration in months (e.g., 3, 6, 12)
+
+  // Flexible Plan Fields
+  maturityDate?: Date; // Flexible: user-specified end date
+  contribution?: {
+    frequency: 'weekly' | 'monthly';
+    amount: number; // amount to deduct each period (naira)
+    dayOfWeek?: number; // 0-6 for weekly
+    dayOfMonth?: number; // 1-31 for monthly
+  };
+
+  // Deprecated (kept for backward compat)
+  durationDays?: number;
+  amount?: number; // in naira - initial deposit (only for Fixed now)
+  interestRate?: number;
+  renew?: boolean;
 }
 
 export interface WithdrawParams {
@@ -35,117 +49,151 @@ export interface WithdrawParams {
 }
 
 export class SavingsService {
+  /**
+   * Create a new savings plan
+   * - LOCKED (Fixed): One-time deposit, months-based duration, no contributions
+   * - FLEXIBLE: No initial deposit, recurring contributions, date-based maturity
+   */
   static async createPlan(params: CreatePlanParams) {
     const session = await DatabaseService.startSession();
 
     try {
       return await DatabaseService.withTransaction(session, async () => {
         const vfdProvider = new VfdProvider();
-
-        const maturityDate = params.durationDays
-          ? new Date(Date.now() + params.durationDays * 24 * 60 * 60 * 1000)
-          : undefined;
-
+        const setting = await SettingsService.getSettings();
         const userId = params.userId;
 
-        const user = await User.findById(userId);
-        const from = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
-        const to = (await vfdProvider.getPrimeAccountInfo()).data;
+        // Determine plan-specific settings
+        const isFixed = params.planType === 'LOCKED';
 
-        // 1. Create transfer record + ledger entry (PENDING)
-        const trxn = await TransferService.initiateTransfer({
-          fromAccount: from.accountNo,
-          userId,
-          toAccount: to.accountNo,
-          amount: params.amount,
-          beneficiaryName: to.client,
-          transferType: "intra",
-          bankCode: "999999",
-          remark: `Initiated ${params.planType} plan intiated for ${params.planName}`,
-          walletBalance: String(from.accountBalance),
-          naration: `
-            Initiated ${params.planType} plan for ${params.planName}, with 
-            ${params.amount} to get ${params.targetAmount} at ${params.interestRate} 
-            for a duration of ${params.durationDays} days successfully.
-          `,
-          idempotencyKey: params.idempotencyKey,
-        }, "savings-deposit");
+        // Calculate maturity date
+        let maturityDate: Date | undefined;
+        let durationMonths: number | undefined;
 
-        // 2. Send transfer to VFD
-        const transferReq: TransferRequest = {
-          uniqueSenderAccountId: from.accountId,
-          fromAccount: from.accountNo,
-          fromClientId: from.clientId,
-          fromClient: from.client,
-          fromSavingsId: from.accountId,
-          toAccount: to.accountNo,
-          toClient: to.client,
-          toSession: to.accountId,
-          toClientId: to.clientId,
-          toSavingsId: to.accountId,
-          toBank: "999999",
-          signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
-          amount: params.amount,
-          remark: `Initiated ${params.planType} plan intiated for ${params.planName}`,
-          transferType: "intra",
-          reference: trxn.reference,
-        };
+        if (isFixed) {
+          // Fixed: Use months
+          durationMonths = params.durationMonths;
+          const minMonths = setting.savings.fixed.minDurationMonths || 3;
 
-        const providerRes = await vfdProvider.transfer(transferReq);
-
-        if (providerRes.status == "00") {
-          const trxnRes = await TransferService.completeTransfer(trxn.reference, "savings-deposit");
-
-          const setting = await SettingsService.getSettings();
-
-          // Validation: Minimum amounts and duration from settings
-          if (params.planType === 'LOCKED') {
-            if (params.durationDays && params.durationDays < (setting.savings.fixed.minDuration || 30)) {
-              throw new Error(`Fixed savings must be at least ${setting.savings.fixed.minDuration} days`);
-            }
+          if (!durationMonths || durationMonths < minMonths) {
+            throw new Error(`Fixed savings must be at least ${minMonths} months`);
           }
 
-          // Interest Rate Calculation
-          // Note: Interest is annualized.
-          // Fixed: Use fixed rate (e.g. 15%)
-          // Flexible: Use flexible rate (e.g. 10%)
-          const annualRate = params.planType === 'LOCKED'
-            ? setting.savings.fixed.interestRate
-            : setting.savings.flexible.interestRate;
+          maturityDate = new Date();
+          maturityDate.setMonth(maturityDate.getMonth() + durationMonths);
+        } else {
+          // Flexible: Use provided maturity date
+          if (params.maturityDate) {
+            maturityDate = new Date(params.maturityDate);
+          }
 
-          // Store exact rate used (snapshot)
-          const interestRate = annualRate;
+          // Validate contribution config
+          if (!params.contribution || !params.contribution.frequency || !params.contribution.amount) {
+            throw new Error('Flexible savings requires contribution configuration');
+          }
+        }
 
-          const [plan] = await SavingsPlan.create([{
-            userId: params.userId,
-            planType: params.planType,
-            planName: params.planName,
-            targetAmount: params.targetAmount ? params.targetAmount : undefined,
-            durationDays: params.durationDays,
-            principal: params.amount,
-            interestRate: interestRate, // Storing annualized rate
-            locked: params.planType === 'LOCKED',
-            maturityDate,
-            status: 'ACTIVE',
-            meta: {
-              penaltyRate: setting.savings.fixed.penaltyRate,
-              autoRenew: params.renew,
-              compoundingFrequency: 'maturity'
-            }
-          }], { session });
+        // Get interest and penalty rates
+        const interestRate = isFixed
+          ? setting.savings.fixed.interestRate
+          : setting.savings.flexible.interestRate;
 
-          const result = {
-            planId: plan._id,
-            planType: plan.planType,
-            interestRate: plan.interestRate,
-            maturityDate: plan.maturityDate
+        const penaltyRate = isFixed
+          ? setting.savings.fixed.penaltyRate
+          : setting.savings.flexible.penaltyRate;
+
+        // Fixed: Deduct targetAmount once
+        // Flexible: No initial deposit
+        const initialDeposit = isFixed ? (params.targetAmount || params.amount || 0) : 0;
+
+        let trxnRes: any = null;
+
+        // Only process transfer if there's an initial deposit (Fixed plans)
+        if (initialDeposit > 0) {
+          const user = await User.findById(userId);
+          const from = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
+          const to = (await vfdProvider.getPrimeAccountInfo()).data;
+
+          // Create transfer record
+          const trxn = await TransferService.initiateTransfer({
+            fromAccount: from.accountNo,
+            userId,
+            toAccount: to.accountNo,
+            amount: initialDeposit,
+            beneficiaryName: to.client,
+            transferType: "intra",
+            bankCode: "999999",
+            remark: `Fixed savings deposit for ${params.planName}`,
+            walletBalance: String(from.accountBalance),
+            naration: `Fixed savings plan ${params.planName} - ${durationMonths} months`,
+            idempotencyKey: params.idempotencyKey,
+          }, "savings-deposit");
+
+          // Execute transfer
+          const transferReq: TransferRequest = {
+            uniqueSenderAccountId: from.accountId,
+            fromAccount: from.accountNo,
+            fromClientId: from.clientId,
+            fromClient: from.client,
+            fromSavingsId: from.accountId,
+            toAccount: to.accountNo,
+            toClient: to.client,
+            toSession: to.accountId,
+            toClientId: to.clientId,
+            toSavingsId: to.accountId,
+            toBank: "999999",
+            signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
+            amount: initialDeposit,
+            remark: `Fixed savings deposit for ${params.planName}`,
+            transferType: "intra",
+            reference: trxn.reference,
           };
 
+          const providerRes = await vfdProvider.transfer(transferReq);
+
+          if (providerRes.status !== "00") {
+            await TransferService.failTransfer(trxn.reference);
+            throw new Error(`Transfer failed: ${providerRes.message}`);
+          }
+
+          trxnRes = await TransferService.completeTransfer(trxn.reference, "savings-deposit");
+        }
+
+        // Create the plan
+        const [plan] = await SavingsPlan.create([{
+          userId: params.userId,
+          planType: params.planType,
+          planName: params.planName,
+          targetAmount: isFixed ? initialDeposit : undefined,
+          durationMonths: durationMonths,
+          principal: initialDeposit,
+          interestRate: interestRate,
+          locked: true, // Both types are now locked
+          maturityDate,
+          status: 'ACTIVE',
+          meta: {
+            penaltyRate: penaltyRate,
+            autoRenew: params.renew || false,
+            compoundingFrequency: 'maturity'
+          },
+          // Flexible: Setup contribution schedule
+          contribution: !isFixed && params.contribution ? {
+            frequency: params.contribution.frequency,
+            amount: params.contribution.amount,
+            dayOfWeek: params.contribution.dayOfWeek,
+            dayOfMonth: params.contribution.dayOfMonth,
+            pendingDeduction: false,
+            lastDeductionDate: undefined
+          } : undefined
+        }], { session });
+
+        // Ledger entry for initial deposit (Fixed only)
+        if (initialDeposit > 0 && trxnRes) {
           await LedgerService.createDoubleEntry(
             trxnRes?.traceId || "",
             `user_wallet:${params.userId}`,
             'savings_pool',
-            params.amount,
+            initialDeposit,
             'savings',
             {
               userId: params.userId,
@@ -158,18 +206,24 @@ export class SavingsService {
               }
             }
           );
-
-          await saveIdempotentResponse(
-            params.idempotencyKey,
-            params.userId,
-            result
-          );
-
-          return result;
         }
 
-        await TransferService.failTransfer(trxn.reference);
-        return null;
+        const result = {
+          planId: plan._id,
+          planType: plan.planType,
+          interestRate: plan.interestRate,
+          maturityDate: plan.maturityDate,
+          contribution: plan.contribution,
+          principal: plan.principal
+        };
+
+        await saveIdempotentResponse(
+          params.idempotencyKey,
+          params.userId,
+          result
+        );
+
+        return result;
       });
     } finally {
       await session.endSession();
@@ -192,8 +246,10 @@ export class SavingsService {
         if (plan.userId.toString() !== params.userId.toString()) throw new Error('Unauthorized');
         if (plan.status !== 'ACTIVE') throw new Error('Cannot top-up inactive plan');
 
-        // TODO: For Locked plans, verify if top-up is allowed by policy.
-        // For now, we allow it.
+        // Fixed plans do not allow top-ups (one-time deposit only)
+        if (plan.planType === 'LOCKED') {
+          throw new Error('Top-ups are not allowed on Fixed savings plans');
+        }
 
         const user = await User.findById(params.userId);
         const from = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
@@ -302,21 +358,25 @@ export class SavingsService {
         }
 
         const now = new Date();
-        const isEarlyWithdrawal = plan.planType === 'LOCKED' && plan.maturityDate && now < plan.maturityDate;
+        const isEarlyWithdrawal = plan.maturityDate && now < plan.maturityDate;
 
-        // Fixed Savings Early Withdrawal Logic
+        // Early Withdrawal Logic (applies to BOTH Fixed and Flexible now)
         if (isEarlyWithdrawal && !params.forceImmediate) {
-          // Rule: Entire amount must be withdrawn
-          amount = plan.principal;
+          if (plan.planType === 'LOCKED') {
+            // Fixed: Entire amount must be withdrawn
+            amount = plan.principal;
+          }
 
           const settings = await SettingsService.getSettings();
-          const earlyWithdrawalConfig = settings.savings.fixed.earlyWithdrawal;
 
-          // Check if delay is required
-          if (earlyWithdrawalConfig.type === 'delayed') {
+          // Fixed uses fixed config, Flexible uses flexible config
+          const earlyWithdrawalConfig = plan.planType === 'LOCKED'
+            ? settings.savings.fixed.earlyWithdrawal
+            : { type: 'immediate', delayDays: 0 }; // Flexible is always immediate
+
+          // Check if delay is required (Fixed only)
+          if (earlyWithdrawalConfig.type === 'delayed' && plan.planType === 'LOCKED') {
             if (plan.earlyWithdrawalDate) {
-              // Check if it's already scheduled, maybe return status?
-              // For now, duplicate request throws error
               throw new Error(`Early withdrawal already scheduled for ${plan.earlyWithdrawalDate}`);
             }
 
@@ -325,8 +385,6 @@ export class SavingsService {
             scheduleDate.setDate(scheduleDate.getDate() + delayDays);
 
             plan.earlyWithdrawalDate = scheduleDate;
-            // We generally keep status ACTIVE until the worker picks it up
-            // Or we could have a sub-status. For now, just saving the date is enough.
             await plan.save({ session });
 
             return {
