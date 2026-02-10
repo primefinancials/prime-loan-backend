@@ -2,15 +2,31 @@ import Joi from "joi";
 
 /**
  * Create Savings Plan Validation
+ * - Fixed (LOCKED): targetAmount, durationMonths
+ * - Flexible: maturityDate, contribution config
  */
 export const createPlanSchema = Joi.object({
   planType: Joi.string().valid("LOCKED", "FLEXIBLE").required(),
   planName: Joi.string().min(3).max(100).required(),
+
+  // Fixed plan fields
   targetAmount: Joi.number().positive().optional(),
+  durationMonths: Joi.number().integer().min(1).optional(),
+
+  // Flexible plan fields
+  maturityDate: Joi.date().iso().optional(),
+  contribution: Joi.object({
+    frequency: Joi.string().valid("weekly", "monthly").required(),
+    amount: Joi.number().positive().required(),
+    dayOfWeek: Joi.number().integer().min(0).max(6).optional(),
+    dayOfMonth: Joi.number().integer().min(1).max(31).optional(),
+  }).optional(),
+
+  // Deprecated (backward compat)
   durationDays: Joi.number().integer().positive().optional(),
-  amount: Joi.number().positive().required(),
-  interestRate: Joi.number().min(0).required(),
-  renew: Joi.boolean().required(),
+  amount: Joi.number().positive().optional(),
+  interestRate: Joi.number().min(0).optional(),
+  renew: Joi.boolean().optional(),
 });
 
 /**
