@@ -36,7 +36,7 @@ export class ChatService {
             });
 
             // Link back to Escrow
-            escrow.chatRoomId = room._id as string;
+            escrow.chatRoomId = (room._id as any).toString();
             await escrow.save();
         }
 

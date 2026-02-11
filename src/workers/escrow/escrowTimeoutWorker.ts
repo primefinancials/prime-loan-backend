@@ -64,7 +64,7 @@ export class EscrowTimeoutWorker {
                 for (const escrow of expiredLocked) {
                     try {
                         // System Auto-Complete
-                        await EscrowService.confirmDelivery(escrow._id as string, 'system', true);
+                        await EscrowService.confirmDelivery((escrow._id as any).toString(), 'system', true);
                         await WorkerLogService.log('escrow-timeout', 'info', `Auto-completed escrow ${escrow.transactionId}`);
                     } catch (err: any) {
                         logger.error({ err }, `Failed to auto-resolve escrow ${escrow.transactionId}`);
