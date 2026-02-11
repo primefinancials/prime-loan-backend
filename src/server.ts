@@ -24,6 +24,7 @@ import { SavingsEarlyWithdrawalWorker } from "./workers/savings/earlyWithdrawalW
 import { SavingsContributionWorker } from "./workers/savings/contributionWorker";
 import { QueueService } from "./shared/queue";
 import { WorkerControlService } from "./modules/workers/worker-control.service";
+import { SocketService } from "./shared/sockets";
 
 const logger = pino({ name: "prime-finance-server" });
 
@@ -41,6 +42,10 @@ export async function startApp() {
     startBackgroundWorkers();
 
     const server = http.createServer(app);
+
+    // Initialize Socket.io
+    SocketService.init(server);
+
 
     server
       .listen(PORT, "0.0.0.0", (): void => {

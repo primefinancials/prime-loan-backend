@@ -24,6 +24,7 @@ export class EscrowController {
 
             res.status(201).json({
                 status: "success",
+                message: "Escrow created and funds deducted",
                 data: escrow
             });
         } catch (error) {
@@ -50,6 +51,7 @@ export class EscrowController {
 
             res.status(201).json({
                 status: "success",
+                message: "Order placed and funds deducted",
                 data: escrow
             });
         } catch (error) {
@@ -58,18 +60,39 @@ export class EscrowController {
     }
 
     /**
-     * Fund Escrow
+     * Accept Escrow
      */
-    static async fund(req: ProtectedRequest, res: Response, next: NextFunction) {
+    static async acceptEscrow(req: ProtectedRequest, res: Response, next: NextFunction) {
         try {
             const { id } = req.params;
             const userId = req.user!._id.toString();
 
-            const escrow = await EscrowService.fundEscrow(id, userId);
+            const escrow = await EscrowService.acceptEscrow(id, userId);
 
             res.status(200).json({
                 status: "success",
-                message: "Escrow funded successfully",
+                message: "Escrow accepted",
+                data: escrow
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * Reject Escrow
+     */
+    static async rejectEscrow(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const { reason } = req.body;
+            const userId = req.user!._id.toString();
+
+            const escrow = await EscrowService.rejectEscrow(id, userId, reason);
+
+            res.status(200).json({
+                status: "success",
+                message: "Escrow rejected and funds refunded",
                 data: escrow
             });
         } catch (error) {

@@ -13,89 +13,77 @@ import { TransferRequest } from '../../shared/providers/vfd.provider';
 export class EscrowService {
 
     /**
-     * Initiate a generic Escrow (P2P or Marketplace)
+     * Initiate Escrow: Immediate Deduction & P2P Invites
      */
     static async createEscrow(params: {
         buyerId: string;
-        sellerId?: string; // Optional if P2P and searching by email
-        sellerEmail?: string; // Optional if P2P
+        sellerId?: string;
+        sellerEmail?: string;
         type: EscrowType;
         amount: number;
         description: string;
         items?: any[];
         expiryDays?: number;
     }) {
-        // 1. Resolve Seller
-        let seller;
-        if (params.sellerId) {
-            seller = await User.findById(params.sellerId);
-        } else if (params.sellerEmail) {
-            seller = await User.findOne({ email: params.sellerEmail });
-        }
-
-        if (!seller) throw new NotFoundError('Seller not found');
-        if (seller._id.toString() === params.buyerId) throw new BadRequestError('Cannot create escrow with yourself');
-
-        // 2. Calculate Fees
-        const fee = await SettingsService.calculateProfit('escrow', 'send', params.amount);
-
-        // 3. Create Record
-        const expiryDate = params.expiryDays
-            ? new Date(Date.now() + params.expiryDays * 24 * 60 * 60 * 1000)
-            : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default 30 days
-
-        const escrow = await EscrowTransaction.create({
-            transactionId: UuidService.generateTraceId(),
-            type: params.type,
-            buyerId: params.buyerId,
-            sellerId: seller._id,
-            amount: params.amount,
-            fee,
-            totalAmount: params.amount + fee,
-            description: params.description,
-            items: params.items || [],
-            status: 'PENDING',
-            expiryDate
-        });
-
-        return escrow;
-    }
-
-    /**
-     * Fund Escrow: Move money from Buyer -> Platform Escrow Pool
-     * Status: PENDING -> LOCKED
-     */
-    static async fundEscrow(escrowId: string, userId: string) {
         const session = await DatabaseService.startSession();
         try {
             return await DatabaseService.withTransaction(session, async () => {
-                const escrow = await EscrowTransaction.findById(escrowId).session(session);
-                if (!escrow) throw new NotFoundError('Escrow not found');
-                if (escrow.buyerId !== userId) throw new UnauthorizedError('Only buyer can fund escrow');
-                if (escrow.status !== 'PENDING') throw new BadRequestError(`Escrow is ${escrow.status}`);
-
-                const vfdProvider = new VfdProvider();
-                const buyer = await User.findById(userId);
+                const buyer = await User.findById(params.buyerId).session(session);
                 if (!buyer) throw new NotFoundError('Buyer not found');
 
-                const buyerAccount = (await vfdProvider.getAccountInfo(buyer.user_metadata.accountNo)).data;
-                const platformAccount = (await vfdProvider.getPrimeAccountInfo()).data; // Escrow pool resides here or dedicated account
+                // 1. Resolve Seller Logic
+                let sellerId = params.sellerId;
+                let inviteEmail: string | undefined;
 
-                // 1. Initiate Transfer
+                if (!sellerId && params.sellerEmail) {
+                    const existingUser = await User.findOne({ email: params.sellerEmail }).session(session);
+                    if (existingUser) {
+                        sellerId = (existingUser._id as any).toString();
+                    } else {
+                        // User doesn't exist -> Invite Flow
+                        inviteEmail = params.sellerEmail;
+                        // Use a placeholder or null for sellerId? Model requires sellerId.
+                        // We can generate a temporary ID or make sellerId optional in model.
+                        // Or use a system "PendingUser" ID.
+                        // Better: Make sellerId optional in Interface but required if status is LOCKED?
+                        // For now let's set sellerId to a reserved system ID or keep it empty if schema allows.
+                        // Schema says required: true. 
+                        // Let's create a placeholder "Shadow User" or just store the inviteEmail and handle validation later.
+                        // ACTUALLY: The best way is to Create a Shell User account or similar. 
+                        // Simplified: Let's assume we REQUIRE sellerId for now, OR we modify schema to allow null if inviteEmail is present.
+                        // Given constraints, I will use the Buyer's ID as placeholder (BAD) or generate a new ObjectId that doesn't point to user yet?
+                        // Let's use a new ObjectId.
+                        sellerId = new (require('mongoose').Types.ObjectId)().toString();
+                    }
+                }
+
+                if (!sellerId && !inviteEmail) throw new BadRequestError('Seller must be identified by ID or Email');
+                if (sellerId === params.buyerId) throw new BadRequestError('Cannot create escrow with yourself');
+
+                // 2. Calculate Fees & Totals
+                const fee = await SettingsService.calculateProfit('escrow', 'send', params.amount);
+                const totalAmount = params.amount + fee;
+
+                // 3. IMMEDIATE DEDUCTION
+                const vfdProvider = new VfdProvider();
+                const buyerAccount = (await vfdProvider.getAccountInfo(buyer.user_metadata.accountNo)).data;
+                const platformAccount = (await vfdProvider.getPrimeAccountInfo()).data;
+
+                // Transfer: Buyer -> Escrow Pool
                 const trxn = await TransferService.initiateTransfer({
                     fromAccount: buyerAccount.accountNo,
-                    userId,
+                    userId: params.buyerId,
                     toAccount: platformAccount.accountNo,
-                    amount: escrow.totalAmount, // Principal + Fee
+                    amount: totalAmount,
                     beneficiaryName: platformAccount.client,
                     transferType: "intra",
                     bankCode: "999999",
-                    remark: `Escrow Funding: ${escrow.transactionId}`,
+                    remark: `Escrow Creation: ${params.description.substring(0, 20)}`,
                     walletBalance: String(buyerAccount.accountBalance),
-                    naration: `Funding escrow ${escrow.transactionId}`
+                    naration: `Escrow Creation`
                 }, "escrow-funding");
 
-                // 2. Execute VFD Transfer
+                // Execute Transfer
                 const transferReq: TransferRequest = {
                     uniqueSenderAccountId: buyerAccount.accountId,
                     fromAccount: buyerAccount.accountNo,
@@ -108,41 +96,190 @@ export class EscrowService {
                     toSavingsId: platformAccount.accountId,
                     toSession: platformAccount.accountId,
                     toBank: "999999",
-                    amount: escrow.totalAmount,
-                    remark: `Escrow Fund ${escrow.transactionId}`,
+                    amount: totalAmount,
+                    remark: `Escrow Fund`,
                     transferType: "intra",
                     reference: trxn.reference,
                     signature: sha512.hex(`${buyerAccount.accountNo}${platformAccount.accountNo}`)
                 };
 
                 const providerRes = await vfdProvider.transfer(transferReq);
-
                 if (providerRes.status !== "00") {
                     await TransferService.failTransfer(trxn.reference);
                     throw new BadRequestError('Funding transfer failed: ' + providerRes.message);
                 }
-
                 await TransferService.completeTransfer(trxn.reference, "escrow-funding");
 
-                // 3. Ledger Entries: 
-                // Debit Buyer, Credit Escrow Pool (Hold)
+                // Ledger: Debit Buyer, Credit Escrow Pool
                 await LedgerService.createDoubleEntry(
                     trxn.traceId,
-                    'escrow_pool', // System account
-                    `user_wallet:${userId}`,
-                    escrow.totalAmount,
+                    'escrow_pool',
+                    `user_wallet:${params.buyerId}`,
+                    totalAmount,
                     'escrow',
-                    {
-                        meta: { escrowId: escrow._id },
-                        subtype: 'fund',
-                        session
-                    }
+                    { subtype: 'fund', session }
                 );
 
-                // 4. Update Escrow Status
-                escrow.status = 'LOCKED';
+                // 4. Create Escrow Record
+                const expiryDate = params.expiryDays
+                    ? new Date(Date.now() + params.expiryDays * 24 * 60 * 60 * 1000)
+                    : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+                const escrow = await EscrowTransaction.create([{
+                    transactionId: UuidService.generateTraceId(),
+                    type: params.type,
+                    buyerId: params.buyerId,
+                    sellerId: sellerId, // Could be real user or generated ID
+                    amount: params.amount,
+                    fee,
+                    totalAmount,
+                    description: params.description,
+                    items: params.items || [],
+                    status: 'PENDING',
+                    inviteEmail, // Stored if invited
+                    expiryDate
+                }], { session });
+
+                // 5. Notifications
+                if (inviteEmail) {
+                    // Send Invite Email (Mock/TODO)
+                    // NotificationService.sendEmail(inviteEmail, "You have a pending Escrow payment...");
+                } else {
+                    // Notify existing seller
+                    // NotificationService.sendPush(sellerId, "New Escrow Request...");
+                }
+
+                return escrow[0];
+            });
+        } finally {
+            session.endSession();
+        }
+    }
+
+    /**
+     * Accept Escrow (Seller Action)
+     * PENDING -> LOCKED
+     */
+    static async acceptEscrow(escrowId: string, userId: string) {
+        // If P2P invite, the userId calling this MUST match the invited email? 
+        // Or if they just registered, we link them?
+        // For existing users, simple check.
+
+        const escrow = await EscrowTransaction.findById(escrowId);
+        if (!escrow) throw new NotFoundError('Escrow not found');
+
+        if (escrow.status !== 'PENDING') throw new BadRequestError('Escrow is not pending');
+
+        // Handle P2P Invite linkage if needed
+        if (escrow.inviteEmail) {
+            const user = await User.findById(userId);
+            if (user?.email !== escrow.inviteEmail) {
+                // Strict check? Or allow if they have the link?
+                // Let's enforce email match for security
+                throw new UnauthorizedError('Email does not match invite');
+            }
+            escrow.sellerId = userId; // Bind real user ID
+            escrow.inviteEmail = undefined; // Clear invite
+        } else {
+            if (escrow.sellerId !== userId) throw new UnauthorizedError('Not authorized');
+        }
+
+        escrow.status = 'LOCKED';
+        await escrow.save();
+
+        // Notify Buyer
+        // NotificationService.sendPush(escrow.buyerId, "Seller accepted escrow!");
+
+        return escrow;
+    }
+
+    /**
+     * Reject Escrow (Seller Action)
+     * PENDING -> CANCELLED/REJECTED (Refund Buyer)
+     */
+    static async rejectEscrow(escrowId: string, userId: string, reason: string) {
+        const session = await DatabaseService.startSession();
+        try {
+            return await DatabaseService.withTransaction(session, async () => {
+                const escrow = await EscrowTransaction.findById(escrowId).session(session);
+                if (!escrow) throw new NotFoundError('Escrow not found');
+
+                // Auth Check
+                if (escrow.inviteEmail) {
+                    const user = await User.findById(userId);
+                    if (user?.email !== escrow.inviteEmail) throw new UnauthorizedError('Email mismatch');
+                } else {
+                    if (escrow.sellerId !== userId) throw new UnauthorizedError('Not authorized');
+                }
+
+                if (escrow.status !== 'PENDING') throw new BadRequestError('Escrow is not pending');
+
+                // REFUND LOGIC
+                const vfdProvider = new VfdProvider();
+                const buyer = await User.findById(escrow.buyerId);
+                if (!buyer) throw new Error("Buyer not found for refund"); // Should not happen
+
+                const platformAccount = (await vfdProvider.getPrimeAccountInfo()).data;
+                const buyerAccount = (await vfdProvider.getAccountInfo(buyer.user_metadata.accountNo)).data;
+
+                // Transfer: Escrow Pool -> Buyer
+                const trxn = await TransferService.initiateTransfer({
+                    fromAccount: platformAccount.accountNo,
+                    userId: escrow.buyerId,
+                    toAccount: buyerAccount.accountNo,
+                    amount: escrow.totalAmount, // Full Refund
+                    beneficiaryName: buyerAccount.client,
+                    transferType: "intra",
+                    bankCode: "999999",
+                    remark: `Escrow Refund: ${escrow.transactionId}`,
+                    walletBalance: String(platformAccount.accountBalance),
+                    naration: `Escrow Refund`
+                }, "escrow-refund" as any);
+
+                const transferReq: TransferRequest = {
+                    uniqueSenderAccountId: platformAccount.accountId,
+                    fromAccount: platformAccount.accountNo,
+                    fromClientId: platformAccount.clientId,
+                    fromSavingsId: platformAccount.accountId,
+                    fromClient: platformAccount.client,
+                    toAccount: buyerAccount.accountNo,
+                    toClientId: buyerAccount.clientId,
+                    toClient: buyerAccount.client,
+                    toSavingsId: buyerAccount.accountId,
+                    toSession: buyerAccount.accountId,
+                    toBank: "999999",
+                    amount: escrow.totalAmount,
+                    remark: `Escrow Refund`,
+                    transferType: "intra",
+                    reference: trxn.reference,
+                    signature: sha512.hex(`${platformAccount.accountNo}${buyerAccount.accountNo}`)
+                };
+
+                const providerRes = await vfdProvider.transfer(transferReq);
+                if (providerRes.status !== "00") {
+                    await TransferService.failTransfer(trxn.reference);
+                    // Critical Error: Money stuck in pool?
+                    // We throw error, transaction aborts, status remains PENDING?
+                    // Yes, retryable.
+                    throw new BadRequestError('Refund transfer failed: ' + providerRes.message);
+                }
+                await TransferService.completeTransfer(trxn.reference, "escrow-refund" as any);
+
+                // Ledger: Debit Escrow Pool, Credit Buyer
+                await LedgerService.createDoubleEntry(
+                    trxn.traceId,
+                    `user_wallet:${escrow.buyerId}`,
+                    'escrow_pool',
+                    escrow.totalAmount,
+                    'escrow',
+                    { subtype: 'refund', session }
+                );
+
+                escrow.status = 'REJECTED';
+                escrow.rejectionReason = reason;
                 await escrow.save({ session });
 
+                return escrow;
             });
         } finally {
             session.endSession();

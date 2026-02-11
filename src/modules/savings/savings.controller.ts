@@ -164,7 +164,8 @@ export class SavingsController {
   }
 
   /**
-   * Admin: Get all users' savings plans
+   * Admin: Get all users' savings plans with filtering
+   * Query: ?filter=all|active|awaiting_withdrawal|completed|cancelled|fixed|flexible
    */
   static async getPlans(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
@@ -183,12 +184,16 @@ export class SavingsController {
 
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
+      const filter = (req.query.filter as string) || 'all';
 
-      const plans = await SavingsService.getAllPlans(page, limit);
+      const validFilters = ['all', 'active', 'awaiting_withdrawal', 'completed', 'cancelled', 'fixed', 'flexible'];
+      const safeFilter = validFilters.includes(filter) ? filter as any : 'all';
+
+      const result = await SavingsService.getAllPlans(page, limit, safeFilter);
 
       res.status(200).json({
         status: "success",
-        data: plans,
+        data: result,
       });
     } catch (error) {
       next(error);
