@@ -568,12 +568,61 @@ export class SavingsService {
       .sort({ createdAt: -1 });
   }
 
-  static async getAllPlans(page = 1, limit = 20) {
+  /**
+   * Get all savings plans with optional filtering
+   * Filters: all, active, awaiting_withdrawal, completed, cancelled, fixed, flexible
+   */
+  static async getAllPlans(
+    page = 1,
+    limit = 20,
+    filter: 'all' | 'active' | 'awaiting_withdrawal' | 'completed' | 'cancelled' | 'fixed' | 'flexible' = 'all'
+  ) {
     const skip = (page - 1) * limit;
-    return SavingsPlan.find()
-      .skip(skip)
-      .limit(limit)
-      .sort({ createdAt: -1 });
+
+    let query: any = {};
+
+    switch (filter) {
+      case 'active':
+        query = { status: 'ACTIVE', earlyWithdrawalDate: { $eq: null } };
+        break;
+      case 'awaiting_withdrawal':
+        query = { status: 'ACTIVE', earlyWithdrawalDate: { $ne: null } };
+        break;
+      case 'completed':
+        query = { status: 'COMPLETED' };
+        break;
+      case 'cancelled':
+        query = { status: 'CANCELLED' };
+        break;
+      case 'fixed':
+        query = { planType: 'LOCKED' };
+        break;
+      case 'flexible':
+        query = { planType: 'FLEXIBLE' };
+        break;
+      case 'all':
+      default:
+        query = {};
+        break;
+    }
+
+    const [plans, total] = await Promise.all([
+      SavingsPlan.find(query)
+        .skip(skip)
+        .limit(limit)
+        .sort({ createdAt: -1 }),
+      SavingsPlan.countDocuments(query)
+    ]);
+
+    return {
+      plans,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    };
   }
 
   static async getAdminSavingsStats() {

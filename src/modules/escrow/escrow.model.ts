@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export type EscrowType = 'p2p' | 'marketplace';
-export type EscrowStatus = 'PENDING' | 'LOCKED' | 'COMPLETED' | 'DISPUTED' | 'REFUNDED' | 'CANCELLED';
+export type EscrowStatus = 'PENDING' | 'LOCKED' | 'COMPLETED' | 'DISPUTED' | 'REFUNDED' | 'CANCELLED' | 'REJECTED';
 
 export interface IEscrowItem {
     name: string;
@@ -23,6 +23,11 @@ export interface IEscrowTransaction extends Document {
     status: EscrowStatus;
     description: string;
     items: IEscrowItem[];
+
+    // New Fields for Overhaul
+    inviteEmail?: string; // If P2P and user didn't exist
+    rejectionReason?: string;
+    chatRoomId?: string; // Link to ChatRoom
 
     // Dispute fields
     disputeReason?: string;
@@ -58,13 +63,17 @@ const EscrowTransactionSchema = new Schema<IEscrowTransaction>({
 
     status: {
         type: String,
-        enum: ['PENDING', 'LOCKED', 'COMPLETED', 'DISPUTED', 'REFUNDED', 'CANCELLED'],
+        enum: ['PENDING', 'LOCKED', 'COMPLETED', 'DISPUTED', 'REFUNDED', 'CANCELLED', 'REJECTED'],
         default: 'PENDING',
         index: true
     },
 
     description: { type: String },
     items: [EscrowItemSchema],
+
+    inviteEmail: { type: String },
+    rejectionReason: { type: String },
+    chatRoomId: { type: String },
 
     disputeReason: { type: String },
     disputeEvidence: [{ type: String }],

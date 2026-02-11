@@ -334,11 +334,30 @@ router.post("/escrow/p2p", verifyJwtRest(), EscrowController.createP2P as any);
 router.post("/escrow/marketplace", verifyJwtRest(), EscrowController.createMarketplace as any);
 router.get("/escrow", verifyJwtRest(), EscrowController.getMyEscrows as any);
 
-router.post("/escrow/:id/fund", verifyJwtRest(), EscrowController.fund as any);
+// Funding is now automatic on creation, so explicit fund route is removed/deprecated
+// router.post("/escrow/:id/fund", verifyJwtRest(), EscrowController.fund as any);
+
+router.post("/escrow/:id/accept", verifyJwtRest(), EscrowController.acceptEscrow as any);
+router.post("/escrow/:id/reject", verifyJwtRest(), EscrowController.rejectEscrow as any);
+
 router.post("/escrow/:id/confirm", verifyJwtRest(), EscrowController.confirmDelivery as any);
 router.post("/escrow/:id/dispute", verifyJwtRest(), EscrowController.raiseDispute as any);
+router.post("/escrow/:id/resolve", verifyJwtRest(), EscrowController.resolveDispute as any); // Admin
 
-router.post("/escrow/:id/dispute", verifyJwtRest(), EscrowController.raiseDispute as any);
+/* -------------------------------------------------------------------------- */
+/*                               CHAT ROUTES                                  */
+/* -------------------------------------------------------------------------- */
+import { ChatController } from "../modules/chat/chat.controller";
+
+router.post("/chat/upload", verifyJwtRest(), ChatController.upload as any);
+router.get("/chat/:escrowId/history", verifyJwtRest(), ChatController.getHistory as any);
+router.post("/chat/:escrowId/message", verifyJwtRest(), ChatController.sendMessage as any);
+
+/* -------------------------------------------------------------------------- */
+/*                              WORKER ROUTES                                 */
+/* -------------------------------------------------------------------------- */
+// Worker routes moved to adminRoutes
+
 
 /* -------------------------------------------------------------------------- */
 /*                            MARKETPLACE ROUTES                              */

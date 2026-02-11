@@ -1,6 +1,7 @@
 import { Worker } from 'bullmq';
 import WorkerStatus from './worker-status.model';
 import pino from 'pino';
+import { SocketService } from '../../shared/sockets';
 
 const logger = pino({ name: 'worker-control-service' });
 
@@ -138,6 +139,21 @@ export class WorkerControlService {
                 }, // Update activity timestamp
                 { upsert: true }
             );
+
+            // Broadcast Status
+            try {
+                const io = SocketService.getIO();
+                const adminNamespace = io.of('/admin');
+                adminNamespace.emit('worker_status', {
+                    name,
+                    status: 'running',
+                    lastActivity: new Date(),
+                    lastMessage: message
+                });
+            } catch (e) {
+                // Ignore socket errors here
+            }
+
         } catch (err) {
             // Don't crash worker if status update fails
             logger.warn({ err }, `Failed to report activity for ${name}`);

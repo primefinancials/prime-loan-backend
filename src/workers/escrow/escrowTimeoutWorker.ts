@@ -3,6 +3,7 @@ import { EscrowTransaction } from '../../modules/escrow/escrow.model';
 import { DatabaseService } from '../../shared/db';
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 import { WorkerControlService } from '../../modules/workers/worker-control.service';
+import { EscrowService } from '../../modules/escrow/escrow.service';
 import pino from 'pino';
 
 const logger = pino({ name: 'escrow-timeout-worker' });
@@ -50,15 +51,26 @@ export class EscrowTimeoutWorker {
                 await WorkerLogService.log('escrow-timeout', 'info', `Auto-cancelled expired pending escrow ${escrow.transactionId}`);
             }
 
-            // 2. Find Expired LOCKED escrows (Just log for now, manual intervention might be safer)
+            // 2. Find Expired LOCKED escrows -> Auto-Resolve
             const expiredLocked = await EscrowTransaction.find({
                 status: 'LOCKED',
                 expiryDate: { $lt: now }
             });
 
             if (expiredLocked.length > 0) {
-                logger.warn(`Found ${expiredLocked.length} expired LOCKED escrows requiring attention`);
-                await WorkerLogService.log('escrow-timeout', 'warn', `Found ${expiredLocked.length} expired LOCKED escrows. Admin review needed.`);
+                logger.info(`Found ${expiredLocked.length} expired LOCKED escrows. Auto-resolving...`);
+                await WorkerControlService.reportActivity('escrow-timeout', `Auto-resolving ${expiredLocked.length} locked escrows`);
+
+                for (const escrow of expiredLocked) {
+                    try {
+                        // System Auto-Complete
+                        await EscrowService.confirmDelivery(escrow._id as string, 'system', true);
+                        await WorkerLogService.log('escrow-timeout', 'info', `Auto-completed escrow ${escrow.transactionId}`);
+                    } catch (err: any) {
+                        logger.error({ err }, `Failed to auto-resolve escrow ${escrow.transactionId}`);
+                        await WorkerLogService.log('escrow-timeout', 'error', `Failed to resolve ${escrow.transactionId}: ${err.message}`);
+                    }
+                }
             }
 
         } catch (error: any) {

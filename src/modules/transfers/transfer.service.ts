@@ -156,7 +156,7 @@ export class TransferService {
   /**
    * Mark transfer as completed (credit side + finalize)
    */
-  static async completeTransfer(reference: string, type: "bill-payment" | "transfer" | "savings-deposit" | "savings-withdrawal" | "loan-disbursement" | "loan-repayment" | "escrow-funding" | "escrow-payout" | "escrow-resolution" = "transfer"): Promise<TransferResult | null> {
+  static async completeTransfer(reference: string, type: "bill-payment" | "transfer" | "savings-deposit" | "savings-withdrawal" | "loan-disbursement" | "loan-repayment" | "escrow-funding" | "escrow-payout" | "escrow-resolution" | "escrow-refund" = "transfer"): Promise<TransferResult | null> {
     const session = await DatabaseService.startSession();
 
     console.log(" In Complete Transfer")
