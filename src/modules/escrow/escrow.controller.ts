@@ -101,6 +101,26 @@ export class EscrowController {
     }
 
     /**
+     * Cancel Escrow (Buyer)
+     */
+    static async cancelEscrow(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const userId = req.user!._id.toString();
+
+            const escrow = await EscrowService.cancelEscrow(id, userId);
+
+            res.status(200).json({
+                status: "success",
+                message: "Escrow cancelled and funds refunded",
+                data: escrow
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
      * Confirm Delivery
      */
     static async confirmDelivery(req: ProtectedRequest, res: Response, next: NextFunction) {
