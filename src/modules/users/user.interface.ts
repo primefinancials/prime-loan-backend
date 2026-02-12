@@ -2,7 +2,7 @@ import { Document } from "mongoose";
 import { ObjectId } from "mongodb";
 
 export type USERROLES = "admin" | "user";
-export type USERSTATUS = "active" | "inactive";
+export type USERSTATUS = "active" | "inactive" | "pending_signup";
 
 export interface Update {
   pin?: number; // Optional

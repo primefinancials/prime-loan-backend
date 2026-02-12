@@ -22,6 +22,34 @@ export class UserService {
     private static vfdProvider = new VfdProvider();
 
     /**
+     * Create a placeholder user for invites
+     */
+    static async createInvitedUser(email: string) {
+        // Check if user exists (should be checked by caller too, but safety first)
+        const existing = await User.findOne({ email });
+        if (existing) return existing;
+
+        // Create with minimal info
+        // Password is random and irrelevant until claimed
+        const tempPassword = encryptPassword(Math.random().toString(36).slice(-8));
+
+        return await User.create({
+            email,
+            password: tempPassword,
+            refresh_tokens: [],
+            user_metadata: {
+                email,
+                first_name: "Invited",
+                surname: "User",
+                wallet: "0"
+            },
+            role: "user",
+            status: "pending_signup",
+            is_anonymous: false
+        });
+    }
+
+    /**
      * Create client account with enhanced validation and wallet setup
      */
     static async createClientAccount(data: {
@@ -65,8 +93,16 @@ export class UserService {
         const duplicateNIN = await User.findOne({ "user_metadata.nin": nin });
         const duplicateBVN = await User.findOne({ "user_metadata.bvn": bvn });
 
-        if (duplicateEmail)
-            throw new ConflictError(`A user already exists with the email: ${email}`)
+        // Claim Flow: If duplicateEmail exists but is 'pending_signup', allow update
+        let isClaiming = false;
+        if (duplicateEmail) {
+            if (duplicateEmail.status === 'pending_signup') {
+                isClaiming = true;
+            } else {
+                throw new ConflictError(`A user already exists with the email: ${email}`);
+            }
+        }
+
         if (duplicateNumber)
             throw new ConflictError(`A user already exists with the phone number: ${phone}`)
         if (duplicateNIN)
@@ -83,11 +119,13 @@ export class UserService {
             throw new BadRequestError("Failed to create bank account. Please verify your BVN and date of birth.");
         }
 
-        const user = await User.create({
-            password: data.password,
-            refresh_tokens: [],
-            user_metadata: {
-                email,
+        let user;
+
+        if (isClaiming && duplicateEmail) {
+            // Update existing placeholder user
+            duplicateEmail.password = data.password;
+            duplicateEmail.user_metadata = {
+                ...duplicateEmail.user_metadata,
                 first_name: name,
                 surname,
                 phone,
@@ -100,17 +138,44 @@ export class UserService {
                 creditScore: 1.0,
                 ladderIndex: 0,
                 signupBonusReceived: false
-            },
-            role: "user",
-            confirmation_sent_at: getCurrentTimestamp(),
-            confirmed_at: "",
-            email,
-            email_confirmed_at: "",
-            is_anonymous: false,
-            phone,
-            is_super_admin: false,
-            status: "active"
-        });
+            };
+            duplicateEmail.status = "active";
+            duplicateEmail.confirmation_sent_at = getCurrentTimestamp();
+            duplicateEmail.phone = phone;
+
+            await duplicateEmail.save();
+            user = duplicateEmail;
+        } else {
+            // Create new
+            user = await User.create({
+                password: data.password,
+                refresh_tokens: [],
+                user_metadata: {
+                    email,
+                    first_name: name,
+                    surname,
+                    phone,
+                    bvn,
+                    nin,
+                    dateOfBirth: dob,
+                    accountNo: response.data?.accountNo,
+                    pin,
+                    wallet: "0",
+                    creditScore: 1.0,
+                    ladderIndex: 0,
+                    signupBonusReceived: false
+                },
+                role: "user",
+                confirmation_sent_at: getCurrentTimestamp(),
+                confirmed_at: "",
+                email,
+                email_confirmed_at: "",
+                is_anonymous: false,
+                phone,
+                is_super_admin: false,
+                status: "active"
+            });
+        }
 
         // Initialize user wallet in ledger
         await LedgerService.createEntry({

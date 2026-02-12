@@ -257,4 +257,32 @@ export class NotificationService {
       this.template("Wallet Credited", body)
     );
   }
+  static async sendEscrowInvite(to: string, buyerName: string, amount: number, escrowLink: string) {
+    const body = `
+      <p>Hi there,</p>
+      <p><strong>${buyerName}</strong> has started a secured escrow transaction of <strong>₦${amount}</strong> with you on Prime Finance.</p>
+      <p>To view the transaction and accept the funds, please sign up or log in using this email address.</p>
+      <p><a href="${escrowLink}" style="background-color:#0d6efd; color:white; padding:10px 20px; text-decoration:none; border-radius:5px;">View Transaction</a></p>
+      <p>Or copy this link: ${escrowLink}</p>
+    `;
+    return this.sendEmail(
+      to,
+      "You have a new Escrow Invitation",
+      this.template("Escrow Invite", body)
+    );
+  }
+
+  static async sendEscrowCreated(to: string, buyerName: string, amount: number, escrowLink: string) {
+    const body = `
+      <p>Hi,</p>
+      <p><strong>${buyerName}</strong> has created a new escrow transaction of <strong>₦${amount}</strong> with you.</p>
+      <p>Please log in to your dashboard to review and accept the transaction.</p>
+      <p><a href="${escrowLink}" style="background-color:#0d6efd; color:white; padding:10px 20px; text-decoration:none; border-radius:5px;">View Transaction</a></p>
+    `;
+    return this.sendEmail(
+      to,
+      "New Escrow Transaction Received",
+      this.template("New Escrow Request", body)
+    );
+  }
 }

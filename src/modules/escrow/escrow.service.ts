@@ -40,24 +40,14 @@ export class EscrowService {
                     if (existingUser) {
                         sellerId = (existingUser._id as any).toString();
                     } else {
-                        // User doesn't exist -> Invite Flow
+                        // User doesn't exist -> Create Invited User
+                        const invitedUser = await (await import('../users/user.service')).UserService.createInvitedUser(params.sellerEmail);
+                        sellerId = (invitedUser._id as any).toString();
                         inviteEmail = params.sellerEmail;
-                        // Use a placeholder or null for sellerId? Model requires sellerId.
-                        // We can generate a temporary ID or make sellerId optional in model.
-                        // Or use a system "PendingUser" ID.
-                        // Better: Make sellerId optional in Interface but required if status is LOCKED?
-                        // For now let's set sellerId to a reserved system ID or keep it empty if schema allows.
-                        // Schema says required: true. 
-                        // Let's create a placeholder "Shadow User" or just store the inviteEmail and handle validation later.
-                        // ACTUALLY: The best way is to Create a Shell User account or similar. 
-                        // Simplified: Let's assume we REQUIRE sellerId for now, OR we modify schema to allow null if inviteEmail is present.
-                        // Given constraints, I will use the Buyer's ID as placeholder (BAD) or generate a new ObjectId that doesn't point to user yet?
-                        // Let's use a new ObjectId.
-                        sellerId = new (require('mongoose').Types.ObjectId)().toString();
                     }
                 }
 
-                if (!sellerId && !inviteEmail) throw new BadRequestError('Seller must be identified by ID or Email');
+                if (!sellerId) throw new BadRequestError('Seller must be identified by ID or Email');
                 if (sellerId === params.buyerId) throw new BadRequestError('Cannot create escrow with yourself');
 
                 // 2. Calculate Fees & Totals
@@ -129,24 +119,39 @@ export class EscrowService {
                     transactionId: UuidService.generateTraceId(),
                     type: params.type,
                     buyerId: params.buyerId,
-                    sellerId: sellerId, // Could be real user or generated ID
+                    sellerId: sellerId,
                     amount: params.amount,
                     fee,
                     totalAmount,
                     description: params.description,
                     items: params.items || [],
                     status: 'PENDING',
-                    inviteEmail, // Stored if invited
+                    inviteEmail, // Stored to track it originated from invite
                     expiryDate
                 }], { session });
 
                 // 5. Notifications
+                const notifService = (await import('../notifications/notification.service')).NotificationService;
+                const escrowLink = `https://primefinance.live/dashboard/escrow/${escrow[0]._id}`; // TODO: update with real URL
+
                 if (inviteEmail) {
-                    // Send Invite Email (Mock/TODO)
-                    // NotificationService.sendEmail(inviteEmail, "You have a pending Escrow payment...");
+                    await notifService.sendEscrowInvite(
+                        inviteEmail,
+                        `${buyer.user_metadata.first_name} ${buyer.user_metadata.surname}`,
+                        params.amount,
+                        escrowLink
+                    );
                 } else {
                     // Notify existing seller
-                    // NotificationService.sendPush(sellerId, "New Escrow Request...");
+                    const seller = await User.findById(sellerId).session(session);
+                    if (seller) {
+                        await notifService.sendEscrowCreated(
+                            seller.email,
+                            `${buyer.user_metadata.first_name} ${buyer.user_metadata.surname}`,
+                            params.amount,
+                            escrowLink
+                        );
+                    }
                 }
 
                 return escrow[0];
@@ -571,15 +576,8 @@ export class EscrowService {
     }
 
     static async getMyEscrows(userId: string, type?: EscrowType) {
-        const user = await User.findById(userId);
-        const userEmail = user?.email;
-
         const query: any = {
-            $or: [
-                { buyerId: userId },
-                { sellerId: userId },
-                ...(userEmail ? [{ inviteEmail: userEmail }] : [])
-            ]
+            $or: [{ buyerId: userId }, { sellerId: userId }]
         };
         if (type) query.type = type;
         return EscrowTransaction.find(query).sort({ createdAt: -1 });
