@@ -20,16 +20,26 @@ export class SocketService {
         // Middleware for Auth
         this.io.use((socket, next) => {
             const token = socket.handshake.auth.token;
+
+            // DEBUG LOGGING
+            logger.info({
+                socketId: socket.id,
+                auth: socket.handshake.auth,
+                headers: socket.handshake.headers['authorization'] ? 'Present' : 'Missing'
+            }, "Incoming socket connection attempt");
+
             if (!token) {
                 logger.warn(`Socket connection attempt without token: ${socket.id}`);
-                return next(new Error("Authentication error"));
+                const error = new Error("Authentication error: No token provided");
+                (error as any).data = { content: "Please provide a valid JWT token in the auth object." };
+                return next(error);
             }
 
             const tokenString = token.startsWith("Bearer ") ? token.slice(7) : token;
 
             if (!ACCESS_TOKEN_SECRET) {
-                logger.error("ACCESS_TOKEN_SECRET not defined");
-                return next(new Error("Server error"));
+                logger.error("ACCESS_TOKEN_SECRET not defined in environment variables");
+                return next(new Error("Server error: Configuration missing"));
             }
 
             try {
@@ -38,7 +48,9 @@ export class SocketService {
                 next();
             } catch (e: any) {
                 logger.warn(`Socket auth failed for ${socket.id}: ${e.message}`);
-                next(new Error("Authentication error"));
+                const error = new Error("Authentication error: Invalid token");
+                (error as any).data = { content: e.message };
+                next(error);
             }
         });
 
@@ -59,6 +71,8 @@ export class SocketService {
 
     private static initChatNamespace() {
         const chatNamespace = this.io.of('/chat');
+        logger.info("Chat namespace registered: /chat");
+
         // Middleware for /chat namespace (re-uses main auth, but can add specifics)
         // Note: Global middleware applies to default namespace, for custom namespaces we might need separate middleware if not inherited?
         // Actually socket.io middlewares are per namespace. The global io.use applies to the default namespace "/"
@@ -95,16 +109,26 @@ export class SocketService {
                 });
             });
 
-            socket.on('send_message', (data) => {
-                // For now just broadcast, but in reality we should save to DB via controller/service
-                // We'll let the REST API handle saving, or handle it here?
-                // The prompt says "Emit via Socket.io" in ChatService.sendMessage.
-                // So client sends via REST, server emits? 
-                // OR client sends via Socket?
-                // Frontend Walkthrough says: Emit Events (Client -> Server): send_message.
-                // So client sends via socket.
-                // We need to call ChatService.saveMessage here. 
-                // I will implement that integration later when ChatService exists.
+            socket.on('send_message', async (data) => {
+                try {
+                    logger.info(`Socket ${socket.id} sending message to room ${data.escrowId}`);
+
+                    // Import dynamically to avoid circular dependency if any
+                    const { ChatService } = await import('../modules/chat/chat.service');
+
+                    await ChatService.sendMessage({
+                        escrowId: data.escrowId,
+                        senderId: (socket as any).user.id,
+                        content: data.content,
+                        attachments: data.attachments || []
+                    });
+
+                    // Helper response to sender (optional, as broadcast covers it)
+                    // socket.emit('message_sent', { status: 'success' });
+                } catch (err: any) {
+                    logger.error(`Error processing send_message: ${err.message}`);
+                    socket.emit('error', { message: 'Failed to send message', details: err.message });
+                }
             });
         });
     }
@@ -119,8 +143,6 @@ export class SocketService {
             if (!ACCESS_TOKEN_SECRET) return next(new Error("Server error"));
             try {
                 const decoded = jwt.verify(tokenString, ACCESS_TOKEN_SECRET) as any;
-                // TODO: Check if user is admin
-                // if (decoded.role !== 'admin') return next(new Error("Forbidden"));
                 (socket as any).user = decoded;
                 next();
             } catch (e) {

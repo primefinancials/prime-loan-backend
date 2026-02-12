@@ -63,6 +63,7 @@ export class ChatService {
         content: string,
         attachments?: { type: 'image' | 'pdf' | 'video', url: string }[]
     }) {
+        console.log(`[ChatService] Sending message for escrow ${params.escrowId} from ${params.senderId}`);
         const room = await this.getOrCreateRoom(params.escrowId, params.senderId);
 
         const message = await ChatMessage.create({
@@ -73,9 +74,15 @@ export class ChatService {
             readBy: [params.senderId]
         });
 
+        console.log(`[ChatService] Message saved to DB: ${message._id}`);
+
         // Broadcast via Socket
         const io = SocketService.getIO();
         const chatNamespace = io.of('/chat');
+
+        // Check if room exists in socket adapter logic (optional, but good for debug)
+        // const roomSize = chatNamespace.adapter.rooms.get(params.escrowId)?.size || 0;
+        // console.log(`[ChatService] Broadcasting to room ${params.escrowId} (start size: ${roomSize})`);
 
         chatNamespace.to(params.escrowId).emit('message_received', {
             _id: message._id,
@@ -85,9 +92,6 @@ export class ChatService {
             createdAt: message.createdAt
         });
 
-        // Trigger Notification Logic (Email/Push) for offline users
-        // TODO: Enqueue Job
-
         return message;
     }
 
@@ -95,18 +99,25 @@ export class ChatService {
      * Get Chat History
      */
     static async getHistory(escrowId: string, userId: string) {
+        console.log(`[ChatService] Fetching history for escrow ${escrowId} by user ${userId}`);
         const room = await ChatRoom.findOne({ escrowId });
-        if (!room) return []; // Or throw error?
+
+        if (!room) {
+            console.log(`[ChatService] Room not found for escrow ${escrowId}`);
+            return [];
+        }
 
         // Access Check
         if (!room.participants.includes(userId)) {
             const user = await User.findById(userId);
             if (user?.role !== 'admin' && !user?.is_super_admin) {
+                console.warn(`[ChatService] Access denied for user ${userId} in room ${room._id}`);
                 throw new UnauthorizedError('Access denied');
             }
         }
 
         const messages = await ChatMessage.find({ roomId: room._id }).sort({ createdAt: 1 });
+        console.log(`[ChatService] Found ${messages.length} messages`);
         return messages;
     }
 }
