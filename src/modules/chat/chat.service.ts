@@ -76,23 +76,33 @@ export class ChatService {
 
         console.log(`[ChatService] Message saved to DB: ${message._id}`);
 
+        // Fetch user details for enrichment
+        const sender = await User.findById(params.senderId);
+
+        const enrichedMessage = {
+            _id: message._id,
+            roomId: message.roomId,
+            senderId: message.senderId,
+            sender: sender ? {
+                _id: sender._id,
+                firstName: sender.user_metadata.first_name,
+                lastName: sender.user_metadata.first_name,
+                photo: sender.user_metadata.profile_photo,
+                email: sender.email
+            } : null,
+            content: message.content,
+            attachments: message.attachments,
+            readBy: message.readBy,
+            createdAt: message.createdAt
+        };
+
         // Broadcast via Socket
         const io = SocketService.getIO();
         const chatNamespace = io.of('/chat');
 
-        // Check if room exists in socket adapter logic (optional, but good for debug)
-        // const roomSize = chatNamespace.adapter.rooms.get(params.escrowId)?.size || 0;
-        // console.log(`[ChatService] Broadcasting to room ${params.escrowId} (start size: ${roomSize})`);
+        chatNamespace.to(params.escrowId).emit('message_received', enrichedMessage);
 
-        chatNamespace.to(params.escrowId).emit('message_received', {
-            _id: message._id,
-            senderId: message.senderId,
-            content: message.content,
-            attachments: message.attachments,
-            createdAt: message.createdAt
-        });
-
-        return message;
+        return enrichedMessage;
     }
 
     /**
@@ -118,6 +128,28 @@ export class ChatService {
 
         const messages = await ChatMessage.find({ roomId: room._id }).sort({ createdAt: 1 });
         console.log(`[ChatService] Found ${messages.length} messages`);
-        return messages;
+
+        // Enrich messages with user details
+        const enrichedMessages = await Promise.all(messages.map(async (msg) => {
+            const sender = await User.findById(msg.senderId);
+            return {
+                _id: msg._id,
+                roomId: msg.roomId,
+                senderId: msg.senderId,
+                sender: sender ? {
+                    _id: sender._id,
+                    firstName: sender.user_metadata.first_name,
+                    lastName: sender.user_metadata.first_name,
+                    photo: sender.user_metadata.profile_photo,
+                    email: sender.email
+                } : null,
+                content: msg.content,
+                attachments: msg.attachments,
+                readBy: msg.readBy,
+                createdAt: msg.createdAt
+            };
+        }));
+
+        return enrichedMessages;
     }
 }
