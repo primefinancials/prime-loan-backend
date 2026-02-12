@@ -142,7 +142,7 @@ export class EscrowService {
                             params.amount,
                             escrowLink
                         );
-                    } catch(e: any) {
+                    } catch (e: any) {
                         console.log(`Unable to notify seller: ${e.message}`)
                     }
                 } else {
@@ -156,7 +156,7 @@ export class EscrowService {
                                 params.amount,
                                 escrowLink
                             );
-                        } catch(e: any) {
+                        } catch (e: any) {
                             console.log(`Unable to notify seller: ${e.message}`)
                         }
                     }
@@ -583,12 +583,121 @@ export class EscrowService {
         }
     }
 
+    /**
+     * Cancel Escrow (Buyer Action)
+     * PENDING -> CANCELLED (Refund Buyer)
+     */
+    static async cancelEscrow(escrowId: string, userId: string) {
+        const session = await DatabaseService.startSession();
+        try {
+            return await DatabaseService.withTransaction(session, async () => {
+                const escrow = await EscrowTransaction.findById(escrowId).session(session);
+                if (!escrow) throw new NotFoundError('Escrow not found');
+
+                // Auth Check: Only Buyer can cancel
+                if (escrow.buyerId !== userId) throw new UnauthorizedError('Not authorized');
+
+                if (escrow.status !== 'PENDING') throw new BadRequestError('Escrow is not pending');
+
+                // REFUND LOGIC (Reused from rejectEscrow)
+                const vfdProvider = new VfdProvider();
+                const buyer = await User.findById(escrow.buyerId);
+                const platformAccount = (await vfdProvider.getPrimeAccountInfo()).data;
+                const buyerAccount = (await vfdProvider.getAccountInfo(buyer?.user_metadata.accountNo || "")).data;
+
+                // Transfer: Escrow Pool -> Buyer
+                const trxn = await TransferService.initiateTransfer({
+                    fromAccount: platformAccount.accountNo,
+                    userId: escrow.buyerId,
+                    toAccount: buyerAccount.accountNo,
+                    amount: escrow.totalAmount, // Full Refund
+                    beneficiaryName: buyerAccount.client,
+                    transferType: "intra",
+                    bankCode: "999999",
+                    remark: `Escrow Cancellation: ${escrow.transactionId}`,
+                    walletBalance: String(platformAccount.accountBalance),
+                    naration: `Escrow Cancelled by Buyer`
+                }, "escrow-refund" as any);
+
+                const transferReq: TransferRequest = {
+                    uniqueSenderAccountId: platformAccount.accountId,
+                    fromAccount: platformAccount.accountNo,
+                    fromClientId: platformAccount.clientId,
+                    fromSavingsId: platformAccount.accountId,
+                    fromClient: platformAccount.client,
+                    toAccount: buyerAccount.accountNo,
+                    toClientId: buyerAccount.clientId,
+                    toClient: buyerAccount.client,
+                    toSavingsId: buyerAccount.accountId,
+                    toSession: buyerAccount.accountId,
+                    toBank: "999999",
+                    amount: escrow.totalAmount,
+                    remark: `Escrow Refund`,
+                    transferType: "intra",
+                    reference: trxn.reference,
+                    signature: sha512.hex(`${platformAccount.accountNo}${buyerAccount.accountNo}`)
+                };
+
+                const providerRes = await vfdProvider.transfer(transferReq);
+                if (providerRes.status !== "00") {
+                    await TransferService.failTransfer(trxn.reference);
+                    throw new BadRequestError('Refund transfer failed: ' + providerRes.message);
+                }
+                await TransferService.completeTransfer(trxn.reference, "escrow-refund" as any);
+
+                // Ledger: Debit Escrow Pool, Credit Buyer
+                await LedgerService.createDoubleEntry(
+                    trxn.traceId,
+                    `user_wallet:${escrow.buyerId}`,
+                    'escrow_pool',
+                    escrow.totalAmount,
+                    'escrow',
+                    { subtype: 'refund', session }
+                );
+
+                escrow.status = 'CANCELLED';
+                await escrow.save({ session });
+
+                return escrow;
+            });
+        } finally {
+            session.endSession();
+        }
+    }
+
     static async getMyEscrows(userId: string, type?: EscrowType) {
         const query: any = {
             $or: [{ buyerId: userId }, { sellerId: userId }]
         };
         if (type) query.type = type;
-        return EscrowTransaction.find(query).sort({ createdAt: -1 });
+
+        const escrows = await EscrowTransaction.find(query).sort({ createdAt: -1 });
+
+        // Enrich with counterparty info
+        // Doing this in loop for simplicity, but could be optimized with $in queries or aggregate
+        const enriched = await Promise.all(escrows.map(async (e) => {
+            const doc = e.toObject();
+            if (e.buyerId === userId) {
+                // I am Buyer, show Seller info
+                const seller = await User.findById(e.sellerId).select('user_metadata.first_name user_metadata.surname email user_metadata.profile_photo');
+                (doc as any).counterparty = seller ? {
+                    name: `${seller.user_metadata.first_name || 'Invited'} ${seller.user_metadata.surname || 'User'}`,
+                    email: seller.email,
+                    photo: seller.user_metadata.profile_photo
+                } : { name: 'Unknown', email: e.inviteEmail };
+            } else {
+                // I am Seller, show Buyer info
+                const buyer = await User.findById(e.buyerId).select('user_metadata.first_name user_metadata.surname email user_metadata.profile_photo');
+                (doc as any).counterparty = buyer ? {
+                    name: `${buyer.user_metadata.first_name} ${buyer.user_metadata.surname}`,
+                    email: buyer.email,
+                    photo: buyer.user_metadata.profile_photo
+                } : { name: 'Unknown' };
+            }
+            return doc;
+        }));
+
+        return enriched;
     }
 
     static async getById(escrowId: string) {

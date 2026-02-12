@@ -341,6 +341,7 @@ router.post("/escrow/:id/accept", verifyJwtRest(), EscrowController.acceptEscrow
 router.post("/escrow/:id/reject", verifyJwtRest(), EscrowController.rejectEscrow as any);
 
 router.post("/escrow/:id/confirm", verifyJwtRest(), EscrowController.confirmDelivery as any);
+router.post("/escrow/:id/cancel", verifyJwtRest(), EscrowController.cancelEscrow as any);
 router.post("/escrow/:id/dispute", verifyJwtRest(), EscrowController.raiseDispute as any);
 router.post("/escrow/:id/resolve", verifyJwtRest(), EscrowController.resolveDispute as any); // Admin
 
