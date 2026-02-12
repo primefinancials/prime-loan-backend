@@ -132,25 +132,33 @@ export class EscrowService {
 
                 // 5. Notifications
                 const notifService = (await import('../notifications/notification.service')).NotificationService;
-                const escrowLink = `https://primefinance.live/dashboard/escrow/${escrow[0]._id}`; // TODO: update with real URL
+                const escrowLink = `https://primefinance.live/dashboard/escrow/${escrow[0]._id}`;
 
                 if (inviteEmail) {
-                    await notifService.sendEscrowInvite(
-                        inviteEmail,
-                        `${buyer.user_metadata.first_name} ${buyer.user_metadata.surname}`,
-                        params.amount,
-                        escrowLink
-                    );
-                } else {
-                    // Notify existing seller
-                    const seller = await User.findById(sellerId).session(session);
-                    if (seller) {
-                        await notifService.sendEscrowCreated(
-                            seller.email,
+                    try {
+                        await notifService.sendEscrowInvite(
+                            inviteEmail,
                             `${buyer.user_metadata.first_name} ${buyer.user_metadata.surname}`,
                             params.amount,
                             escrowLink
                         );
+                    } catch(e: any) {
+                        console.log(`Unable to notify seller: ${e.message}`)
+                    }
+                } else {
+                    // Notify existing seller
+                    const seller = await User.findById(sellerId).session(session);
+                    if (seller) {
+                        try {
+                            await notifService.sendEscrowCreated(
+                                seller.email,
+                                `${buyer.user_metadata.first_name} ${buyer.user_metadata.surname}`,
+                                params.amount,
+                                escrowLink
+                            );
+                        } catch(e: any) {
+                            console.log(`Unable to notify seller: ${e.message}`)
+                        }
                     }
                 }
 
