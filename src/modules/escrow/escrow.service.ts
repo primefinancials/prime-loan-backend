@@ -571,8 +571,15 @@ export class EscrowService {
     }
 
     static async getMyEscrows(userId: string, type?: EscrowType) {
+        const user = await User.findById(userId);
+        const userEmail = user?.email;
+
         const query: any = {
-            $or: [{ buyerId: userId }, { sellerId: userId }]
+            $or: [
+                { buyerId: userId },
+                { sellerId: userId },
+                ...(userEmail ? [{ inviteEmail: userEmail }] : [])
+            ]
         };
         if (type) query.type = type;
         return EscrowTransaction.find(query).sort({ createdAt: -1 });
