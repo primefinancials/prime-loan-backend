@@ -250,7 +250,7 @@ export class EscrowService {
                 }, "escrow-refund" as any);
 
                 const transferReq: TransferRequest = {
-                    uniqueSenderAccountId: platformAccount.accountId,
+                    uniqueSenderAccountId: "",
                     fromAccount: platformAccount.accountNo,
                     fromClientId: platformAccount.clientId,
                     fromSavingsId: platformAccount.accountId,
@@ -379,7 +379,7 @@ export class EscrowService {
                 }, "escrow-payout");
 
                 const transferReq: TransferRequest = {
-                    uniqueSenderAccountId: platformAccount.accountId,
+                    uniqueSenderAccountId: "",
                     fromAccount: platformAccount.accountNo,
                     fromClientId: platformAccount.clientId,
                     fromSavingsId: platformAccount.accountId,
@@ -514,7 +514,7 @@ export class EscrowService {
                 }, "escrow-resolution");
 
                 const transferReq: TransferRequest = {
-                    uniqueSenderAccountId: platformAccount.accountId,
+                    uniqueSenderAccountId: "",
                     fromAccount: platformAccount.accountNo,
                     fromClientId: platformAccount.clientId,
                     fromSavingsId: platformAccount.accountId,
