@@ -7,7 +7,8 @@ export class ChatController {
     static async getHistory(req: Request, res: Response) {
         try {
             const { escrowId } = req.params;
-            const messages = await ChatService.getHistory(escrowId, (req as ProtectedRequest).user!._id.toString());
+            const user = (req as ProtectedRequest).user || (req as ProtectedRequest).admin;
+            const messages = await ChatService.getHistory(escrowId, user!._id.toString());
             res.status(200).json({
                 status: 'success',
                 data: messages
@@ -23,9 +24,11 @@ export class ChatController {
             const { content } = req.body;
             // Attachments handling (Multer middleware should populate req.files)
 
+            const user = (req as ProtectedRequest).user || (req as ProtectedRequest).admin;
+
             const message = await ChatService.sendMessage({
                 escrowId,
-                senderId: (req as ProtectedRequest).user!._id.toString(),
+                senderId: user!._id.toString(),
                 content,
                 attachments: [] // TODO: Process files from req.files
             });
