@@ -34,8 +34,14 @@ const chatSocket = io(`${BASE_URL}/chat`, {
 | Event | Payload | Description |
 | :--- | :--- | :--- |
 | `join_room` | `{ escrowId: string }` | Joins the socket room for that escrow. |
-| `send_message` | `{ escrowId, content, attachments }` | Sends a message. Server saves to DB and broadcasts. |
+| `send_message` | `{ escrowId, content, attachments }` | Sands a message. **Error**: if Admin tries to send when status is NOT `DISPUTED`. |
 | `typing` | `{ escrowId, isTyping: boolean }` | Broadcasts typing status to room. |
+
+#### Server -> Client (Error Handling)
+
+| Event | Payload | Description |
+| :--- | :--- | :--- |
+| `error` | `{ message: string, details?: any }` | Sent if an action fails (e.g. Admin chatting in non-disputed escrow). |
 
 #### Server -> Client
 

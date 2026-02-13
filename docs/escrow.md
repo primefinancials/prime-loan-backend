@@ -56,8 +56,11 @@ A dedicated 3-way chat system for resolving disputes.
         *   Push notification on new message.
         *   **Email Nudge**: If a user hasn't replied in 2-5 minutes, send an email digest/alert.
         *   **Tags**: Support `@user` tagging to specifically notify parties.
-*   **Access**:
-    *   Admin Dashboard: separate view to manage ongoing disputes.
+    *   **Access**:
+        *   **Buyer/Seller**: Can chat when status is `LOCKED` or `DISPUTED`.
+        *   **Admin**:
+            *   **View**: Can view chat history at any time (Monitoring).
+            *   **Chat**: Can ONLY send messages when status is `DISPUTED`.
 
 ## 4. Admin & Workers Management
 *   **Worker Monitoring**:
