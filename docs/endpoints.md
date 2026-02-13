@@ -230,6 +230,27 @@
 `GET /escrow`
 
 ---
+### Chat System
+
+#### Send Message
+`POST /chat/:escrowId/message`
+**Body:**
+```json
+{
+    "content": "Hello",
+    "attachments": []
+}
+```
+*   **Note**: Admins can only send messages if status is `DISPUTED`.
+
+#### Get Chat History
+`GET /chat/:escrowId/history`
+
+#### Upload Attachment
+`POST /chat/upload`
+**Body:** `multipart/form-data` with `file`.
+
+---
 ### Marketplace (Vendor & Public)
 
 #### Apply as Vendor
@@ -300,6 +321,11 @@ Query: `?page=1&limit=20&search=...&category=...`
 `POST /marketplace/vendors/:id/reject`
 `GET /escrows` (Admin view of marketplace escrows)
 `POST /escrow/:id/resolve` (Dispute resolution)
+
+### Chat Management
+`GET /chat/:escrowId/history`
+`POST /chat/:escrowId/message`
+`POST /chat/upload`
 
 ### Worker Management
 `GET /workers`

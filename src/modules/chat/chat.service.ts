@@ -66,6 +66,23 @@ export class ChatService {
         console.log(`[ChatService] Sending message for escrow ${params.escrowId} from ${params.senderId}`);
         const room = await this.getOrCreateRoom(params.escrowId, params.senderId);
 
+        // --- NEW: Admin Restriction Logic ---
+        const sender = await User.findById(params.senderId);
+        if (!sender) throw new UnauthorizedError('User not found');
+
+        const isAdmin = sender.role === 'admin' || sender.is_super_admin;
+
+        // If Admin, STRICTLY check if Escrow is DISPUTED
+        if (isAdmin) {
+            const escrow = await EscrowTransaction.findById(params.escrowId);
+            if (!escrow) throw new NotFoundError('Escrow not found');
+
+            if (escrow.status !== 'DISPUTED') {
+                throw new UnauthorizedError('Admins can only send messages in DISPUTED escrows.');
+            }
+        }
+        // ------------------------------------
+
         const message = await ChatMessage.create({
             roomId: room._id,
             senderId: params.senderId,
@@ -76,20 +93,18 @@ export class ChatService {
 
         console.log(`[ChatService] Message saved to DB: ${message._id}`);
 
-        // Fetch user details for enrichment
-        const sender = await User.findById(params.senderId);
 
         const enrichedMessage = {
             _id: message._id,
             roomId: message.roomId,
             senderId: message.senderId,
-            sender: sender ? {
+            sender: {
                 _id: sender._id,
                 firstName: sender.user_metadata.first_name,
                 lastName: sender.user_metadata.first_name,
                 photo: sender.user_metadata.profile_photo,
                 email: sender.email
-            } : null,
+            },
             content: message.content,
             attachments: message.attachments,
             readBy: message.readBy,
