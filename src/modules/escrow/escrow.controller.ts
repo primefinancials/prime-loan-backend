@@ -200,4 +200,27 @@ export class EscrowController {
             next(error);
         }
     }
+
+    /**
+     * Admin: Get All Escrows
+     */
+    static async adminGetEscrows(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { page, limit, status, search } = req.query;
+
+            const result = await EscrowService.getAllEscrows({
+                page: page ? Number(page) : 1,
+                limit: limit ? Number(limit) : 20,
+                status: status as string,
+                search: search as string
+            });
+
+            res.status(200).json({
+                status: "success",
+                data: result
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
 }

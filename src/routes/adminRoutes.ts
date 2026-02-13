@@ -154,8 +154,8 @@ router.post("/marketplace/vendors/:id/approve", verifyJwtRest(), MarketplaceCont
 router.post("/marketplace/vendors/:id/reject", verifyJwtRest(), MarketplaceController.rejectVendor as any);
 router.get("/marketplace/vendors/:id/products", verifyJwtRest(), MarketplaceController.getVendorProducts as any); // Products by Vendor
 
-// Admin Escrows (with vendor filter)
-router.get("/escrows", verifyJwtRest(), MarketplaceController.getAdminEscrows as any);
+// Admin Escrows (with vendor filter replaced/augmented by general adminGetEscrows)
+router.get("/escrows", verifyJwtRest(), EscrowController.adminGetEscrows as any);
 
 /* =============================
    PROFITS MANAGEMENT

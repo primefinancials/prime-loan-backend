@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { EscrowTransaction, IEscrowTransaction, EscrowType } from './escrow.model';
 import { DatabaseService } from '../../shared/db';
 import { LedgerService } from '../ledger/LedgerService';
@@ -747,5 +748,86 @@ export class EscrowService {
         ]);
 
         return { data: escrows, total, page, pages: Math.ceil(total / limit) };
+    }
+
+    /**
+     * Admin: Get All Escrows
+     * Supports search (ID, Title), status filter, and pagination
+     */
+    static async getAllEscrows(params: {
+        page?: number;
+        limit?: number;
+        status?: string;
+        search?: string;
+    }) {
+        const { page = 1, limit = 20, status, search } = params;
+        const query: any = {};
+
+        if (status) {
+            query.status = status;
+        }
+
+        if (search) {
+            // Search by Transaction ID, Escrow Title (Description), or Invite Email
+            // For User names, we'd need a lookup, but let's stick to direct field search first or aggregate 
+            // Simple approach: Match ID or Description
+            query.$or = [
+                { transactionId: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } },
+                { inviteEmail: { $regex: search, $options: 'i' } },
+                // If search looks like ObjectId, try matching _id, buyerId, sellerId
+                ...(Types.ObjectId.isValid(search) ? [
+                    { _id: search },
+                    { buyerId: search },
+                    { sellerId: search }
+                ] : [])
+            ];
+        }
+
+        const skip = (page - 1) * limit;
+
+        const [escrows, total] = await Promise.all([
+            EscrowTransaction.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+            EscrowTransaction.countDocuments(query)
+        ]);
+
+        // Enrich with User Details
+        const enriched = await Promise.all(escrows.map(async (e) => {
+            const doc = e.toObject();
+
+            const [buyer, seller] = await Promise.all([
+                User.findById(e.buyerId).select('user_metadata.first_name user_metadata.surname email user_metadata.profile_photo'),
+                e.sellerId ? User.findById(e.sellerId).select('user_metadata.first_name user_metadata.surname email user_metadata.profile_photo') : null
+            ]);
+
+            (doc as any).buyer = buyer ? {
+                id: buyer._id,
+                name: `${buyer.user_metadata.first_name} ${buyer.user_metadata.surname}`,
+                email: buyer.email,
+                photo: buyer.user_metadata.profile_photo
+            } : { name: 'Unknown', email: 'N/A' };
+
+            (doc as any).seller = seller ? {
+                id: seller._id,
+                name: `${seller.user_metadata.first_name} ${seller.user_metadata.surname}`,
+                email: seller.email,
+                photo: seller.user_metadata.profile_photo
+            } : {
+                name: e.inviteEmail ? 'Invited User' : 'Unknown',
+                email: e.inviteEmail
+            };
+
+            return doc;
+        }));
+
+        return {
+            data: enriched,
+            pagination: {
+                total,
+                page,
+                limit,
+                pages: Math.ceil(total / limit)
+            }
+        };
     }
 }
