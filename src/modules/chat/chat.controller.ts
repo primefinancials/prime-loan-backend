@@ -40,17 +40,25 @@ export class ChatController {
     }
 
     static async upload(req: Request, res: Response) {
-        // TODO: Implement actual S3/Local upload
-        // const file = req.file;
-        // const url = await S3Service.upload(file);
-
-        // Mock response
-        res.status(200).json({
-            status: 'success',
-            data: {
-                url: "https://via.placeholder.com/150",
-                type: "image/png"
+        try {
+            if (!req.file) {
+                return res.status(400).json({ status: 'error', message: 'No file uploaded' });
             }
-        });
+
+            // Dynamically import UploadService to avoid circular dependencies if any, or just standard import
+            const { UploadService } = await import('../../shared/upload.service');
+
+            const url = await UploadService.uploadFile(req.file.path, 'prime-finance/chat');
+
+            res.status(200).json({
+                status: 'success',
+                data: {
+                    url: url,
+                    type: req.file.mimetype
+                }
+            });
+        } catch (error: any) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
     }
 }
