@@ -24,7 +24,6 @@ export class EscrowService {
         amount: number;
         description: string;
         items?: any[];
-        selection: string;
         inspectionPeriodDays?: number; // Days allowed for inspection after delivery
     }) {
         const session = await DatabaseService.startSession();

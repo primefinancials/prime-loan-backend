@@ -64,7 +64,6 @@ export class EscrowController {
                 type: 'marketplace',
                 amount,
                 description: description || "Marketplace Order",
-                selection: description || "Marketplace Order", // Add selection param
                 items: enrichedItems
             });
 
