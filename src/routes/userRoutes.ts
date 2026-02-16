@@ -26,6 +26,7 @@ import { SavingsController } from "../modules/savings/savings.controller";
 import { AdminController } from "../modules/admin/admin.controller";
 import { EscrowController } from "../modules/escrow/escrow.controller";
 import { MarketplaceController } from "../modules/marketplace/marketplace.controller";
+import { SettingsController } from "../modules/admin/settings.controller";
 
 // --- Validation Schemas ---
 import {

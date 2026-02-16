@@ -285,4 +285,10 @@ export class NotificationService {
       this.template("New Escrow Request", body)
     );
   }
+
+  static async sendPush(userId: string, message: string) {
+    // Placeholder for push notification implementation
+    console.log(`Sending push to ${userId}: ${message}`);
+    // In a real implementation: find FCM token for user and send
+  }
 }
