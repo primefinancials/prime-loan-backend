@@ -62,6 +62,29 @@ export class MarketplaceController {
         }
     }
 
+    static async suspendVendor(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const { reason } = req.body;
+            const adminId = req.admin!._id.toString();
+            const vendor = await MarketplaceService.suspendVendor(id, adminId, reason);
+            res.status(200).json({ status: "success", message: "Vendor suspended", data: vendor });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async reactivateVendor(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const adminId = req.admin!._id.toString();
+            const vendor = await MarketplaceService.reactivateVendor(id, adminId);
+            res.status(200).json({ status: "success", message: "Vendor reactivated", data: vendor });
+        } catch (error) {
+            next(error);
+        }
+    }
+
     static async getVendorProducts(req: ProtectedRequest, res: Response, next: NextFunction) {
         try {
             const { id } = req.params;

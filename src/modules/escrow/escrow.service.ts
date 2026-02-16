@@ -24,7 +24,8 @@ export class EscrowService {
         amount: number;
         description: string;
         items?: any[];
-        expiryDays?: number;
+        selection: string;
+        inspectionPeriodDays?: number; // Days allowed for inspection after delivery
     }) {
         const session = await DatabaseService.startSession();
         try {
@@ -112,9 +113,9 @@ export class EscrowService {
                 );
 
                 // 4. Create Escrow Record
-                const expiryDate = params.expiryDays
-                    ? new Date(Date.now() + params.expiryDays * 24 * 60 * 60 * 1000)
-                    : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+                // Logic Change: We do NOT set expiryDate yet. 
+                // expiryDate is set only after Delivery is confirmed (Delivery Date + Inspection Period)
+                const inspectionPeriod = params.inspectionPeriodDays || 3; // Default 3 days inspection
 
                 const escrow = await EscrowTransaction.create([{
                     transactionId: UuidService.generateTraceId(),
@@ -128,7 +129,8 @@ export class EscrowService {
                     items: params.items || [],
                     status: 'PENDING',
                     inviteEmail, // Stored to track it originated from invite
-                    expiryDate
+                    inspectionPeriod,
+                    expiryDate: undefined // Will be set on Delivery
                 }], { session });
 
                 // 5. Notifications
@@ -203,6 +205,45 @@ export class EscrowService {
 
         // Notify Buyer
         // NotificationService.sendPush(escrow.buyerId, "Seller accepted escrow!");
+
+        return escrow;
+    }
+
+    /**
+     * Mark Delivered (Seller Action)
+     * LOCKED -> LOCKED (but with deliveryDate set)
+     * Starts the Inspection Countdown
+     */
+    static async markDelivered(escrowId: string, userId: string) {
+        const escrow = await EscrowTransaction.findById(escrowId);
+        if (!escrow) throw new NotFoundError('Escrow not found');
+
+        // Verify Seller
+        if (escrow.sellerId !== userId) throw new UnauthorizedError('Only seller can mark delivered');
+
+        if (escrow.status !== 'LOCKED') throw new BadRequestError('Escrow is not locked/active');
+        if (escrow.deliveryDate) throw new BadRequestError('Already marked as delivered');
+
+        const now = new Date();
+        const inspectionDays = escrow.inspectionPeriod || 3;
+
+        escrow.deliveryDate = now;
+        // set expiryDate defined as delivery + inspection window
+        escrow.expiryDate = new Date(now.getTime() + (inspectionDays * 24 * 60 * 60 * 1000));
+
+        await escrow.save();
+
+        // Notification: Notify Buyer
+        const notifService = (await import('../notifications/notification.service')).NotificationService;
+        try {
+            const buyer = await User.findById(escrow.buyerId);
+            if (buyer) {
+                // Using generic notify or specific if available
+                // For now, assume generic push/email or create new notification type later
+                // await notifService.sendEscrowDelivered(buyer.email, ...);
+                await notifService.sendPush(escrow.buyerId, "Seller has marked order as delivered. Inspection period started.");
+            }
+        } catch (e) { }
 
         return escrow;
     }

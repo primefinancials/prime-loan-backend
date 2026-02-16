@@ -10,46 +10,18 @@ export interface IEscrowItem {
     price: number;
     image?: string;
     description?: string;
+    productId?: string;
 }
 
-export interface IEscrowTransaction extends Document {
-    transactionId: string;
-    type: EscrowType;
-    buyerId: string;
-    sellerId: string;
-    amount: number;
-    fee: number;
-    totalAmount: number; // amount + fee
-    status: EscrowStatus;
-    description: string;
-    items: IEscrowItem[];
-
-    // New Fields for Overhaul
-    inviteEmail?: string; // If P2P and user didn't exist
-    rejectionReason?: string;
-    chatRoomId?: string; // Link to ChatRoom
-
-    // Dispute fields
-    disputeReason?: string;
-    disputeEvidence?: string[];
-    resolvedBy?: string;
-    resolutionNote?: string;
-
-    // Delivery
-    lockCode?: string; // Code given to buyer to confirm delivery (optional)
-    expiryDate?: Date; // Auto-refund or auto-complete date
-
-    createdAt: Date;
-    updatedAt: Date;
-    completedAt?: Date;
-}
+// ... existing code ...
 
 const EscrowItemSchema = new Schema({
     name: { type: String, required: true },
     quantity: { type: Number, required: true, default: 1 },
     price: { type: Number, required: true },
     image: { type: String },
-    description: { type: String }
+    description: { type: String },
+    productId: { type: String }
 }, { _id: false });
 
 const EscrowTransactionSchema = new Schema<IEscrowTransaction>({
@@ -82,6 +54,8 @@ const EscrowTransactionSchema = new Schema<IEscrowTransaction>({
 
     lockCode: { type: String },
     expiryDate: { type: Date },
+    inspectionPeriod: { type: Number, default: 3 }, // Default 3 days inspection
+    deliveryDate: { type: Date },
     completedAt: { type: Date }
 }, {
     timestamps: true,

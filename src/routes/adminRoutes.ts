@@ -157,9 +157,12 @@ router.post("/chat/upload", verifyJwtRest(), ChatController.upload as any);
 /* =============================
    MARKETPLACE MANAGEMENT
 ============================= */
+// Marketplace Vendors
 router.get("/marketplace/vendors", verifyJwtRest(), MarketplaceController.listVendors as any);
-router.post("/marketplace/vendors/:id/approve", verifyJwtRest(), MarketplaceController.approveVendor as any);
-router.post("/marketplace/vendors/:id/reject", verifyJwtRest(), MarketplaceController.rejectVendor as any);
+router.put("/marketplace/vendors/:id/approve", verifyJwtRest(), MarketplaceController.approveVendor as any);
+router.put("/marketplace/vendors/:id/reject", verifyJwtRest(), MarketplaceController.rejectVendor as any);
+router.put("/marketplace/vendors/:id/suspend", verifyJwtRest(), MarketplaceController.suspendVendor as any);
+router.put("/marketplace/vendors/:id/reactivate", verifyJwtRest(), MarketplaceController.reactivateVendor as any);
 router.get("/marketplace/vendors/:id/products", verifyJwtRest(), MarketplaceController.getVendorProducts as any); // Products by Vendor
 
 // Admin Escrows (with vendor filter replaced/augmented by general adminGetEscrows)

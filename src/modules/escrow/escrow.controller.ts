@@ -40,13 +40,32 @@ export class EscrowController {
             const { sellerId, items, amount, description } = req.body;
             const userId = req.user!._id.toString();
 
+            // Enrich items with Product details if available
+            const enrichedItems = await Promise.all(items.map(async (item: any) => {
+                if (item.productId && (!item.image || !item.description)) {
+                    try {
+                        const { Product } = await import('../marketplace/product.model');
+                        const product = await Product.findById(item.productId);
+                        if (product) {
+                            return {
+                                ...item,
+                                image: item.image || (product.images && product.images.length > 0 ? product.images[0] : undefined),
+                                description: item.description || product.description
+                            };
+                        }
+                    } catch (e) { }
+                }
+                return item;
+            }));
+
             const escrow = await EscrowService.createEscrow({
                 buyerId: userId,
                 sellerId,
                 type: 'marketplace',
                 amount,
                 description: description || "Marketplace Order",
-                items
+                selection: description || "Marketplace Order", // Add selection param
+                items: enrichedItems
             });
 
             res.status(201).json({

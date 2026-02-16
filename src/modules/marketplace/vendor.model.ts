@@ -21,6 +21,13 @@ export interface IVendor extends Document {
     // Admin fields
     approvedBy?: string;
     rejectionReason?: string;
+    deactivationReason?: string;
+
+    logistics?: {
+        enabled: boolean;
+        deliveryPartners?: string[];
+        selfDelivery?: boolean;
+    };
 
     avgRating: number;
     reviewCount: number;
@@ -46,6 +53,13 @@ const VendorSchema = new Schema<IVendor>({
 
     approvedBy: { type: String },
     rejectionReason: { type: String },
+    deactivationReason: { type: String },
+
+    logistics: {
+        enabled: { type: Boolean, default: false },
+        deliveryPartners: [{ type: String }],
+        selfDelivery: { type: Boolean, default: false }
+    },
 
     avgRating: { type: Number, default: 0 },
     reviewCount: { type: Number, default: 0 }
