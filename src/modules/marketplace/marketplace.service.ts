@@ -59,6 +59,24 @@ export class MarketplaceService {
         return vendor.save();
     }
 
+    static async suspendVendor(vendorId: string, adminId: string, reason: string) {
+        const vendor = await Vendor.findById(vendorId);
+        if (!vendor) throw new NotFoundError('Vendor not found');
+
+        vendor.status = VendorStatus.SUSPENDED;
+        vendor.deactivationReason = reason;
+        return vendor.save();
+    }
+
+    static async reactivateVendor(vendorId: string, adminId: string) {
+        const vendor = await Vendor.findById(vendorId);
+        if (!vendor) throw new NotFoundError('Vendor not found');
+
+        vendor.status = VendorStatus.APPROVED;
+        vendor.deactivationReason = undefined;
+        return vendor.save();
+    }
+
     static async listVendors(status?: VendorStatus, page = 1, limit = 20) {
         const query: any = {};
         if (status) query.status = status;
@@ -107,6 +125,7 @@ export class MarketplaceService {
         if (data.businessDescription) vendor.businessDescription = data.businessDescription;
         if (data.address) vendor.address = data.address;
         if (data.contactPhone) vendor.contactPhone = data.contactPhone;
+        if (data.logistics) vendor.logistics = data.logistics; // Allow logistics update
         // Add other fields as necessary
 
         return vendor.save();

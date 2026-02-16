@@ -198,16 +198,24 @@ export class UserService {
         const admins = await getMailsByPermission("manage_users");
 
         // Send welcome email (async)
-        await NotificationService.sendWelcomeEmail(
-            user.email,
-            user.user_metadata.first_name || ""
-        );
+        try {
+            await NotificationService.sendWelcomeEmail(
+                user.email,
+                user.user_metadata.first_name || ""
+            );
+        } catch (error) {
+            console.error('Failed to send welcome email:', error);
+        }
 
-        await NotificationService.sendAdminNewUserAlert(
-            admins,
-            user.user_metadata.first_name || "",
-            user.user_metadata.surname || ""
-        )
+        try {
+            await NotificationService.sendAdminNewUserAlert(
+                admins,
+                user.user_metadata.first_name || "",
+                user.user_metadata.surname || ""
+            )
+        } catch (error) {
+            console.error('Failed to send admin alert email:', error);
+        }
 
         return user;
     }
@@ -372,7 +380,11 @@ export class UserService {
             }
         ];
 
-        await NotificationService.sendOtpEmail(email, foundUser.user_metadata.first_name, pin);
+        try {
+            await NotificationService.sendOtpEmail(email, foundUser.user_metadata.first_name, pin);
+        } catch (error) {
+            console.error('Failed to send OTP email:', error);
+        }
 
         const res = await User.findByIdAndUpdate(foundUser._id as any, { updates });
 

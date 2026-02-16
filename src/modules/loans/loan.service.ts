@@ -265,9 +265,9 @@ export class LoanService {
     // Build and persist loan record
     const loanPayload: Partial<ILoan> = {
       ...params,
-      percentage: typeof params.percentage === "string" 
-      ? Number(String(params.percentage).replace("%", "")) 
-      : params.percentage,
+      percentage: typeof params.percentage === "string"
+        ? Number(String(params.percentage).replace("%", ""))
+        : params.percentage,
       userId: params.userId,
       requested_amount: params.amount,
       amount: params.amount, // store Naira
@@ -290,7 +290,7 @@ export class LoanService {
       const admins = await getMailsByPermission("manage_loans");
 
       await NotificationService.sendLoanApplicationAdmin(
-        user, 
+        user,
         `New Loan Created From User: ${user.user_metadata.first_name}`,
         `A new loan has been created by ${user.user_metadata.first_name} ${user.user_metadata.surname}.\n\nDetails:\n- Amount: ${params.amount}\n- Category: ${params.category}\n- Duration: ${params.duration}\n\nLoanId: ${created._id}`,
         admins,
@@ -445,7 +445,7 @@ export class LoanService {
           action: "Approve",
           date: new Date().toISOString(),
         };
-        
+
         loan.save();
 
         // 7️⃣ Ledger entry
@@ -652,9 +652,9 @@ export class LoanService {
     loan.outstanding = 0;
     loan.rejectionReason = reason;
     loan.status = "canceled";
-    loan.percentage = typeof loan.percentage === "string" 
-    ? Number(String(loan.percentage).replace("%", "")) 
-    : loan.percentage;
+    loan.percentage = typeof loan.percentage === "string"
+      ? Number(String(loan.percentage).replace("%", ""))
+      : loan.percentage;
 
     await loan.save();
 
@@ -679,21 +679,25 @@ export class LoanService {
     loan.outstanding = 0;
     loan.rejectionReason = reason;
     loan.status = "rejected";
-    loan.percentage = typeof loan.percentage === "string" 
-    ? Number(String(loan.percentage).replace("%", "")) 
-    : loan.percentage,
-    loan.adminAction = {
-      adminId,
-      action: "Reject",
-      date: new Date().toISOString()
-    };
+    loan.percentage = typeof loan.percentage === "string"
+      ? Number(String(loan.percentage).replace("%", ""))
+      : loan.percentage,
+      loan.adminAction = {
+        adminId,
+        action: "Reject",
+        date: new Date().toISOString()
+      };
 
     await loan.save();
 
     const user = await UserService.getUser(loan.userId);
 
-    if(user) {
-      await NotificationService.sendLoanRejection(user, loan.amount, reason);
+    if (user) {
+      try {
+        await NotificationService.sendLoanRejection(user, loan.amount, reason);
+      } catch (error) {
+        console.error('Failed to send loan rejection email:', error);
+      }
     }
 
     return loan;

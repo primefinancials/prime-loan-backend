@@ -103,40 +103,53 @@ export class LoanController {
 
       // Eligibility check
       const eligibility = await LoanEligibilityService.calculateEligibility(req.user!, amount);
-      const admins = await getMailsByPermission("manage_loans"); 
+      const admins = await getMailsByPermission("manage_loans");
 
       if (eligibility.eligible) {
         if (eligibility.notifyAdmin) {
-          await NotificationService.sendLoanApplicationAdmin(
-            req.user!,
-            `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
-            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount}. System requires admin intervention because: ${eligibility.reason}.`,
-            admins,
-            loan
-          );
+          try {
+            await NotificationService.sendLoanApplicationAdmin(
+              req.user!,
+              `New Urgent Loan Application Notification from ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname}`,
+              `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} has applied for a loan of ${amount}. System requires admin intervention because: ${eligibility.reason}.`,
+              admins,
+              loan
+            );
+          } catch (error) {
+            console.error('Failed to send admin loan application alert:', error);
+          }
         } else {
           const ladder = await LoanLadder.findOne({ step: req.user?.user_metadata.ladderIndex || 1 });
           if (ladder) {
             return res.status(201).json({ status: "success", data: loan });
           }
 
-          await NotificationService.sendLoanApplicationAdmin(
-            req.user!,
-            `Invalid Loan Ladder Configuration`,
-            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} applied for a loan but ladder score ${req.user?.user_metadata.ladderIndex} was invalid.`,
-            admins,
-            loan
-          );
+
+          try {
+            await NotificationService.sendLoanApplicationAdmin(
+              req.user!,
+              `Invalid Loan Ladder Configuration`,
+              `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} applied for a loan but ladder score ${req.user?.user_metadata.ladderIndex} was invalid.`,
+              admins,
+              loan
+            );
+          } catch (error) {
+            console.error('Failed to send admin invalid ladder alert:', error);
+          }
         }
       } else {
         if (eligibility.notifyAdmin) {
-          await NotificationService.sendLoanApplicationAdmin(
-            req.user!,
-            `Ineligible Loan Application Requiring Review`,
-            `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} applied for a loan of ${amount} and is not eligible. Reason: ${eligibility.reason}.`,
-            admins,
-            loan
-          );
+          try {
+            await NotificationService.sendLoanApplicationAdmin(
+              req.user!,
+              `Ineligible Loan Application Requiring Review`,
+              `User ${req.user?.user_metadata.first_name} ${req.user?.user_metadata.surname} applied for a loan of ${amount} and is not eligible. Reason: ${eligibility.reason}.`,
+              admins,
+              loan
+            );
+          } catch (error) {
+            console.error('Failed to send admin ineligible loan alert:', error);
+          }
         } else {
           await LoanService.rejectLoan("system", loan._id as any, eligibility.reason || "");
           return res.status(400).json({ status: "failed", message: eligibility.reason });

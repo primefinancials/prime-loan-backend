@@ -94,13 +94,23 @@ export class SavingsService {
         }
 
         // Get interest and penalty rates
-        const interestRate = isFixed
+        let interestRate = isFixed
           ? setting.savings.fixed.interestRate
           : setting.savings.flexible.interestRate;
 
-        const penaltyRate = isFixed
+        // Normalize interest rate (handle "10" as 0.10)
+        if (interestRate >= 1) {
+          interestRate = interestRate / 100;
+        }
+
+        let penaltyRate = isFixed
           ? setting.savings.fixed.penaltyRate
           : setting.savings.flexible.penaltyRate;
+
+        // Normalize penalty rate
+        if (penaltyRate >= 1) {
+          penaltyRate = penaltyRate / 100;
+        }
 
         // Fixed: Deduct targetAmount once
         // Flexible: No initial deposit
@@ -164,7 +174,7 @@ export class SavingsService {
           userId: params.userId,
           planType: params.planType,
           planName: params.planName,
-          targetAmount: isFixed ? initialDeposit : undefined,
+          targetAmount: isFixed ? initialDeposit : params.targetAmount,
           durationMonths: durationMonths,
           principal: initialDeposit,
           interestRate: interestRate,
@@ -416,34 +426,9 @@ export class SavingsService {
 
         // Add Interest if Matured
         if (plan.maturityDate && now >= plan.maturityDate) {
-          // Recalculate interest just in case, or use stored interestEarned? 
-          // The original code calculated it on the fly. 
-          // netAmount = amount + Math.floor((plan.principal * (plan.interestRate * (plan.durationDays || 0))));
-          // This formula `principal * rate * duration` assumes `rate` is daily? 
-          // In createPlan: `expectedInterest = principal * (rate/100) * (duration/365)` usually.
-          // Original code: `plan.principal * (plan.interestRate * (plan.durationDays || 0))`
-          // Wait, in createPlan, `interestRate` was stored as `annualRate`.
-          // So interest = Principal * (Rate/100) * (Days/365).
-          // The original logic `plan.principal * (plan.interestRate * ...)` looks like it might be missing /100 or /365 depending on how interestRate is stored.
-          // Looking at `createPlan`: `interestRate: annualRate`. (e.g., 10).
-          // User did not ask to fix interest algo, so I will stick to the existing logic pattern but fix the variables if obvious.
-          // Existing logic: `netAmount = amount + Math.floor((plan.principal * (plan.interestRate * (plan.durationDays || 0))));`
-          // If Rate is 10, Duration 30. Result: P * 300. This is huge. 
-          // Most likely existing logic is flawed or `interestRate` is stored as `0.10/365`. 
-          // START-CHECK
-          // createPlan: `interestRate: annualRate` (e.g. 10).
-          // admin stats: `expectedInterest = ... * (plan.interestRate) * (duration / 365)`. 
-          // So the correct formula is `P * (R/100) * (D/365)`.
-          // The previous code `plan.principal * (plan.interestRate * (plan.durationDays || 0))` is definitely suspicious if rate is 10.
-          // HOWEVER, I should invoke the Principle of Minimal Changes. 
-          // BUT, the requirement says "if withdrawal is initiated before maturity... user should not select amount... calculation...".
-          // I will use the safest interest logic available or keep previous if I'm not sure.
-          // Previous: `netAmount = amount + Math.floor((plan.principal * (plan.interestRate * (plan.durationDays || 0))));`
-          // I will assume `interestRate` in existing logic was somehow handled or I should fix it.
-          // Actually, in `getAdminSavingsStats`, it uses `(plan.interestRate) * (duration / 365)`.
-          // I will use that formula here for consistency.
-          // Note: `interestRate` in settings is e.g. 10. So it's a percentage number.
-          const interest = Math.floor(plan.principal * (plan.interestRate / 100) * ((plan.durationDays || 0) / 365));
+          // Calculate interest: Principal * Rate * (Duration/365)
+          // plan.interestRate is stored as decimal (e.g., 0.10 for 10%)
+          const interest = Math.floor(plan.principal * plan.interestRate * ((plan.durationDays || 0) / 365));
           netAmount = amount + interest;
         }
 

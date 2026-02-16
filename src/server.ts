@@ -35,6 +35,9 @@ export async function startApp() {
     // Connect to database first
     await DatabaseService.connect();
 
+    // Connect to Queue Service (Redis)
+    await QueueService.connect();
+
     // Configure Express app
     await createApp(app);
 

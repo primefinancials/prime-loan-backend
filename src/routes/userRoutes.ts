@@ -360,6 +360,8 @@ router.post("/chat/:escrowId/message", verifyJwtRest(), ChatController.sendMessa
 // Worker routes moved to adminRoutes
 
 
+import { CartController } from "../modules/marketplace/cart.controller";
+
 /* -------------------------------------------------------------------------- */
 /*                            MARKETPLACE ROUTES                              */
 /* -------------------------------------------------------------------------- */
@@ -383,10 +385,26 @@ router.delete("/marketplace/products/:id", verifyJwtRest(), MarketplaceControlle
 router.get("/marketplace/products", verifyJwtRest(), MarketplaceController.listProducts as any);
 router.get("/marketplace/products/:id", verifyJwtRest(), MarketplaceController.getProduct as any);
 
+import { OrderController } from "../modules/marketplace/order.controller";
+
+// ... existing marketplace routes ...
+
+// Cart
+router.get("/marketplace/cart", verifyJwtRest(), CartController.getCart as any);
+router.post("/marketplace/cart", verifyJwtRest(), CartController.addItem as any);
+router.put("/marketplace/cart/items", verifyJwtRest(), CartController.updateItem as any);
+router.delete("/marketplace/cart/items", verifyJwtRest(), CartController.removeItem as any);
+router.delete("/marketplace/cart", verifyJwtRest(), CartController.clearCart as any);
+
+// Orders
+router.post("/marketplace/checkout", verifyJwtRest(), OrderController.checkout as any);
+router.get("/marketplace/orders", verifyJwtRest(), OrderController.getMyOrders as any);
+
 /* -------------------------------------------------------------------------- */
 /*                              SETTINGS ROUTES                                */
 /* -------------------------------------------------------------------------- */
 
+router.get("/fees", SettingsController.getFees);
 router.get("/settings/calculate-profit", verifyJwtRest(), AdminController.calculateProfit as any);
 router.get("/settings/profit-config", verifyJwtRest(), AdminController.getProfitConfig as any);
 
