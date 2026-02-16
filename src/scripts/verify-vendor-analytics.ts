@@ -28,7 +28,7 @@ async function verifyVendorAnalytics() {
     try {
         // 1. Create Dummy Vendor
         const vendorId = new mongoose.Types.ObjectId();
-        const vendor = await Vendor.create({
+        const vendor: any = await Vendor.create({
             _id: vendorId,
             userId: new mongoose.Types.ObjectId().toString(),
             businessName: `Test Vendor ${Date.now()}`,
@@ -37,10 +37,10 @@ async function verifyVendorAnalytics() {
             contactEmail: 'test@example.com',
             contactPhone: '1234567890'
         });
-        console.log(`Created Vendor: ${vendor._id}`);
+        console.log(`Created Vendor: ${(vendor as any)._id}`);
 
         // 2. Create Dummy Products
-        const product1 = await Product.create({
+        const product1: any = await Product.create({
             vendorId: vendor._id.toString(),
             name: 'Product 1',
             description: 'Desc 1',
@@ -49,7 +49,7 @@ async function verifyVendorAnalytics() {
             category: 'Electronics',
             status: ProductStatus.ACTIVE
         });
-        const product2 = await Product.create({
+        const product2: any = await Product.create({
             vendorId: vendor._id.toString(),
             name: 'Product 2',
             description: 'Desc 2',
@@ -58,16 +58,16 @@ async function verifyVendorAnalytics() {
             category: 'Electronics',
             status: ProductStatus.ACTIVE
         });
-        console.log(`Created Products: ${product1._id}, ${product2._id}`);
+        console.log(`Created Products: ${(product1 as any)._id}, ${(product2 as any)._id}`);
 
         // 3. Create Dummy Orders
         // Order 1: 2x Product 1 (2000), 1x Product 2 (2000) = 4000. PAID.
         await Order.create({
             userId: new mongoose.Types.ObjectId().toString(),
-            vendorId: vendor._id.toString(),
+            vendorId: (vendor as any)._id.toString(),
             items: [
-                { productId: product1._id.toString(), productName: 'P1', quantity: 2, price: 1000 },
-                { productId: product2._id.toString(), productName: 'P2', quantity: 1, price: 2000 }
+                { productId: (product1 as any)._id.toString(), productName: 'P1', quantity: 2, price: 1000 },
+                { productId: (product2 as any)._id.toString(), productName: 'P2', quantity: 1, price: 2000 }
             ],
             totalAmount: 4000,
             status: OrderStatus.PAID,
@@ -77,9 +77,9 @@ async function verifyVendorAnalytics() {
         // Order 2: 1x Product 1 (1000). DELIVERED.
         await Order.create({
             userId: new mongoose.Types.ObjectId().toString(),
-            vendorId: vendor._id.toString(),
+            vendorId: (vendor as any)._id.toString(),
             items: [
-                { productId: product1._id.toString(), productName: 'P1', quantity: 1, price: 1000 }
+                { productId: (product1 as any)._id.toString(), productName: 'P1', quantity: 1, price: 1000 }
             ],
             totalAmount: 1000,
             status: OrderStatus.DELIVERED,
@@ -89,9 +89,9 @@ async function verifyVendorAnalytics() {
         // Order 3: 1x Product 2 (2000). PENDING (Should not count).
         await Order.create({
             userId: new mongoose.Types.ObjectId().toString(),
-            vendorId: vendor._id.toString(),
+            vendorId: (vendor as any)._id.toString(),
             items: [
-                { productId: product2._id.toString(), productName: 'P2', quantity: 1, price: 2000 }
+                { productId: (product2 as any)._id.toString(), productName: 'P2', quantity: 1, price: 2000 }
             ],
             totalAmount: 2000,
             status: OrderStatus.PENDING,
@@ -101,23 +101,23 @@ async function verifyVendorAnalytics() {
         console.log("Created Orders");
 
         // 4. Verify listVendors (Stats)
-        const vendorList = await MarketplaceService.listVendors(VendorStatus.APPROVED);
-        const listedVendor = vendorList.data.find((v: any) => v._id.toString() === vendor._id.toString());
+        const vendorList: any = await MarketplaceService.listVendors(VendorStatus.APPROVED);
+        const listedVendor = vendorList.data.find((v: any) => v._id.toString() === (vendor as any)._id.toString());
 
         console.log("Vendor Stats from listVendors:", listedVendor.stats);
         if (listedVendor.stats.totalSales !== 2) throw new Error(`Expected 2 sales, got ${listedVendor.stats.totalSales}`);
         if (listedVendor.stats.totalRevenue !== 5000) throw new Error(`Expected 5000 revenue, got ${listedVendor.stats.totalRevenue}`);
 
         // 5. Verify getVendorDetails
-        const vendorDetails: any = await MarketplaceService.getVendorDetails(vendor._id.toString());
+        const vendorDetails: any = await MarketplaceService.getVendorDetails((vendor as any)._id.toString());
         console.log("Vendor Details Stats:", vendorDetails.stats);
         if (vendorDetails.stats.totalSales !== 2) throw new Error("Vendor Details totalSales mismatch");
         if (vendorDetails.stats.totalRevenue !== 5000) throw new Error("Vendor Details totalRevenue mismatch");
 
         // 6. Verify getProductsByVendor
-        const productList = await MarketplaceService.getProductsByVendor(vendor._id.toString());
-        const p1 = productList.data.find((p: any) => p._id.toString() === product1._id.toString());
-        const p2 = productList.data.find((p: any) => p._id.toString() === product2._id.toString());
+        const productList: any = await MarketplaceService.getProductsByVendor((vendor as any)._id.toString());
+        const p1 = productList.data.find((p: any) => p._id.toString() === (product1 as any)._id.toString());
+        const p2 = productList.data.find((p: any) => p._id.toString() === (product2 as any)._id.toString());
 
         console.log("Product 1 Stats:", p1.stats);
         console.log("Product 2 Stats:", p2.stats);
@@ -133,27 +133,27 @@ async function verifyVendorAnalytics() {
         if (p2.stats.revenue !== 2000) throw new Error(`P2 revenue mismatch: Expected 2000, got ${p2.stats.revenue}`);
 
         // 7. Verify listProducts (Vendor Population)
-        const publicProducts = await MarketplaceService.listProducts({ vendorId: vendor._id.toString() });
-        const pp1 = publicProducts.data.find((p: any) => p._id.toString() === product1._id.toString());
+        const publicProducts: any = await MarketplaceService.listProducts({ vendorId: (vendor as any)._id.toString() });
+        const pp1 = publicProducts.data.find((p: any) => p._id.toString() === (product1 as any)._id.toString());
 
         console.log("Public Product Vendor Info:", pp1.vendorId);
-        if (typeof pp1.vendorId !== 'object' || pp1.vendorId._id.toString() !== vendor._id.toString()) {
+        if (typeof pp1.vendorId !== 'object' || (pp1.vendorId as any)._id.toString() !== (vendor as any)._id.toString()) {
             throw new Error("Vendor not populated correctly in listProducts");
         }
-        if (!pp1.vendorId.businessName) throw new Error("Vendor businessName missing in populated data");
+        if (!(pp1.vendorId as any).businessName) throw new Error("Vendor businessName missing in populated data");
 
         // 8. Verify getPublicVendorProfile
-        const publicProfile: any = await MarketplaceService.getPublicVendorProfile(vendor._id.toString());
+        const publicProfile: any = await MarketplaceService.getPublicVendorProfile((vendor as any)._id.toString());
         console.log("Public Vendor Profile Products Count:", publicProfile.products.length);
 
-        if (publicProfile._id.toString() !== vendor._id.toString()) throw new Error("Public Profile vendor ID mismatch");
+        if ((publicProfile as any)._id.toString() !== (vendor as any)._id.toString()) throw new Error("Public Profile vendor ID mismatch");
         if (!publicProfile.products) throw new Error("Public Profile products missing");
 
         // Should have 2 active products (product1 and product2)
         // Note: product1 and product2 were created with status ACTIVE
         if (publicProfile.products.length !== 2) throw new Error(`Expected 2 active products in public profile, got ${publicProfile.products.length}`);
 
-        const pp_p1 = publicProfile.products.find((p: any) => p._id.toString() === product1._id.toString());
+        const pp_p1 = publicProfile.products.find((p: any) => p._id.toString() === (product1 as any)._id.toString());
         if (!pp_p1) throw new Error("Product 1 not found in public profile");
 
         console.log("✅ ALL CHECKS PASSED");
