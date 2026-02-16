@@ -28,6 +28,16 @@ export class MarketplaceController {
         }
     }
 
+    static async getVendorDetails(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const vendor = await MarketplaceService.getVendorDetails(id);
+            res.status(200).json({ status: "success", data: vendor });
+        } catch (error) {
+            next(error);
+        }
+    }
+
     // Admin
     static async listVendors(req: ProtectedRequest, res: Response, next: NextFunction) {
         try {
@@ -157,6 +167,16 @@ export class MarketplaceController {
             const product = await MarketplaceService.getProduct(id);
             if (!product) return res.status(404).json({ status: "failed", message: "Product not found" });
             res.status(200).json({ status: "success", data: product });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    static async getPublicVendorProfile(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const result = await MarketplaceService.getPublicVendorProfile(id);
+            res.status(200).json({ status: "success", data: result });
         } catch (error) {
             next(error);
         }

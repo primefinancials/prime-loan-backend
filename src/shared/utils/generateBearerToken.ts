@@ -24,12 +24,12 @@ export const generateBearerToken = async (consumerKey: string, consumerSecret: s
     });
 
     if (response.status !== 200) {
-      throw new Error(`Failed to generate access token: ${response?.data?.message}`);
+      throw new Error(`Service Unavailable, Try Again in a Few Minutes: ${response?.data?.message}`);
     }
 
     return response?.data?.data?.access_token || "";
   } catch (error: any) {
     console.error("Error generating token:", error.response?.data?.message || error.message || error);
-    throw new Error("Failed to generate bearer token.");
+    throw new Error("Service Unavailable, Try Again in a Few Minutes.");
   }
 };

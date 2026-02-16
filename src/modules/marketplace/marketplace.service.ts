@@ -4,6 +4,7 @@ import User from '../users/user.model';
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../../exceptions';
 import { DatabaseService } from '../../shared/db';
 import { EscrowTransaction } from '../escrow/escrow.model';
+import { Order, OrderStatus } from './order.model';
 
 export class MarketplaceService {
     /* =========================================
@@ -84,11 +85,80 @@ export class MarketplaceService {
         const skip = (page - 1) * limit;
 
         const [vendors, total] = await Promise.all([
-            Vendor.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit),
+            Vendor.find(query).lean().sort({ createdAt: -1 }).skip(skip).limit(limit),
             Vendor.countDocuments(query)
         ]);
 
-        return { data: vendors, total, page, pages: Math.ceil(total / limit) };
+        // Aggregate stats for these vendors
+        const vendorIds = vendors.map(v => v._id.toString());
+
+        const stats = await Order.aggregate([
+            {
+                $match: {
+                    vendorId: { $in: vendorIds },
+                    status: { $in: [OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DELIVERED] }
+                }
+            },
+            {
+                $group: {
+                    _id: "$vendorId",
+                    totalSales: { $sum: 1 },
+                    totalRevenue: { $sum: "$totalAmount" }
+                }
+            }
+        ]);
+
+        const statsMap = stats.reduce((acc, curr) => {
+            acc[curr._id] = curr;
+            return acc;
+        }, {} as any);
+
+        const data = vendors.map(vendor => ({
+            ...vendor,
+            stats: {
+                totalSales: statsMap[vendor._id.toString()]?.totalSales || 0,
+                totalRevenue: statsMap[vendor._id.toString()]?.totalRevenue || 0
+            }
+        }));
+
+        return { data, total, page, pages: Math.ceil(total / limit) };
+    }
+
+    /**
+     * Get Detailed Vendor Profile for Admin
+     */
+    static async getVendorDetails(vendorId: string) {
+        const vendor = await Vendor.findById(vendorId).lean();
+        if (!vendor) throw new NotFoundError('Vendor not found');
+
+        // Get aggregate stats
+        const stats = await Order.aggregate([
+            {
+                $match: {
+                    vendorId: vendorId,
+                    status: { $in: [OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DELIVERED] }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalSales: { $sum: 1 },
+                    totalRevenue: { $sum: "$totalAmount" }
+                }
+            }
+        ]);
+
+        const totalSales = stats[0]?.totalSales || 0;
+        const totalRevenue = stats[0]?.totalRevenue || 0;
+
+        return {
+            ...vendor,
+            stats: {
+                totalSales,
+                totalRevenue,
+                netRevenue: totalRevenue // Assuming net = gross for now as per plan
+            }
+        };
     }
 
     /* =========================================
@@ -150,7 +220,14 @@ export class MarketplaceService {
     }
 
     static async getProduct(productId: string) {
-        return Product.findById(productId);
+        const product = await Product.findById(productId).lean();
+        if (!product) return null;
+
+        const vendor = await Vendor.findById(product.vendorId).lean();
+        return {
+            ...product,
+            vendorId: vendor || { _id: product.vendorId, businessName: 'Unknown Vendor' }
+        };
     }
 
     /**
@@ -204,13 +281,27 @@ export class MarketplaceService {
 
         const [products, total] = await Promise.all([
             Product.find(query)
+                .lean()
                 .sort(sort)
                 .skip(skip)
                 .limit(limit),
             Product.countDocuments(query)
         ]);
 
-        return { data: products, total, page, pages: Math.ceil(total / limit) };
+        // Populate Vendor Details manually
+        const vendorIds = [...new Set(products.map(p => p.vendorId))];
+        const vendors = await Vendor.find({ _id: { $in: vendorIds } }).lean();
+        const vendorMap = vendors.reduce((acc, v) => {
+            acc[v._id.toString()] = v;
+            return acc;
+        }, {} as any);
+
+        const data = products.map(product => ({
+            ...product,
+            vendorId: vendorMap[product.vendorId] || { _id: product.vendorId, businessName: 'Unknown Vendor' }
+        }));
+
+        return { data, total, page, pages: Math.ceil(total / limit) };
     }
 
     /* =========================================
@@ -265,10 +356,49 @@ export class MarketplaceService {
         const skip = (page - 1) * limit;
         // NOTE: This returns ALL products (Active, Draft, etc) for the vendor dashboard
         const [products, total] = await Promise.all([
-            Product.find({ vendorId }).sort({ createdAt: -1 }).skip(skip).limit(limit),
+            Product.find({ vendorId }).lean().sort({ createdAt: -1 }).skip(skip).limit(limit),
             Product.countDocuments({ vendorId })
         ]);
-        return { data: products, total, page, pages: Math.ceil(total / limit) };
+
+        // Aggregate product stats from orders
+        const productIds = products.map(p => p._id.toString());
+
+        const stats = await Order.aggregate([
+            {
+                $match: {
+                    status: { $in: [OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DELIVERED] },
+                    "items.productId": { $in: productIds }
+                }
+            },
+            { $unwind: "$items" },
+            {
+                $match: {
+                    "items.productId": { $in: productIds }
+                }
+            },
+            {
+                $group: {
+                    _id: "$items.productId",
+                    unitsSold: { $sum: "$items.quantity" },
+                    revenue: { $sum: { $multiply: ["$items.quantity", "$items.price"] } }
+                }
+            }
+        ]);
+
+        const statsMap = stats.reduce((acc, curr) => {
+            acc[curr._id] = curr;
+            return acc;
+        }, {} as any);
+
+        const data = products.map(product => ({
+            ...product,
+            stats: {
+                unitsSold: statsMap[product._id.toString()]?.unitsSold || 0,
+                revenue: statsMap[product._id.toString()]?.revenue || 0
+            }
+        }));
+
+        return { data, total, page, pages: Math.ceil(total / limit) };
     }
 
     static async getAdminEscrows(page = 1, limit = 20) {
@@ -305,5 +435,21 @@ export class MarketplaceService {
             EscrowTransaction.countDocuments(query)
         ]);
         return { data: escrows, total, page, pages: Math.ceil(total / limit) };
+    }
+
+    static async getPublicVendorProfile(vendorId: string) {
+        const vendor = await Vendor.findById(vendorId).lean();
+        if (!vendor) throw new NotFoundError('Vendor not found');
+
+        // Only return active products for public view
+        const products = await Product.find({
+            vendorId: vendorId,
+            status: ProductStatus.ACTIVE
+        }).lean().sort({ createdAt: -1 });
+
+        return {
+            ...vendor,
+            products
+        };
     }
 }
