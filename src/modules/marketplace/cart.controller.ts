@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { CartService } from "./cart.service";
-import { AuthRequest } from "../../shared/middlewares"; // Assuming this exists
+// import { AuthRequest } from "../../shared/middlewares";
 
 export class CartController {
     static async getCart(req: Request, res: Response, next: NextFunction) {

@@ -19,7 +19,7 @@ export class EscrowController {
                 type: 'p2p',
                 amount,
                 description,
-                expiryDays
+                inspectionPeriodDays: expiryDays
             });
 
             res.status(201).json({

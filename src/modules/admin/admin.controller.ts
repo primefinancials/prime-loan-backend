@@ -505,6 +505,78 @@ export class AdminController {
   }
 
   /**
+   * Admin: Get savings configuration
+   */
+  static async getSavingsSettings(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'manage_settings', { throwOnFail: true });
+
+      const settings = await SettingsService.getSettings();
+
+      res.status(200).json({
+        status: 'success',
+        data: settings.savings
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Admin: Update savings configuration
+   */
+  static async updateSavingsSettings(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'manage_settings', { throwOnFail: true });
+
+      // Expecting partial savings config in body
+      const updates = req.body;
+
+      // We need to merge with existing settings or SettingsService.updateSettings handles partial updates at root level?
+      // updateSettings signature: updateSettings(adminId, updates: Partial<ISettings>)
+      // So we should pass { savings: updates } or { savings: mergedSavings }
+
+      // Ideally we fetch first to merge deep if needed, but Mongoose/Mongo updates might overwrite nested objects if not careful.
+      // Let's assume the frontend sends the structure it wants to save for 'savings' key.
+      // Ideally should validate 'updates' structure.
+
+      const currentSettings = await SettingsService.getSettings();
+      const currentSavings = currentSettings.savings || {};
+
+      // Deep merge or spread (simplistic)
+      // Assuming frontend sends the full savings object or we want to overwrite the specific keys provided
+      // For safer updates, we might want to merge.
+      // Let's rely on Mongoose to handle update if we pass { savings: ... }
+      // But updateSettings uses findOneAndUpdate...
+
+      // Let's construct the update object.
+      // If we pass { savings: req.body }, it might replace the whole savings object if not using $set with dot notation?
+      // But SettingsService.updateSettings does: { ...updates ... } in findOneAndUpdate.
+      // Mongoose replace logic applies.
+
+      // Better to fetch, merge in code, and save? Or rely on Service.
+      // For now, let's assume we pass { savings: req.body } and careful frontend.
+
+      // Wait, let's do a basic merge here to be safe
+      const mergedSavings = { ...currentSavings, ...updates };
+
+      const settings = await SettingsService.updateSettings(
+        admin?._id as any || "",
+        { savings: mergedSavings }
+      );
+
+      res.status(200).json({
+        status: 'success',
+        data: settings.savings
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Admin: list savings by category
    */
   static async getSavingsByCategory(req: ProtectedRequest, res: Response, next: NextFunction) {
@@ -788,7 +860,7 @@ export class AdminController {
     try {
       const { admin } = req;
 
-      if(!admin) {
+      if (!admin) {
         throw new UnauthorizedError("Access denied");
       }
 

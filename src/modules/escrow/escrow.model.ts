@@ -13,6 +13,33 @@ export interface IEscrowItem {
     productId?: string;
 }
 
+export interface IEscrowTransaction extends Document {
+    transactionId: string;
+    type: EscrowType;
+    buyerId: string;
+    sellerId: string;
+    amount: number;
+    fee: number;
+    totalAmount: number;
+    status: EscrowStatus;
+    description?: string;
+    items: IEscrowItem[];
+    inviteEmail?: string;
+    rejectionReason?: string;
+    chatRoomId?: string;
+    disputeReason?: string;
+    disputeEvidence?: string[];
+    resolvedBy?: string;
+    resolutionNote?: string;
+    lockCode?: string;
+    expiryDate?: Date;
+    inspectionPeriod?: number;
+    deliveryDate?: Date;
+    completedAt?: Date;
+    createdAt: Date;
+    updatedAt: Date;
+}
+
 // ... existing code ...
 
 const EscrowItemSchema = new Schema({
