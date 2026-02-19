@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export type EscrowType = 'p2p' | 'marketplace';
-export type EscrowStatus = 'PENDING' | 'LOCKED' | 'COMPLETED' | 'DISPUTED' | 'REFUNDED' | 'CANCELLED' | 'REJECTED';
+export type EscrowStatus = 'INITIALIZING' | 'PENDING' | 'LOCKED' | 'COMPLETED' | 'DISPUTED' | 'REFUNDED' | 'CANCELLED' | 'REJECTED' | 'FAILED';
 
 export interface IEscrowItem {
     name: string;
@@ -62,7 +62,7 @@ const EscrowTransactionSchema = new Schema<IEscrowTransaction>({
 
     status: {
         type: String,
-        enum: ['PENDING', 'LOCKED', 'COMPLETED', 'DISPUTED', 'REFUNDED', 'CANCELLED', 'REJECTED'],
+        enum: ['INITIALIZING', 'PENDING', 'LOCKED', 'COMPLETED', 'DISPUTED', 'REFUNDED', 'CANCELLED', 'REJECTED', 'FAILED'],
         default: 'PENDING',
         index: true
     },

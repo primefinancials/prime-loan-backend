@@ -40,8 +40,15 @@ export interface ISettings extends Document {
     };
     flexible: {
       interestRate: number; // percentage
-      locked: boolean; // if true, penalty applies on early withdrawal
-      penaltyRate: number; // percentage
+      standard: {
+        penaltyRate: number; // percentage
+        withdrawalDelayHours: number; // delay in hours
+        locked: boolean;
+      };
+      instant: {
+        penaltyRate: number; // percentage
+        locked: boolean;
+      };
     };
     autoSave: {
       retryEnabled: boolean;
@@ -148,8 +155,15 @@ const SettingsSchema = new Schema<ISettings>(
       },
       flexible: {
         interestRate: { type: Number, default: 0 },
-        locked: { type: Boolean, default: true }, // Flexible is locked by default
-        penaltyRate: { type: Number, default: 5 } // 5% penalty
+        standard: {
+          penaltyRate: { type: Number, default: 2.5 }, // Lower penalty for standard
+          withdrawalDelayHours: { type: Number, default: 24 }, // 24 hours delay default
+          locked: { type: Boolean, default: true }
+        },
+        instant: {
+          penaltyRate: { type: Number, default: 5 }, // Higher penalty for instant
+          locked: { type: Boolean, default: true }
+        }
       },
       autoSave: {
         retryEnabled: { type: Boolean, default: true },
