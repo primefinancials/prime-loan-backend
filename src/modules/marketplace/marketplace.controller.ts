@@ -153,7 +153,8 @@ export class MarketplaceController {
                 minPrice: req.query.minPrice ? Number(req.query.minPrice) : undefined,
                 maxPrice: req.query.maxPrice ? Number(req.query.maxPrice) : undefined,
                 vendorId: req.query.vendorId as string,
-                sortBy: req.query.sortBy as 'relevance' | 'newest' | 'price_asc' | 'price_desc'
+                sortBy: req.query.sortBy as 'relevance' | 'newest' | 'price_asc' | 'price_desc',
+                viewerId: req.user?._id?.toString()
             });
             res.status(200).json({ status: "success", data: result });
         } catch (error) {
@@ -164,7 +165,7 @@ export class MarketplaceController {
     static async getProduct(req: ProtectedRequest, res: Response, next: NextFunction) {
         try {
             const { id } = req.params;
-            const product = await MarketplaceService.getProduct(id);
+            const product = await MarketplaceService.getProduct(id, req.user?._id?.toString());
             if (!product) return res.status(404).json({ status: "failed", message: "Product not found" });
             res.status(200).json({ status: "success", data: product });
         } catch (error) {

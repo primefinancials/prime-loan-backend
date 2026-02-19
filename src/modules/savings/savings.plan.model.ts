@@ -11,6 +11,7 @@ export interface ISavingsPlan extends Document {
   userId: string;
   planName: string;
   planType: 'LOCKED' | 'FLEXIBLE';
+  subType?: 'STANDARD' | 'INSTANT';
   principal: number; // in kobo
   interestEarned: number; // in kobo
   targetAmount?: number; // in kobo
@@ -36,6 +37,17 @@ export interface ISavingsPlan extends Document {
     pendingDeduction: boolean; // true if deduction is due/overdue
     lastDeductionDate?: Date;
   };
+  // Pending Withdrawals for Standard Flexible Plans
+  pendingWithdrawals?: {
+    amount: number;
+    penalty: number;
+    netAmount: number;
+    requestDate: Date;
+    scheduledDate: Date;
+    status: 'PENDING' | 'PROCESSED' | 'FAILED';
+    traceId?: string;
+    transactionId?: string;
+  }[];
   // Legacy autoSave (deprecated for new plans, kept for migration)
   autoSaveConfig?: {
     enabled: boolean;
@@ -50,6 +62,7 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
   userId: { type: String, required: true, index: true },
   planName: { type: String, required: true },
   planType: { type: String, enum: ['LOCKED', 'FLEXIBLE'], required: true },
+  subType: { type: String, enum: ['STANDARD', 'INSTANT'] },
   principal: { type: Number, required: true, default: 0 },
   interestEarned: { type: Number, default: 0 },
   targetAmount: { type: Number },
@@ -79,6 +92,16 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
     pendingDeduction: { type: Boolean, default: false },
     lastDeductionDate: { type: Date }
   },
+  pendingWithdrawals: [{
+    amount: { type: Number, required: true },
+    penalty: { type: Number, default: 0 },
+    netAmount: { type: Number, required: true },
+    requestDate: { type: Date, default: Date.now },
+    scheduledDate: { type: Date, required: true },
+    status: { type: String, enum: ['PENDING', 'PROCESSED', 'FAILED'], default: 'PENDING' },
+    traceId: { type: String },
+    transactionId: { type: String }
+  }],
   // Legacy autoSave (deprecated)
   autoSaveConfig: {
     enabled: { type: Boolean, default: false },

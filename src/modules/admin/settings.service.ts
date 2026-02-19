@@ -31,7 +31,16 @@ export class SettingsService {
             }
           },
           flexible: {
-            interestRate: 0
+            interestRate: 0,
+            standard: {
+              penaltyRate: 2.5,
+              withdrawalDelayHours: 24,
+              locked: true
+            },
+            instant: {
+              penaltyRate: 5,
+              locked: true
+            }
           },
           autoSave: {
             retryEnabled: true,
@@ -70,7 +79,11 @@ export class SettingsService {
           penaltyRate: 5,
           earlyWithdrawal: { type: 'immediate', delayDays: 0 }
         },
-        flexible: { interestRate: 0, locked: true, penaltyRate: 5 },
+        flexible: {
+          interestRate: 0,
+          standard: { penaltyRate: 2.5, withdrawalDelayHours: 24, locked: true },
+          instant: { penaltyRate: 5, locked: true }
+        },
         autoSave: { retryEnabled: true, maxRetries: 3 }
       };
       await settings.save();

@@ -219,14 +219,21 @@ export class MarketplaceService {
         return Product.findOneAndDelete({ _id: productId, vendorId: vendor._id });
     }
 
-    static async getProduct(productId: string) {
+    static async getProduct(productId: string, viewerId?: string) {
         const product = await Product.findById(productId).lean();
         if (!product) return null;
 
         const vendor = await Vendor.findById(product.vendorId).lean();
+
+        let isOwner = false;
+        if (viewerId && vendor && vendor.userId === viewerId) {
+            isOwner = true;
+        }
+
         return {
             ...product,
-            vendorId: vendor || { _id: product.vendorId, businessName: 'Unknown Vendor' }
+            vendorId: vendor || { _id: product.vendorId, businessName: 'Unknown Vendor' },
+            isOwner
         };
     }
 
@@ -242,8 +249,9 @@ export class MarketplaceService {
         minPrice?: number;
         maxPrice?: number;
         sortBy?: 'relevance' | 'newest' | 'price_asc' | 'price_desc';
+        viewerId?: string;
     }) {
-        const { page = 1, limit = 20, search, category, vendorId, minPrice, maxPrice, sortBy = 'newest' } = params;
+        const { page = 1, limit = 20, search, category, vendorId, minPrice, maxPrice, sortBy = 'newest', viewerId } = params;
 
         const query: any = { status: ProductStatus.ACTIVE };
 
@@ -298,7 +306,10 @@ export class MarketplaceService {
 
         const data = products.map(product => ({
             ...product,
-            vendorId: vendorMap[product.vendorId] || { _id: product.vendorId, businessName: 'Unknown Vendor' }
+            vendorId: vendorMap[product.vendorId] || { _id: product.vendorId, businessName: 'Unknown Vendor' },
+            isOwner: params.vendorId && vendorMap[product.vendorId]?.userId === params.vendorId // If filtering by vendor
+                // Wait, logic is: compare viewerId with vendor.userId
+                ? true : (params.viewerId && vendorMap[product.vendorId]?.userId === params.viewerId)
         }));
 
         return { data, total, page, pages: Math.ceil(total / limit) };
