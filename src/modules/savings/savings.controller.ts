@@ -115,6 +115,7 @@ export class SavingsController {
     try {
       const { id } = req.params;
       const amount = Number(req.body?.amount || 0);
+      const subType = req.body?.subType as 'STANDARD' | 'INSTANT' | undefined;
       const userId = req.user!._id;
       const idempotencyKey = req.idempotencyKey!;
 
@@ -131,6 +132,7 @@ export class SavingsController {
         userId: userId as any,
         amount,
         idempotencyKey,
+        subType,
       });
 
       res.status(200).json({

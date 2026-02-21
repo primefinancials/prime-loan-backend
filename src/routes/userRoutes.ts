@@ -331,20 +331,21 @@ router.delete(
 /*                              ESCROW ROUTES                                 */
 /* -------------------------------------------------------------------------- */
 
-router.post("/escrow/p2p", verifyJwtRest(), EscrowController.createP2P as any);
-router.post("/escrow/marketplace", verifyJwtRest(), EscrowController.createMarketplace as any);
+router.post("/escrow/p2p", verifyJwtRest(), idempotencyMiddleware() as any, EscrowController.createP2P as any);
+router.post("/escrow/marketplace", verifyJwtRest(), idempotencyMiddleware() as any, EscrowController.createMarketplace as any);
+router.get("/escrow/fees", verifyJwtRest(), EscrowController.getEscrowFees as any);
 router.get("/escrow", verifyJwtRest(), EscrowController.getMyEscrows as any);
 
 // Funding is now automatic on creation, so explicit fund route is removed/deprecated
 // router.post("/escrow/:id/fund", verifyJwtRest(), EscrowController.fund as any);
 
 router.post("/escrow/:id/accept", verifyJwtRest(), EscrowController.acceptEscrow as any);
-router.post("/escrow/:id/reject", verifyJwtRest(), EscrowController.rejectEscrow as any);
+router.post("/escrow/:id/reject", verifyJwtRest(), idempotencyMiddleware() as any, EscrowController.rejectEscrow as any);
 
-router.post("/escrow/:id/confirm", verifyJwtRest(), EscrowController.confirmDelivery as any);
-router.post("/escrow/:id/cancel", verifyJwtRest(), EscrowController.cancelEscrow as any);
+router.post("/escrow/:id/confirm", verifyJwtRest(), idempotencyMiddleware() as any, EscrowController.confirmDelivery as any);
+router.post("/escrow/:id/cancel", verifyJwtRest(), idempotencyMiddleware() as any, EscrowController.cancelEscrow as any);
 router.post("/escrow/:id/dispute", verifyJwtRest(), EscrowController.raiseDispute as any);
-router.post("/escrow/:id/resolve", verifyJwtRest(), EscrowController.resolveDispute as any); // Admin
+router.post("/escrow/:id/resolve", verifyJwtRest(), idempotencyMiddleware() as any, EscrowController.resolveDispute as any); // Admin
 
 /* -------------------------------------------------------------------------- */
 /*                               CHAT ROUTES                                  */
