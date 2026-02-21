@@ -1,7 +1,8 @@
 import { Response, NextFunction } from "express";
 import { ProtectedRequest } from "../../interfaces";
 import { EscrowService } from "./escrow.service";
-import { validateReqBody } from "../../shared/middlewares"; // Assuming you have validation schemas or usage pattern
+import { validateReqBody } from "../../shared/middlewares";
+import { SettingsService } from "../admin/settings.service";
 
 export class EscrowController {
 
@@ -42,13 +43,14 @@ export class EscrowController {
 
             // Enrich items with Product details if available
             const enrichedItems = await Promise.all(items.map(async (item: any) => {
-                if (item.productId && (!item.image || !item.description)) {
+                if (item.productId) {
                     try {
                         const { Product } = await import('../marketplace/product.model');
                         const product = await Product.findById(item.productId);
                         if (product) {
                             return {
                                 ...item,
+                                name: item.name || product.name,
                                 image: item.image || (product.images && product.images.length > 0 ? product.images[0] : undefined),
                                 description: item.description || product.description
                             };
@@ -236,6 +238,32 @@ export class EscrowController {
             res.status(200).json({
                 status: "success",
                 data: result
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
+     * Get Escrow Fees for a given amount
+     */
+    static async getEscrowFees(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const amount = Number(req.query.amount);
+            if (!amount || amount <= 0) {
+                return res.status(400).json({ status: 'error', message: 'A valid positive amount is required' });
+            }
+
+            const fee = await SettingsService.calculateProfit('escrow', 'send', amount);
+
+            res.status(200).json({
+                status: 'success',
+                data: {
+                    amount,
+                    escrowFee: fee,
+                    serviceFee: fee,
+                    total: amount + fee
+                }
             });
         } catch (error) {
             next(error);

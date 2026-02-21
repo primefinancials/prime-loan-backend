@@ -34,6 +34,7 @@ export const createPlanSchema = Joi.object({
  */
 export const withdrawSchema = Joi.object({
   amount: Joi.number().positive().required(),
+  subType: Joi.string().valid("STANDARD", "INSTANT").optional(),
 });
 
 /**

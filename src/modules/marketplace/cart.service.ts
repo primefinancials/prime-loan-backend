@@ -1,14 +1,39 @@
 import { Cart, ICart } from "./cart.model";
 import { Product } from "./product.model";
 import { NotFoundError, BadRequestError } from "../../exceptions";
+import { SettingsService } from "../admin/settings.service";
 
 export class CartService {
-    static async getCart(userId: string): Promise<ICart> {
+    private static async getCartDocument(userId: string) {
         let cart = await Cart.findOne({ userId });
         if (!cart) {
             cart = await Cart.create({ userId, items: [], totalAmount: 0 });
         }
         return cart;
+    }
+
+    static async getCart(userId: string) {
+        const cart = await this.getCartDocument(userId);
+
+        // Calculate cumulative escrow fees
+        let totalEscrowFee = 0;
+        try {
+            for (const item of cart.items) {
+                const itemTotal = item.price * item.quantity;
+                const fee = await SettingsService.calculateProfit('escrow', 'send', itemTotal);
+                totalEscrowFee += fee;
+            }
+        } catch (e) {
+            // If no profit config, fee remains 0
+        }
+
+        const cartObj = cart.toObject();
+        return {
+            ...cartObj,
+            totalEscrowFee,
+            serviceFee: totalEscrowFee,
+            grandTotal: cart.totalAmount + totalEscrowFee
+        };
     }
 
     static async addItem(userId: string, productId: string, quantity: number, variantId?: string) {
@@ -21,7 +46,7 @@ export class CartService {
             throw new BadRequestError(`Insufficient stock. Only ${product.stock} available.`);
         }
 
-        let cart = await this.getCart(userId);
+        let cart = await this.getCartDocument(userId);
 
         // Check if item already exists in cart
         const existingItemIndex = cart.items.findIndex(item =>
@@ -79,7 +104,7 @@ export class CartService {
     }
 
     static async removeItem(userId: string, productId: string, variantId?: string) {
-        const cart = await this.getCart(userId);
+        const cart = await this.getCartDocument(userId);
 
         cart.items = cart.items.filter(item =>
             !(item.productId === productId && item.variantId === variantId)
@@ -93,7 +118,7 @@ export class CartService {
     static async updateQuantity(userId: string, productId: string, quantity: number, variantId?: string) {
         if (quantity < 1) return this.removeItem(userId, productId, variantId);
 
-        const cart = await this.getCart(userId);
+        const cart = await this.getCartDocument(userId);
         const item = cart.items.find(item =>
             item.productId === productId && item.variantId === variantId
         );
@@ -110,7 +135,7 @@ export class CartService {
     }
 
     static async clearCart(userId: string) {
-        const cart = await this.getCart(userId);
+        const cart = await this.getCartDocument(userId);
         cart.items = [];
         cart.totalAmount = 0;
         await cart.save();

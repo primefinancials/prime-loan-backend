@@ -319,6 +319,19 @@ export class EscrowService {
      * PENDING -> CANCELLED/REJECTED (Refund Buyer)
      */
     static async rejectEscrow(escrowId: string, userId: string, reason: string) {
+        // Atomically set status to PROCESSING to prevent double execution
+        const escrowCheck = await EscrowTransaction.findOneAndUpdate(
+            { _id: escrowId, status: 'PENDING' },
+            { status: 'PROCESSING' },
+            { new: true }
+        );
+        if (!escrowCheck) {
+            const existing = await EscrowTransaction.findById(escrowId);
+            if (!existing) throw new NotFoundError('Escrow not found');
+            if (existing.status === 'PROCESSING') throw new BadRequestError('This operation is already being processed');
+            throw new BadRequestError(`Escrow is ${existing.status}, expected PENDING`);
+        }
+
         const session = await DatabaseService.startSession();
         try {
             return await DatabaseService.withTransaction(session, async () => {
@@ -332,10 +345,6 @@ export class EscrowService {
                 } else {
                     if (escrow.sellerId !== userId) throw new UnauthorizedError('Not authorized');
                 }
-
-                if (escrow.status !== 'PENDING') throw new BadRequestError('Escrow is not pending');
-
-                // REFUND LOGIC
                 const vfdProvider = new VfdProvider();
                 const buyer = await User.findById(escrow.buyerId);
                 if (!buyer) throw new Error("Buyer not found for refund"); // Should not happen
@@ -402,6 +411,10 @@ export class EscrowService {
 
                 return escrow;
             });
+        } catch (error) {
+            // Revert to PENDING on failure
+            await EscrowTransaction.findByIdAndUpdate(escrowId, { status: 'PENDING' }).catch(() => { });
+            throw error;
         } finally {
             session.endSession();
         }
@@ -454,14 +467,30 @@ export class EscrowService {
 
     // START REFACTOR of confirmDelivery to support System Action
     static async confirmDelivery(escrowId: string, userId: string, isSystem = false) {
+        // Atomically set status to PROCESSING to prevent double execution
+        const escrow = await EscrowTransaction.findOneAndUpdate(
+            { _id: escrowId, status: 'LOCKED' },
+            { status: 'PROCESSING' },
+            { new: true }
+        );
+        if (!escrow) {
+            // Check if it exists at all for a better error message
+            const existing = await EscrowTransaction.findById(escrowId);
+            if (!existing) throw new NotFoundError('Escrow not found');
+            if (existing.status === 'PROCESSING') throw new BadRequestError('This operation is already being processed');
+            if (existing.status === 'COMPLETED') throw new BadRequestError('This escrow has already been completed');
+            throw new BadRequestError(`Escrow is ${existing.status}, expected LOCKED`);
+        }
+
+        if (!isSystem && escrow.buyerId !== userId) {
+            // Revert status
+            await EscrowTransaction.findByIdAndUpdate(escrowId, { status: 'LOCKED' });
+            throw new UnauthorizedError('Only buyer can confirm delivery');
+        }
+
         const session = await DatabaseService.startSession();
         try {
             return await DatabaseService.withTransaction(session, async () => {
-                const escrow = await EscrowTransaction.findById(escrowId).session(session);
-                if (!escrow) throw new NotFoundError('Escrow not found');
-
-                if (!isSystem && escrow.buyerId !== userId) throw new UnauthorizedError('Only buyer can confirm delivery');
-                if (escrow.status !== 'LOCKED') throw new BadRequestError(`Escrow is ${escrow.status}`);
 
                 const vfdProvider = new VfdProvider();
                 const seller = await User.findById(escrow.sellerId);
@@ -549,6 +578,10 @@ export class EscrowService {
 
                 return escrow;
             });
+        } catch (error) {
+            // Revert to LOCKED on failure
+            await EscrowTransaction.findByIdAndUpdate(escrowId, { status: 'LOCKED' }).catch(() => { });
+            throw error;
         } finally {
             session.endSession();
         }
@@ -579,12 +612,24 @@ export class EscrowService {
      * Resolve Dispute (Admin Only)
      */
     static async resolveDispute(escrowId: string, adminId: string, decision: 'refund_buyer' | 'pay_seller', note?: string) {
+        // Atomically set status to PROCESSING to prevent double execution
+        const escrowCheck = await EscrowTransaction.findOneAndUpdate(
+            { _id: escrowId, status: 'DISPUTED' },
+            { status: 'PROCESSING' },
+            { new: true }
+        );
+        if (!escrowCheck) {
+            const existing = await EscrowTransaction.findById(escrowId);
+            if (!existing) throw new NotFoundError('Escrow not found');
+            if (existing.status === 'PROCESSING') throw new BadRequestError('This operation is already being processed');
+            throw new BadRequestError(`Escrow is ${existing.status}, expected DISPUTED`);
+        }
+
         const session = await DatabaseService.startSession();
         try {
             return await DatabaseService.withTransaction(session, async () => {
                 const escrow = await EscrowTransaction.findById(escrowId).session(session);
                 if (!escrow) throw new NotFoundError('Escrow not found');
-                if (escrow.status !== 'DISPUTED') throw new BadRequestError('Escrow is not disputed');
 
                 const vfdProvider = new VfdProvider();
                 const platformAccount = (await vfdProvider.getPrimeAccountInfo()).data;
@@ -686,6 +731,10 @@ export class EscrowService {
 
                 return escrow;
             });
+        } catch (error) {
+            // Revert to DISPUTED on failure
+            await EscrowTransaction.findByIdAndUpdate(escrowId, { status: 'DISPUTED' }).catch(() => { });
+            throw error;
         } finally {
             session.endSession();
         }
@@ -696,16 +745,30 @@ export class EscrowService {
      * PENDING -> CANCELLED (Refund Buyer)
      */
     static async cancelEscrow(escrowId: string, userId: string) {
+        // Atomically set status to PROCESSING to prevent double execution
+        const escrowCheck = await EscrowTransaction.findOneAndUpdate(
+            { _id: escrowId, status: 'PENDING' },
+            { status: 'PROCESSING' },
+            { new: true }
+        );
+        if (!escrowCheck) {
+            const existing = await EscrowTransaction.findById(escrowId);
+            if (!existing) throw new NotFoundError('Escrow not found');
+            if (existing.status === 'PROCESSING') throw new BadRequestError('This operation is already being processed');
+            throw new BadRequestError(`Escrow is ${existing.status}, expected PENDING`);
+        }
+
+        // Auth Check: Only Buyer can cancel
+        if (escrowCheck.buyerId !== userId) {
+            await EscrowTransaction.findByIdAndUpdate(escrowId, { status: 'PENDING' });
+            throw new UnauthorizedError('Not authorized');
+        }
+
         const session = await DatabaseService.startSession();
         try {
             return await DatabaseService.withTransaction(session, async () => {
                 const escrow = await EscrowTransaction.findById(escrowId).session(session);
                 if (!escrow) throw new NotFoundError('Escrow not found');
-
-                // Auth Check: Only Buyer can cancel
-                if (escrow.buyerId !== userId) throw new UnauthorizedError('Not authorized');
-
-                if (escrow.status !== 'PENDING') throw new BadRequestError('Escrow is not pending');
 
                 // REFUND LOGIC (Reused from rejectEscrow)
                 const vfdProvider = new VfdProvider();
@@ -768,6 +831,10 @@ export class EscrowService {
 
                 return escrow;
             });
+        } catch (error) {
+            // Revert to PENDING on failure
+            await EscrowTransaction.findByIdAndUpdate(escrowId, { status: 'PENDING' }).catch(() => { });
+            throw error;
         } finally {
             session.endSession();
         }

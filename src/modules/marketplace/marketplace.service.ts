@@ -5,6 +5,7 @@ import { BadRequestError, NotFoundError, UnauthorizedError } from '../../excepti
 import { DatabaseService } from '../../shared/db';
 import { EscrowTransaction } from '../escrow/escrow.model';
 import { Order, OrderStatus } from './order.model';
+import { SettingsService } from '../admin/settings.service';
 
 export class MarketplaceService {
     /* =========================================
@@ -177,6 +178,15 @@ export class MarketplaceService {
         const vendor = await Vendor.findOne({ userId, status: VendorStatus.APPROVED });
         if (!vendor) throw new UnauthorizedError('User is not an approved vendor');
 
+        // Validate description
+        if (!data.description || data.description.trim().length === 0) {
+            throw new BadRequestError('Product description is required');
+        }
+        const wordCount = data.description.trim().split(/\s+/).length;
+        if (wordCount > 200) {
+            throw new BadRequestError(`Product description must be 200 words or less (currently ${wordCount} words)`);
+        }
+
         const product = await Product.create({
             vendorId: vendor._id,
             ...data,
@@ -208,6 +218,17 @@ export class MarketplaceService {
         const product = await Product.findOne({ _id: productId, vendorId: vendor._id });
         if (!product) throw new NotFoundError('Product not found or unauthorized');
 
+        // Validate description if provided
+        if (data.description !== undefined) {
+            if (data.description.trim().length === 0) {
+                throw new BadRequestError('Product description cannot be empty');
+            }
+            const wordCount = data.description.trim().split(/\s+/).length;
+            if (wordCount > 200) {
+                throw new BadRequestError(`Product description must be 200 words or less (currently ${wordCount} words)`);
+            }
+        }
+
         Object.assign(product, data);
         return product.save();
     }
@@ -230,10 +251,20 @@ export class MarketplaceService {
             isOwner = true;
         }
 
+        // Calculate escrow/service fee from settings
+        let escrowFee = 0;
+        try {
+            escrowFee = await SettingsService.calculateProfit('escrow', 'send', product.price);
+        } catch (e) {
+            // If no profit config exists, fee remains 0
+        }
+
         return {
             ...product,
             vendorId: vendor || { _id: product.vendorId, businessName: 'Unknown Vendor' },
-            isOwner
+            isOwner,
+            escrowFee,
+            serviceFee: escrowFee
         };
     }
 
@@ -304,12 +335,29 @@ export class MarketplaceService {
             return acc;
         }, {} as any);
 
-        const data = products.map(product => ({
-            ...product,
-            vendorId: vendorMap[product.vendorId] || { _id: product.vendorId, businessName: 'Unknown Vendor' },
-            isOwner: params.vendorId && vendorMap[product.vendorId]?.userId === params.vendorId // If filtering by vendor
-                // Wait, logic is: compare viewerId with vendor.userId
-                ? true : (params.viewerId && vendorMap[product.vendorId]?.userId === params.viewerId)
+        // Calculate fees for each product
+        const feeCache: Map<number, number> = new Map();
+        const calculateFee = async (price: number): Promise<number> => {
+            if (feeCache.has(price)) return feeCache.get(price)!;
+            try {
+                const fee = await SettingsService.calculateProfit('escrow', 'send', price);
+                feeCache.set(price, fee);
+                return fee;
+            } catch {
+                return 0;
+            }
+        };
+
+        const data = await Promise.all(products.map(async product => {
+            const escrowFee = await calculateFee(product.price);
+            return {
+                ...product,
+                vendorId: vendorMap[product.vendorId] || { _id: product.vendorId, businessName: 'Unknown Vendor' },
+                isOwner: params.vendorId && vendorMap[product.vendorId]?.userId === params.vendorId
+                    ? true : (params.viewerId && vendorMap[product.vendorId]?.userId === params.viewerId),
+                escrowFee,
+                serviceFee: escrowFee
+            };
         }));
 
         return { data, total, page, pages: Math.ceil(total / limit) };
