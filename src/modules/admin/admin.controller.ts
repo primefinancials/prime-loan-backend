@@ -16,6 +16,7 @@ import { TransferService } from '../transfers/transfer.service';
 import { UserService } from '../users/user.service';
 import { UnauthorizedError } from '../../exceptions';
 import { SettingsService } from './settings.service';
+import { Settings } from './settings.model';
 import BillPaymentService from '../bill-payments/bill.payment.service';
 
 const adminService = new AdminService();
@@ -678,21 +679,29 @@ export class AdminController {
       const admin = req.admin;
       checkPermission(admin!, 'manage_settings', { throwOnFail: true });
 
-      const settings = await SettingsService.getSettings();
-
-      // Auto-assign _id to legacy entries that don't have one
-      let needsSave = false;
-      for (const fee of settings.profitRange) {
-        if (!(fee as any)._id) {
-          (fee as any)._id = new mongoose.Types.ObjectId();
-          needsSave = true;
+      // Use raw MongoDB query to detect entries truly missing _id in DB
+      // (Mongoose auto-generates _id in memory with { _id: true } schema option,
+      // making the hydrated document unreliable for detecting missing _ids)
+      const rawDoc = await Settings.collection.findOne({ singleton: 'singleton' });
+      if (rawDoc && rawDoc.profitRange) {
+        let needsUpdate = false;
+        const updatedRange = rawDoc.profitRange.map((f: any) => {
+          if (!f._id) {
+            f._id = new mongoose.Types.ObjectId();
+            needsUpdate = true;
+          }
+          return f;
+        });
+        if (needsUpdate) {
+          await Settings.collection.updateOne(
+            { singleton: 'singleton' },
+            { $set: { profitRange: updatedRange } }
+          );
         }
       }
-      if (needsSave) {
-        settings.markModified('profitRange');
-        await settings.save();
-      }
 
+      // Now load via Mongoose — _ids are guaranteed to exist in DB
+      const settings = await SettingsService.getSettings();
       const fees = settings.profitRange || [];
 
       // Group by category
