@@ -133,6 +133,12 @@ router.put("/settings", verifyJwtRest(), AdminController.updateSettings as any);
 router.get("/settings/calculate-profit", verifyJwtRest(), AdminController.calculateProfit as any);
 router.get("/settings/profit-config", verifyJwtRest(), AdminController.getProfitConfig as any);
 
+// Fee Management CRUD
+router.get("/fees", verifyJwtRest(), AdminController.getFeeConfig as any);
+router.post("/fees", verifyJwtRest(), AdminController.addFeeEntry as any);
+router.put("/fees/:id", verifyJwtRest(), AdminController.updateFeeEntry as any);
+router.delete("/fees/:id", verifyJwtRest(), AdminController.deleteFeeEntry as any);
+
 /* =============================
    WORKER MANAGEMENT
 ============================= */

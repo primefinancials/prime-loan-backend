@@ -133,7 +133,7 @@ export class SettingsService {
    * Throws NotFoundError if no configuration exists for that category.
    */
   static async getProfitConfig(
-    category: "bill-payment" | "transfer" | "loan" | "savings" | "escrow"
+    category: "bill-payment" | "transfer" | "loan" | "savings" | "escrow" | "marketplace"
   ) {
     const settings = await this.getSettings();
 
@@ -156,7 +156,7 @@ export class SettingsService {
    * - Reusable across LoanService, TransferService, ProfitService, etc.
    */
   static async calculateProfit(
-    category: "bill-payment" | "transfer" | "loan" | "savings" | "escrow",
+    category: "bill-payment" | "transfer" | "loan" | "savings" | "escrow" | "marketplace",
     action: "send" | "receive",
     amount: number
   ): Promise<number> {
@@ -191,6 +191,48 @@ export class SettingsService {
 
     // Round to 2 decimal places for currency consistency
     return Number(totalProfit.toFixed(2));
+  }
+
+  /**
+   * Calculate fee breakdown for one or more categories.
+   * Returns individual line items with name, rate/amount, and computed fee.
+   */
+  static async calculateFeeBreakdown(
+    categories: ("bill-payment" | "transfer" | "loan" | "savings" | "escrow" | "marketplace")[],
+    action: "send" | "receive",
+    amount: number
+  ): Promise<{ name: string; type: string; rate: number; fee: number; category: string }[]> {
+    if (!amount || amount <= 0) return [];
+
+    const settings = await this.getSettings();
+    const allConfigs = settings.profitRange || [];
+
+    const breakdown: { name: string; type: string; rate: number; fee: number; category: string }[] = [];
+
+    for (const category of categories) {
+      const configs = allConfigs.filter(
+        (c) => c.category === category && amount >= c.minAmount && amount <= c.maxAmount && c.action === action
+      );
+
+      for (const config of configs) {
+        let fee = 0;
+        if (config.type === "percentage") {
+          fee = Number((config.amount * amount).toFixed(2));
+        } else {
+          fee = config.amount || 0;
+        }
+
+        breakdown.push({
+          name: config.description,
+          type: config.type,
+          rate: config.amount,
+          fee,
+          category: config.category
+        });
+      }
+    }
+
+    return breakdown;
   }
 
   /**

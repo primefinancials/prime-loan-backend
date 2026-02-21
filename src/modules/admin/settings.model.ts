@@ -8,7 +8,7 @@ import { getCollectionName } from '../../shared/utils/collection.utils';
 export interface ProfitRange {
   maxAmount: number;
   minAmount: number;
-  category: "bill-payment" | "transfer" | "loan" | "savings" | "escrow";
+  category: "bill-payment" | "transfer" | "loan" | "savings" | "escrow" | "marketplace";
   type: "percentage" | "amount";
   amount: number;
   action: "send" | "receive"
@@ -114,7 +114,7 @@ const ProfitRangeSchema = new Schema<ProfitRange>(
     minAmount: { type: Number, required: true },
     category: {
       type: String,
-      enum: ["bill-payment", "transfer", "loan", "savings", "escrow"],
+      enum: ["bill-payment", "transfer", "loan", "savings", "escrow", "marketplace"],
       required: true,
     },
     action: { type: String, enum: ["send", "receive"], default: "send" },
@@ -122,7 +122,7 @@ const ProfitRangeSchema = new Schema<ProfitRange>(
     amount: { type: Number, default: 0 },
     description: { type: String, required: true }
   },
-  { _id: false } // no need for _id in subdocs
+  { _id: true } // enable _id for individual fee entry CRUD
 );
 
 /**
@@ -285,6 +285,24 @@ const SettingsSchema = new Schema<ISettings>(
           action: "send",
           amount: 0.015, // 1.5%
           description: "Escrow Platform Fee"
+        },
+        {
+          category: "marketplace",
+          type: "percentage",
+          minAmount: 0,
+          maxAmount: 10000000,
+          action: "send",
+          amount: 0.075, // 7.5%
+          description: "VAT"
+        },
+        {
+          category: "marketplace",
+          type: "percentage",
+          minAmount: 0,
+          maxAmount: 10000000,
+          action: "send",
+          amount: 0.015, // 1.5%
+          description: "Marketplace Escrow Service Fee"
         }
       ],
     },

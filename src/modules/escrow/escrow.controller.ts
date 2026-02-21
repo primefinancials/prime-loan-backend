@@ -246,6 +246,7 @@ export class EscrowController {
 
     /**
      * Get Escrow Fees for a given amount
+     * Supports ?type=marketplace to include marketplace-specific fees (VAT etc.)
      */
     static async getEscrowFees(req: ProtectedRequest, res: Response, next: NextFunction) {
         try {
@@ -254,15 +255,32 @@ export class EscrowController {
                 return res.status(400).json({ status: 'error', message: 'A valid positive amount is required' });
             }
 
-            const fee = await SettingsService.calculateProfit('escrow', 'send', amount);
+            const feeType = (req.query.type as string) || 'escrow';
+
+            // Determine which categories to include
+            const categories: ("escrow" | "marketplace")[] = feeType === 'marketplace'
+                ? ['escrow', 'marketplace']
+                : ['escrow'];
+
+            const breakdown = await SettingsService.calculateFeeBreakdown(categories, 'send', amount);
+
+            // Sum fees by category
+            const escrowFee = breakdown
+                .filter(b => b.category === 'escrow')
+                .reduce((sum, b) => sum + b.fee, 0);
+            const serviceFee = breakdown
+                .filter(b => b.category === 'marketplace')
+                .reduce((sum, b) => sum + b.fee, 0);
+            const totalFees = escrowFee + serviceFee;
 
             res.status(200).json({
                 status: 'success',
                 data: {
                     amount,
-                    escrowFee: fee,
-                    serviceFee: fee,
-                    total: amount + fee
+                    escrowFee,
+                    serviceFee,
+                    feeBreakdown: breakdown,
+                    total: amount + totalFees
                 }
             });
         } catch (error) {
