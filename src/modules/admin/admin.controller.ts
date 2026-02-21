@@ -766,14 +766,32 @@ export class AdminController {
 
       const settings = await SettingsService.getSettings();
 
-      // Try Mongoose subdoc .id() first, fallback to manual find by _id string
-      let entry = (settings.profitRange as any).id(id);
+      // Debug: log the incoming id and available ids
+      console.log('[updateFeeEntry] Looking for id:', id);
+      console.log('[updateFeeEntry] Available ids:', settings.profitRange.map((f: any) => ({ _id: f._id?.toString(), desc: f.description })));
+
+      // Try multiple lookup strategies
+      let entry: any = null;
+
+      // 1. Try Mongoose subdoc .id() (may throw on invalid ObjectId)
+      try {
+        entry = (settings.profitRange as any).id(id);
+      } catch (e) {
+        // .id() throws if id is not a valid ObjectId format
+      }
+
+      // 2. Fallback: compare _id.toString()
       if (!entry) {
-        entry = settings.profitRange.find((f: any) => String(f._id) === id);
+        entry = settings.profitRange.find((f: any) => f._id && f._id.toString() === id);
+      }
+
+      // 3. Fallback: compare String(f._id)
+      if (!entry) {
+        entry = settings.profitRange.find((f: any) => String(f._id) === String(id));
       }
 
       if (!entry) {
-        return res.status(404).json({ status: 'error', message: 'Fee entry not found' });
+        return res.status(404).json({ status: 'error', message: 'Fee entry not found', debug: { lookingFor: id, available: settings.profitRange.map((f: any) => f._id?.toString()) } });
       }
 
       // Update allowed fields
