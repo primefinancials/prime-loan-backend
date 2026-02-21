@@ -665,6 +665,148 @@ export class AdminController {
     }
   }
 
+  // ───────────────────────────────────────────
+  // Fee Management CRUD
+  // ───────────────────────────────────────────
+
+  /**
+   * Get all fee configurations grouped by category
+   */
+  static async getFeeConfig(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'manage_settings', { throwOnFail: true });
+
+      const settings = await SettingsService.getSettings();
+      const fees = settings.profitRange || [];
+
+      // Group by category
+      const grouped: Record<string, any[]> = {};
+      for (const fee of fees) {
+        const cat = fee.category;
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(fee);
+      }
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          fees,
+          grouped
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Add a new fee entry to profitRange
+   */
+  static async addFeeEntry(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'manage_settings', { throwOnFail: true });
+
+      const { category, type, amount, minAmount, maxAmount, action, description } = req.body;
+
+      if (!category || !type || amount === undefined || !description) {
+        return res.status(400).json({ status: 'error', message: 'category, type, amount, and description are required' });
+      }
+
+      const settings = await SettingsService.getSettings();
+      const newEntry = {
+        category,
+        type,
+        amount: Number(amount),
+        minAmount: Number(minAmount || 0),
+        maxAmount: Number(maxAmount || 10000000),
+        action: action || 'send',
+        description
+      };
+
+      settings.profitRange.push(newEntry as any);
+      settings.updatedBy = admin?._id as any || '';
+      await settings.save();
+
+      res.status(201).json({
+        status: 'success',
+        data: settings.profitRange
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Update a fee entry by its _id
+   */
+  static async updateFeeEntry(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'manage_settings', { throwOnFail: true });
+
+      const { id } = req.params;
+      const updates = req.body;
+
+      const settings = await SettingsService.getSettings();
+      const entry = (settings.profitRange as any).id(id);
+
+      if (!entry) {
+        return res.status(404).json({ status: 'error', message: 'Fee entry not found' });
+      }
+
+      // Update allowed fields
+      if (updates.description !== undefined) entry.description = updates.description;
+      if (updates.type !== undefined) entry.type = updates.type;
+      if (updates.amount !== undefined) entry.amount = Number(updates.amount);
+      if (updates.minAmount !== undefined) entry.minAmount = Number(updates.minAmount);
+      if (updates.maxAmount !== undefined) entry.maxAmount = Number(updates.maxAmount);
+      if (updates.action !== undefined) entry.action = updates.action;
+      if (updates.category !== undefined) entry.category = updates.category;
+
+      settings.updatedBy = admin?._id as any || '';
+      await settings.save();
+
+      res.status(200).json({
+        status: 'success',
+        data: settings.profitRange
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Delete a fee entry by its _id
+   */
+  static async deleteFeeEntry(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'manage_settings', { throwOnFail: true });
+
+      const { id } = req.params;
+
+      const settings = await SettingsService.getSettings();
+      const entry = (settings.profitRange as any).id(id);
+
+      if (!entry) {
+        return res.status(404).json({ status: 'error', message: 'Fee entry not found' });
+      }
+
+      entry.deleteOne();
+      settings.updatedBy = admin?._id as any || '';
+      await settings.save();
+
+      res.status(200).json({
+        status: 'success',
+        data: settings.profitRange
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   /**
    * Calculate profit (no permission check by request)
    */
@@ -673,7 +815,7 @@ export class AdminController {
       const { category, action, amount } = req.query
 
       const settings = await SettingsService.calculateProfit(
-        category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow",
+        category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow" | "marketplace",
         action as "send" | "receive",
         Number(amount)
       );
@@ -695,7 +837,7 @@ export class AdminController {
       const { category } = req.query;
 
       const settings = await SettingsService.getProfitConfig(
-        category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow",
+        category as "bill-payment" | "transfer" | "loan" | "savings" | "escrow" | "marketplace",
       );
 
       res.status(200).json({
