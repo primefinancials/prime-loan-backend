@@ -3,6 +3,7 @@
  * Provides admin tools for reconciliation, manual reviews, account management, and profit reporting
  */
 import { Request, Response, NextFunction } from 'express';
+import mongoose from 'mongoose';
 import { ProtectedRequest } from '../../interfaces';
 import { LedgerService } from '../ledger/LedgerService';
 import { LedgerEntry } from '../ledger/LedgerEntry.model';
@@ -678,6 +679,20 @@ export class AdminController {
       checkPermission(admin!, 'manage_settings', { throwOnFail: true });
 
       const settings = await SettingsService.getSettings();
+
+      // Auto-assign _id to legacy entries that don't have one
+      let needsSave = false;
+      for (const fee of settings.profitRange) {
+        if (!(fee as any)._id) {
+          (fee as any)._id = new mongoose.Types.ObjectId();
+          needsSave = true;
+        }
+      }
+      if (needsSave) {
+        settings.markModified('profitRange');
+        await settings.save();
+      }
+
       const fees = settings.profitRange || [];
 
       // Group by category
