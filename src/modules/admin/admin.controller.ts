@@ -750,7 +750,12 @@ export class AdminController {
       const updates = req.body;
 
       const settings = await SettingsService.getSettings();
-      const entry = (settings.profitRange as any).id(id);
+
+      // Try Mongoose subdoc .id() first, fallback to manual find by _id string
+      let entry = (settings.profitRange as any).id(id);
+      if (!entry) {
+        entry = settings.profitRange.find((f: any) => String(f._id) === id);
+      }
 
       if (!entry) {
         return res.status(404).json({ status: 'error', message: 'Fee entry not found' });
@@ -766,6 +771,7 @@ export class AdminController {
       if (updates.category !== undefined) entry.category = updates.category;
 
       settings.updatedBy = admin?._id as any || '';
+      settings.markModified('profitRange');
       await settings.save();
 
       res.status(200).json({
@@ -788,14 +794,26 @@ export class AdminController {
       const { id } = req.params;
 
       const settings = await SettingsService.getSettings();
-      const entry = (settings.profitRange as any).id(id);
+
+      // Try Mongoose subdoc .id() first, fallback to manual find
+      let entry = (settings.profitRange as any).id(id);
+      if (!entry) {
+        entry = settings.profitRange.find((f: any) => String(f._id) === id);
+      }
 
       if (!entry) {
         return res.status(404).json({ status: 'error', message: 'Fee entry not found' });
       }
 
-      entry.deleteOne();
+      // Remove the entry
+      if (typeof entry.deleteOne === 'function') {
+        entry.deleteOne();
+      } else {
+        settings.profitRange = settings.profitRange.filter((f: any) => String(f._id) !== id) as any;
+      }
+
       settings.updatedBy = admin?._id as any || '';
+      settings.markModified('profitRange');
       await settings.save();
 
       res.status(200).json({
