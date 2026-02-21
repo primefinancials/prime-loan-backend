@@ -796,7 +796,7 @@ export class AdminController {
 
       // 3. Fallback: compare String(f._id)
       if (!entry) {
-        entry = settings.profitRange.find((f: any) => String(f._id) === String(id));
+        entry = settings.profitRange.find((f: any) => String(f?._id || f.id) === String(id));
       }
 
       if (!entry) {
