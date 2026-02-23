@@ -405,6 +405,10 @@ export class SavingsService {
               traceId
             });
 
+            plan.principal -= amount;
+            if (plan.principal <= 0) {
+              plan.status = 'COMPLETED';
+            }
             await plan.save({ session });
 
             return {
@@ -496,6 +500,9 @@ export class SavingsService {
             }
 
             plan.principal -= amount;
+            if (plan.principal <= 0) {
+              plan.status = 'COMPLETED';
+            }
             await plan.save({ session });
 
             return {
@@ -735,6 +742,10 @@ export class SavingsService {
               // Update status
               withdrawal.status = 'PROCESSED';
               withdrawal.transactionId = trxn.reference;
+
+              if (plan.principal <= 0) {
+                plan.status = 'COMPLETED';
+              }
             } else {
               await TransferService.failTransfer(trxn.reference);
               console.error(`Transfer failed for plan ${plan._id} pending withdrawal: ${providerRes.message}`);
