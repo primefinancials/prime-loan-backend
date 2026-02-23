@@ -327,7 +327,7 @@ SettingsSchema.pre("save", async function (next) {
     return next();
   }
   const existing = await Settings.findOne({ singleton: "singleton" });
-  if (existing && !existing._id.equals(this._id)) {
+  if (existing && !(existing as any)._id.equals(this._id)) {
     throw new Error("Only one settings document allowed (singleton enforced).");
   }
   this.updatedAt = new Date();
