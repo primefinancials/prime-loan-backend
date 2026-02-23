@@ -202,8 +202,8 @@ const SettingsSchema = new Schema<ISettings>(
     },
 
     // Backward compatibility defaults
-    savingsPenalty: { type: Number, default: 0.15 },
-    savingsInterestRate: { type: Number, default: 0.025 },
+    savingsPenalty: { type: Number, default: 15 },
+    savingsInterestRate: { type: Number, default: 2.5 },
 
     companyName: { type: String, default: "Prime Finance" },
     companyPhone: { type: String, default: "+234-800-000-0000" },
@@ -249,7 +249,7 @@ const SettingsSchema = new Schema<ISettings>(
           minAmount: 0,
           maxAmount: 500000,
           action: "send",
-          amount: 0.10, // 10%
+          amount: 10, // 10%
           description: "Loan Interest"
         },
         {
@@ -267,7 +267,7 @@ const SettingsSchema = new Schema<ISettings>(
           minAmount: 0,
           maxAmount: 100000,
           action: "send",
-          amount: 0.03, // 3%
+          amount: 3, // 3%
           description: "Bill Payment Commision"
         },
         {
@@ -276,7 +276,7 @@ const SettingsSchema = new Schema<ISettings>(
           minAmount: 0,
           maxAmount: 100000,
           action: "send",
-          amount: 0.025, // 2.5%
+          amount: 2.5, // 2.5%
           description: "Savings Interest"
         },
         {
@@ -285,7 +285,7 @@ const SettingsSchema = new Schema<ISettings>(
           minAmount: 0,
           maxAmount: 10000000,
           action: "send",
-          amount: 0.015, // 1.5%
+          amount: 1.5, // 1.5%
           description: "Escrow Platform Fee"
         },
         {
@@ -294,7 +294,7 @@ const SettingsSchema = new Schema<ISettings>(
           minAmount: 0,
           maxAmount: 10000000,
           action: "send",
-          amount: 0.075, // 7.5%
+          amount: 7.5, // 7.5%
           description: "VAT"
         },
         {
@@ -303,7 +303,7 @@ const SettingsSchema = new Schema<ISettings>(
           minAmount: 0,
           maxAmount: 10000000,
           action: "send",
-          amount: 0.015, // 1.5%
+          amount: 1.5, // 1.5%
           description: "Marketplace Escrow Service Fee"
         }
       ],
