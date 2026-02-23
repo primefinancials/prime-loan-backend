@@ -94,6 +94,8 @@ router.get("/ladder/:id", verifyJwtRest(), LoanController.getLoanLadderById as a
    SAVINGS MANAGEMENT
 ============================= */
 
+router.get("/savings/settings", verifyJwtRest(), AdminController.getSavingsSettings as any);
+router.put("/savings/settings", verifyJwtRest(), AdminController.updateSavingsSettings as any);
 router.get("/savings", verifyJwtRest(), SavingsController.getPlans as any);
 router.get("/savings/stats", verifyJwtRest(), AdminController.getSavingsStats as any);
 router.get("/savings/by-category", verifyJwtRest(), validateReqQuery(flaggedQuerySchema), AdminController.getSavingsByCategory as any);
