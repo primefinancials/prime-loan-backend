@@ -182,7 +182,7 @@ export class SettingsService {
     for (const config of validConfigs) {
       if (action == config.action) {
         if (config.type === "percentage") {
-          totalProfit += config.amount * amount;
+          totalProfit += (config.amount / 100) * amount;
         } else if (config.type === "amount") {
           totalProfit += config.amount || 0;
         }
@@ -217,7 +217,7 @@ export class SettingsService {
       for (const config of configs) {
         let fee = 0;
         if (config.type === "percentage") {
-          fee = Number((config.amount * amount).toFixed(2));
+          fee = Number(((config.amount / 100) * amount).toFixed(2));
         } else {
           fee = config.amount || 0;
         }

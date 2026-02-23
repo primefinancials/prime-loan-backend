@@ -156,11 +156,13 @@ const SettingsSchema = new Schema<ISettings>(
       flexible: {
         interestRate: { type: Number, default: 0 },
         standard: {
+          interestRate: { type: Number, default: 0 },
           penaltyRate: { type: Number, default: 2.5 }, // Lower penalty for standard
           withdrawalDelayHours: { type: Number, default: 24 }, // 24 hours delay default
           locked: { type: Boolean, default: true }
         },
         instant: {
+          interestRate: { type: Number, default: 0 },
           penaltyRate: { type: Number, default: 5 }, // Higher penalty for instant
           locked: { type: Boolean, default: true }
         }

@@ -15,13 +15,21 @@ export class CartService {
     static async getCart(userId: string) {
         const cart = await this.getCartDocument(userId);
 
-        // Calculate cumulative escrow fees
+        // Calculate cumulative escrow and service fees
         let totalEscrowFee = 0;
+        let totalServiceFee = 0;
+        let feeBreakdown: any[] = [];
         try {
             for (const item of cart.items) {
                 const itemTotal = item.price * item.quantity;
-                const fee = await SettingsService.calculateProfit('escrow', 'send', itemTotal);
-                totalEscrowFee += fee;
+                const breakdown = await SettingsService.calculateFeeBreakdown(['escrow', 'marketplace'], 'send', itemTotal);
+
+                const itemEscrowFee = breakdown.filter(b => b.category === 'escrow').reduce((sum, b) => sum + b.fee, 0);
+                const itemServiceFee = breakdown.filter(b => b.category === 'marketplace').reduce((sum, b) => sum + b.fee, 0);
+
+                totalEscrowFee += itemEscrowFee;
+                totalServiceFee += itemServiceFee;
+                feeBreakdown = [...feeBreakdown, ...breakdown]; // Simplistic aggregation per item
             }
         } catch (e) {
             // If no profit config, fee remains 0
@@ -30,9 +38,10 @@ export class CartService {
         const cartObj = cart.toObject();
         return {
             ...cartObj,
-            totalEscrowFee,
-            serviceFee: totalEscrowFee,
-            grandTotal: cart.totalAmount + totalEscrowFee
+            escrowFee: totalEscrowFee,
+            serviceFee: totalServiceFee,
+            feeBreakdown,
+            grandTotal: cart.totalAmount + totalEscrowFee + totalServiceFee
         };
     }
 
