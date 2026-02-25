@@ -766,6 +766,13 @@ export class SavingsService {
     const plan = await SavingsPlan.findById(planId);
     if (!plan) throw new Error("Plan not found");
 
+    if (traceId === 'early-withdrawal') {
+      if (plan.planType !== 'LOCKED' || !plan.earlyWithdrawalDate) {
+        throw new Error("Not a valid locked early withdrawal");
+      }
+      return await SavingsService.requestWithdrawal(plan.userId, planId, plan.principal, `admin-disb-${Date.now()}`, true);
+    }
+
     if (!plan.pendingWithdrawals) {
       throw new Error("No pending withdrawals found for this plan");
     }
@@ -937,23 +944,47 @@ export class SavingsService {
     }
 
     if (search && search.trim() !== '') {
-      // Need to import User. User is already imported usually, check imports if it fails
       const users = await User.find({ email: { $regex: search, $options: 'i' } }).select('_id');
       const userIds = users.map(u => u._id);
-      query.userId = { $in: userIds };
+      const searchCondition = {
+        $or: [
+          { userId: { $in: userIds } },
+          { planName: { $regex: search, $options: 'i' } }
+        ]
+      };
+      if (Object.keys(query).length > 0) {
+        query = { $and: [query, searchCondition] };
+      } else {
+        query = searchCondition;
+      }
     }
 
     const [plans, total] = await Promise.all([
       SavingsPlan.find(query)
-        .populate('userId', 'email user_metadata.first_name user_metadata.surname user_metadata.phone_number')
         .skip(skip)
         .limit(limit)
-        .sort({ createdAt: -1 }),
+        .sort({ createdAt: -1 })
+        .lean(),
       SavingsPlan.countDocuments(query)
     ]);
 
+    const planUserIds = [...new Set(plans.map(p => p.userId))];
+    const usersData = await User.find({ _id: { $in: planUserIds } })
+      .select('email user_metadata.first_name user_metadata.surname user_metadata.phone_number')
+      .lean();
+
+    const userMap = usersData.reduce((acc, u) => {
+      acc[u._id as string] = u;
+      return acc;
+    }, {} as Record<string, any>);
+
+    const populatedPlans = plans.map(p => ({
+      ...p,
+      userId: userMap[p.userId as string] || p.userId
+    }));
+
     return {
-      plans,
+      plans: populatedPlans,
       pagination: {
         page,
         limit,
