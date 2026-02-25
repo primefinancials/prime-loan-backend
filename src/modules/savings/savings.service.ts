@@ -784,7 +784,7 @@ export class SavingsService {
     }
 
     const withdrawalIndex = plan.pendingWithdrawals.findIndex(
-      (w) => (w as any).traceId === traceId || (w as any)._id?.toString() === traceId
+      (w, idx) => (w as any).traceId === traceId || (w as any)._id?.toString() === traceId || idx.toString() === traceId
     );
 
     if (withdrawalIndex === -1) {
@@ -917,6 +917,7 @@ export class SavingsService {
     const skip = (page - 1) * limit;
 
     let query: any = {};
+    console.log(`getAllPlans params -> filter: ${filter}, search: ${search}`);
 
     switch (filter) {
       case 'active':
@@ -951,7 +952,7 @@ export class SavingsService {
 
     if (search && search.trim() !== '') {
       const users = await User.find({ email: { $regex: search, $options: 'i' } }).select('_id');
-      const userIds = users.map(u => u._id);
+      const userIds = users.map(u => u._id.toString());
       const searchCondition = {
         $or: [
           { userId: { $in: userIds } },
@@ -963,6 +964,7 @@ export class SavingsService {
       } else {
         query = searchCondition;
       }
+      console.log(`getAllPlans query ->`, JSON.stringify(query));
     }
 
     const [plans, total] = await Promise.all([
@@ -974,19 +976,19 @@ export class SavingsService {
       SavingsPlan.countDocuments(query)
     ]);
 
-    const planUserIds = [...new Set(plans.map(p => p.userId))];
+    const planUserIds = [...new Set(plans.map(p => p.userId?.toString() || String(p.userId)))];
     const usersData = await User.find({ _id: { $in: planUserIds } })
       .select('email user_metadata.first_name user_metadata.surname user_metadata.phone_number')
       .lean();
 
     const userMap = usersData.reduce((acc, u) => {
-      acc[String(u._id)] = u;
+      acc[u._id.toString()] = u;
       return acc;
     }, {} as Record<string, any>);
 
     const populatedPlans = plans.map(p => ({
       ...p,
-      userId: userMap[String(p.userId)] || p.userId
+      userId: userMap[p.userId?.toString() || String(p.userId)] || p.userId
     }));
 
     return {
