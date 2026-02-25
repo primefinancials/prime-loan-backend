@@ -186,7 +186,7 @@ export class SavingsController {
 
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
-      const filter = (req.query.filter as string) || 'all';
+      const filter = (req.query.filter as string) || (req.query.status as string) || 'all';
       const search = (req.query.search as string) || '';
 
       const validFilters = ['all', 'active', 'awaiting_withdrawal', 'completed', 'cancelled', 'fixed', 'flexible'];
