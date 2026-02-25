@@ -770,7 +770,13 @@ export class SavingsService {
       if (plan.planType !== 'LOCKED' || !plan.earlyWithdrawalDate) {
         throw new Error("Not a valid locked early withdrawal");
       }
-      return await SavingsService.requestWithdrawal(plan.userId, planId, plan.principal, `admin-disb-${Date.now()}`, true);
+      return await SavingsService.completePlan({
+        userId: plan.userId.toString(),
+        planId: planId,
+        amount: plan.principal,
+        idempotencyKey: `admin-disb-${Date.now()}`,
+        forceImmediate: true
+      });
     }
 
     if (!plan.pendingWithdrawals) {
@@ -974,13 +980,13 @@ export class SavingsService {
       .lean();
 
     const userMap = usersData.reduce((acc, u) => {
-      acc[u._id as string] = u;
+      acc[String(u._id)] = u;
       return acc;
     }, {} as Record<string, any>);
 
     const populatedPlans = plans.map(p => ({
       ...p,
-      userId: userMap[p.userId as string] || p.userId
+      userId: userMap[String(p.userId)] || p.userId
     }));
 
     return {
