@@ -601,6 +601,28 @@ export class AdminController {
   }
 
   /**
+   * Admin: manually disburse a pending withdrawal
+   */
+  static async disburseSavingsWithdrawal(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'manage_savings', { throwOnFail: true });
+
+      const { planId, traceId } = req.params;
+
+      const result = await SavingsService.adminDisburseWithdrawal(planId, traceId, admin?._id as any || "");
+
+      res.status(200).json({
+        status: 'success',
+        message: 'Withdrawal disbursed successfully',
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * List users (admin)
    */
   static async getUsers(req: ProtectedRequest, res: Response, next: NextFunction) {
