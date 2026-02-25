@@ -99,6 +99,7 @@ router.put("/savings/settings", verifyJwtRest(), AdminController.updateSavingsSe
 router.get("/savings", verifyJwtRest(), SavingsController.getPlans as any);
 router.get("/savings/stats", verifyJwtRest(), AdminController.getSavingsStats as any);
 router.get("/savings/by-category", verifyJwtRest(), validateReqQuery(flaggedQuerySchema), AdminController.getSavingsByCategory as any);
+router.post("/savings/:planId/withdrawals/:traceId/disburse", verifyJwtRest(), idempotencyMiddleware() as any, AdminController.disburseSavingsWithdrawal as any);
 
 /* =============================
    DASHBOARD & REPORTS

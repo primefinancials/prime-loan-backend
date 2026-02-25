@@ -187,11 +187,12 @@ export class SavingsController {
       const page = Number(req.query.page) || 1;
       const limit = Number(req.query.limit) || 20;
       const filter = (req.query.filter as string) || 'all';
+      const search = (req.query.search as string) || '';
 
       const validFilters = ['all', 'active', 'awaiting_withdrawal', 'completed', 'cancelled', 'fixed', 'flexible'];
       const safeFilter = validFilters.includes(filter) ? filter as any : 'all';
 
-      const result = await SavingsService.getAllPlans(page, limit, safeFilter);
+      const result = await SavingsService.getAllPlans(page, limit, safeFilter, search);
 
       res.status(200).json({
         status: "success",

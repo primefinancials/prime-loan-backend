@@ -406,9 +406,6 @@ export class SavingsService {
             });
 
             plan.principal -= amount;
-            if (plan.principal <= 0) {
-              plan.status = 'COMPLETED';
-            }
             await plan.save({ session });
 
             return {
@@ -765,6 +762,127 @@ export class SavingsService {
     }
   }
 
+  static async adminDisburseWithdrawal(planId: string, traceId: string, adminId: string) {
+    const plan = await SavingsPlan.findById(planId);
+    if (!plan) throw new Error("Plan not found");
+
+    if (!plan.pendingWithdrawals) {
+      throw new Error("No pending withdrawals found for this plan");
+    }
+
+    const withdrawalIndex = plan.pendingWithdrawals.findIndex(
+      (w) => (w as any).traceId === traceId || (w as any)._id?.toString() === traceId
+    );
+
+    if (withdrawalIndex === -1) {
+      throw new Error("Specific withdrawal not found");
+    }
+
+    const withdrawal = plan.pendingWithdrawals[withdrawalIndex];
+
+    if (withdrawal.status !== 'PENDING') {
+      throw new Error(`Withdrawal is already ${withdrawal.status}`);
+    }
+
+    const session = await DatabaseService.startSession();
+    try {
+      await DatabaseService.withTransaction(session, async () => {
+        const vfdProvider = new VfdProvider();
+        const user = await User.findById(plan.userId);
+        if (!user) throw new Error(`User ${plan.userId} not found`);
+
+        const to = (await vfdProvider.getAccountInfo(user.user_metadata.accountNo)).data;
+        const from = (await vfdProvider.getPrimeAccountInfo()).data;
+
+        const idempotencyKey = `admin-disb-${(withdrawal as any).traceId || UuidService.generateTraceId()}`;
+
+        const trxn = await TransferService.initiateTransfer({
+          fromAccount: from.accountNo,
+          userId: plan.userId,
+          toAccount: to.accountNo,
+          beneficiaryName: to.client,
+          amount: withdrawal.netAmount,
+          transferType: "intra",
+          bankCode: "999999",
+          remark: `Admin Processed withdrawal for ${plan.planName}`,
+          idempotencyKey,
+          walletBalance: String(to.accountBalance),
+          meta: {
+            subType: plan.subType || 'STANDARD',
+            penalty: withdrawal.penalty,
+            principal: withdrawal.amount,
+            adminId
+          }
+        }, "savings-withdrawal");
+
+        const transferReq: TransferRequest = {
+          uniqueSenderAccountId: "",
+          fromAccount: from.accountNo,
+          fromClientId: from.clientId,
+          fromClient: from.client,
+          fromSavingsId: from.accountId,
+          toAccount: to.accountNo,
+          toClient: to.client,
+          toSession: to.accountId,
+          toClientId: to.clientId,
+          toSavingsId: to.accountId,
+          toBank: "999999",
+          signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
+          amount: withdrawal.netAmount,
+          remark: `Admin Processed withdrawal for ${plan.planName}`,
+          transferType: "intra",
+          reference: trxn.reference,
+        };
+
+        const providerRes = await vfdProvider.transfer(transferReq);
+
+        if (providerRes.status == "00") {
+          await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
+
+          // Ledger
+          await LedgerService.createDoubleEntry(
+            trxn.reference,
+            'savings_pool',
+            `user_wallet:${plan.userId}`,
+            withdrawal.netAmount,
+            'savings',
+            { userId: plan.userId, subtype: 'withdrawal', idempotencyKey, session }
+          );
+
+          if (withdrawal.penalty > 0) {
+            await LedgerService.createEntry({
+              traceId: (withdrawal as any).traceId || trxn.reference,
+              userId: plan.userId,
+              account: 'platform_revenue',
+              entryType: 'CREDIT',
+              category: 'savings',
+              subtype: 'penalty',
+              amount: withdrawal.penalty,
+              status: 'COMPLETED',
+              meta: { planId: plan._id, reason: 'Standard withdrawal penalty' }
+            }, session);
+          }
+
+          // Update status
+          withdrawal.status = 'PROCESSED';
+          (withdrawal as any).transactionId = trxn.reference;
+
+          if (plan.principal <= 0) {
+            plan.status = 'COMPLETED';
+          }
+        } else {
+          await TransferService.failTransfer(trxn.reference);
+          throw new Error(`Transfer failed: ${providerRes.message}`);
+        }
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    await plan.save();
+    return plan;
+  }
+
   static async getUserPlans(userId: string, page = 1, limit = 20,) {
     const skip = (page - 1) * limit;
     return SavingsPlan.find({ userId })
@@ -780,7 +898,8 @@ export class SavingsService {
   static async getAllPlans(
     page = 1,
     limit = 20,
-    filter: 'all' | 'active' | 'awaiting_withdrawal' | 'completed' | 'cancelled' | 'fixed' | 'flexible' = 'all'
+    filter: 'all' | 'active' | 'awaiting_withdrawal' | 'completed' | 'cancelled' | 'fixed' | 'flexible' = 'all',
+    search?: string
   ) {
     const skip = (page - 1) * limit;
 
@@ -788,10 +907,16 @@ export class SavingsService {
 
     switch (filter) {
       case 'active':
-        query = { status: 'ACTIVE', earlyWithdrawalDate: { $eq: null } };
+        query = { status: 'ACTIVE', earlyWithdrawalDate: { $eq: null }, 'pendingWithdrawals.status': { $ne: 'PENDING' } };
         break;
       case 'awaiting_withdrawal':
-        query = { status: 'ACTIVE', earlyWithdrawalDate: { $ne: null } };
+        query = {
+          status: 'ACTIVE',
+          $or: [
+            { earlyWithdrawalDate: { $ne: null } },
+            { 'pendingWithdrawals.status': 'PENDING' }
+          ]
+        };
         break;
       case 'completed':
         query = { status: 'COMPLETED' };
@@ -811,8 +936,16 @@ export class SavingsService {
         break;
     }
 
+    if (search && search.trim() !== '') {
+      // Need to import User. User is already imported usually, check imports if it fails
+      const users = await User.find({ email: { $regex: search, $options: 'i' } }).select('_id');
+      const userIds = users.map(u => u._id);
+      query.userId = { $in: userIds };
+    }
+
     const [plans, total] = await Promise.all([
       SavingsPlan.find(query)
+        .populate('userId', 'email user_metadata.first_name user_metadata.surname user_metadata.phone_number')
         .skip(skip)
         .limit(limit)
         .sort({ createdAt: -1 }),
