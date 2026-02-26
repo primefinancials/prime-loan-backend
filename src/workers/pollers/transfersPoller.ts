@@ -39,7 +39,7 @@ export class TransfersPoller {
       return QueueService.createWorker(
         'transfers-poller',
         async () => {
-          await this.processPendingTransfers();
+          await this.pollPendingTransfers();
         }
       );
     });
