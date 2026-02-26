@@ -1,4 +1,4 @@
-import { Schema, model, Document } from "mongoose";
+import { Schema, model, Document, Types } from "mongoose";
 import { getCollectionName } from '../../shared/utils/collection.utils';
 
 /**
@@ -103,12 +103,10 @@ export interface ISettings extends Document {
     maxCallsPerDay: number;
     message: string;
   };
-  workersConfig: {
-    [workerName: string]: {
-      enabled: boolean;
-      cronSchedule?: string;
-    };
-  };
+  workersConfig: Types.Map<{
+    enabled: boolean;
+    cronSchedule?: string;
+  }>;
 }
 
 /**

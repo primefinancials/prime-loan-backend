@@ -15,6 +15,7 @@ import { TransferService } from '../../modules/transfers/transfer.service';
 import { TransferRequest } from '../../shared/providers/vfd.provider';
 import { LedgerService } from '../../modules/ledger/LedgerService';
 import User from '../../modules/users/user.model';
+import { DatabaseService } from '../../shared/db';
 import { sha512 } from 'js-sha512';
 import pino from 'pino';
 
