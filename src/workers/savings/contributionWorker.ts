@@ -6,8 +6,8 @@
  * - Attempts to deduct from user wallet when funds available
  */
 import { QueueService } from '../../shared/queue';
+import { SettingsService } from '../../modules/admin/settings.service';
 import { SavingsPlan } from '../../modules/savings/savings.plan.model';
-import { DatabaseService } from '../../shared/db';
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 import { WorkerControlService } from '../../modules/workers/worker-control.service';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
@@ -23,15 +23,20 @@ const logger = pino({ name: 'savings-contribution' });
 export class SavingsContributionWorker {
     static register() {
         WorkerControlService.register('savings-contribution', async () => {
+            const settings = await SettingsService.getSettings();
+            let schedule = '0 6 * * *'; // Daily at 6 AM
+            if (settings.workersConfig?.has('savings-contribution')) {
+                const config = settings.workersConfig.get('savings-contribution');
+                if (config?.cronSchedule) schedule = config.cronSchedule;
+            }
+
+            await QueueService.removeRepeatableJobs('savings-contribution');
+            await QueueService.scheduleRepeatableJob('savings-contribution', schedule);
+
             return QueueService.createWorker(
                 'savings-contribution',
                 async () => {
                     await this.processContributions();
-                },
-                {
-                    repeat: { pattern: '0 6 * * *' }, // Daily at 6 AM
-                    removeOnComplete: 5,
-                    removeOnFail: 10
                 }
             );
         });

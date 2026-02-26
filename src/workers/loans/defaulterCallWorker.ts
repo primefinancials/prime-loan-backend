@@ -13,15 +13,21 @@ const logger = pino({ name: 'defaulter-call-worker' });
 export class DefaulterCallWorker {
     static register() {
         WorkerControlService.register('defaulter-call-worker', async () => {
+            const settings = await SettingsService.getSettings();
+            let schedule = '0 10 * * *'; // Default 10 AM every day
+            if (settings.workersConfig?.has('defaulter-call-worker')) {
+                const config = settings.workersConfig.get('defaulter-call-worker');
+                if (config?.cronSchedule) schedule = config.cronSchedule;
+            }
+
+            // Remove existing instances of repeatable jobs and replace with new schedule
+            await QueueService.removeRepeatableJobs('defaulter-call-worker');
+            await QueueService.scheduleRepeatableJob('defaulter-call-worker', schedule);
+
             return QueueService.createWorker(
                 'defaulter-call-worker',
                 async () => {
                     await this.processDefaulters();
-                },
-                {
-                    repeat: { pattern: '0 10 * * *' }, // Every day at 10 AM
-                    removeOnComplete: 5,
-                    removeOnFail: 10
                 }
             );
         });

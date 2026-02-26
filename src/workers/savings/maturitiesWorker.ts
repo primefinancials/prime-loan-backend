@@ -3,6 +3,7 @@
  * Processes matured savings plans and applies interest
  */
 import { QueueService } from '../../shared/queue';
+import { SettingsService } from '../../modules/admin/settings.service';
 import { SavingsPlan } from '../../modules/savings/savings.plan.model';
 import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
@@ -16,15 +17,20 @@ const logger = pino({ name: 'savings-maturities' });
 export class SavingsMaturitiesWorker {
   static register() {
     WorkerControlService.register('savings-maturities', async () => {
+      const settings = await SettingsService.getSettings();
+      let schedule = '0 * * * *'; // Every hour
+      if (settings.workersConfig?.has('savings-maturities')) {
+        const config = settings.workersConfig.get('savings-maturities');
+        if (config?.cronSchedule) schedule = config.cronSchedule;
+      }
+
+      await QueueService.removeRepeatableJobs('savings-maturities');
+      await QueueService.scheduleRepeatableJob('savings-maturities', schedule);
+
       return QueueService.createWorker(
         'savings-maturities',
         async () => {
           await this.processMaturedPlans();
-        },
-        {
-          repeat: { pattern: '0 * * * *' }, // Every hour
-          removeOnComplete: 5,
-          removeOnFail: 10
         }
       );
     });

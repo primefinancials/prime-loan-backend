@@ -19,6 +19,26 @@ export class WorkerController {
         }
     }
 
+    static async getWorkerLogs(req: Request, res: Response) {
+        try {
+            const { name } = req.params;
+            const limit = Number(req.query.limit) || 100;
+            const { WorkerLogService } = await import('../worker-logs/worker-log.service');
+
+            const logs = await WorkerLogService.getLogs(name, limit);
+
+            res.status(200).json({
+                status: 'success',
+                data: logs
+            });
+        } catch (error: any) {
+            res.status(500).json({
+                status: 'error',
+                message: error.message
+            });
+        }
+    }
+
     static async startWorker(req: Request, res: Response) {
         const { name } = req.params;
         try {

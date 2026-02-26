@@ -4,6 +4,7 @@
  * - Sends reminders for loans due today and tomorrow
  */
 import { QueueService } from '../../shared/queue';
+import { SettingsService } from '../../modules/admin/settings.service';
 import Loan from '../../modules/loans/loan.model';
 import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
@@ -20,17 +21,20 @@ const logger = pino({ name: 'loan-penalties-cron' });
 export class LoanPenaltiesCron {
   static register() {
     WorkerControlService.register('loan-penalties', async () => {
+      const settings = await SettingsService.getSettings();
+      let schedule = '0 */2 * * *'; // Every 2 hours
+      if (settings.workersConfig?.has('loan-penalties')) {
+        const config = settings.workersConfig.get('loan-penalties');
+        if (config?.cronSchedule) schedule = config.cronSchedule;
+      }
+
+      await QueueService.removeRepeatableJobs('loan-penalties');
+      await QueueService.scheduleRepeatableJob('loan-penalties', schedule);
+
       return QueueService.createWorker(
         'loan-penalties',
         async () => {
           await this.processLoans();
-        },
-        {
-          repeat: { pattern: '0 */2 * * *' }, // Every midnight ? Pattern says every 2 hours... 
-          // Wait, the comment says "Every midnight" but pattern is '0 */2 * * *' which is every 2 hours.
-          // I will preserve the code behavior.
-          removeOnComplete: 5,
-          removeOnFail: 10
         }
       );
     });

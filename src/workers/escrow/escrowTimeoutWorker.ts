@@ -1,4 +1,5 @@
 import { QueueService } from '../../shared/queue';
+import { SettingsService } from '../../modules/admin/settings.service';
 import { EscrowTransaction } from '../../modules/escrow/escrow.model';
 import { DatabaseService } from '../../shared/db';
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
@@ -11,15 +12,20 @@ const logger = pino({ name: 'escrow-timeout-worker' });
 export class EscrowTimeoutWorker {
     static register() {
         WorkerControlService.register('escrow-timeout', async () => {
+            const settings = await SettingsService.getSettings();
+            let schedule = '0 0 * * *'; // Daily at midnight
+            if (settings.workersConfig?.has('escrow-timeout')) {
+                const config = settings.workersConfig.get('escrow-timeout');
+                if (config?.cronSchedule) schedule = config.cronSchedule;
+            }
+
+            await QueueService.removeRepeatableJobs('escrow-timeout');
+            await QueueService.scheduleRepeatableJob('escrow-timeout', schedule);
+
             return QueueService.createWorker(
                 'escrow-timeout',
                 async () => {
                     await this.processExpiredEscrows();
-                },
-                {
-                    repeat: { pattern: '0 0 * * *' }, // Daily at midnight
-                    removeOnComplete: 5,
-                    removeOnFail: 10
                 }
             );
         });

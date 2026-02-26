@@ -103,6 +103,12 @@ export interface ISettings extends Document {
     maxCallsPerDay: number;
     message: string;
   };
+  workersConfig: {
+    [workerName: string]: {
+      enabled: boolean;
+      cronSchedule?: string;
+    };
+  };
 }
 
 /**
@@ -220,6 +226,15 @@ const SettingsSchema = new Schema<ISettings>(
       enabled: { type: Boolean, default: false },
       maxCallsPerDay: { type: Number, default: 1 },
       message: { type: String, default: "This is a reminder from Prime Finance. You have an overdue loan payment. Please pay immediately to avoid penalties." }
+    },
+
+    workersConfig: {
+      type: Map,
+      of: new Schema({
+        enabled: { type: Boolean, default: true },
+        cronSchedule: { type: String }
+      }, { _id: false }),
+      default: {}
     },
 
     profitRange: {

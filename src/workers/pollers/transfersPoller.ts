@@ -3,6 +3,7 @@
  * Polls pending transfers and handles reconciliation
  */
 import { QueueService } from '../../shared/queue';
+import { SettingsService } from '../../modules/admin/settings.service';
 import { Transfer } from '../../modules/transfers/transfer.model';
 import { Transfer as ITransfer } from '../../modules/transfers/transfer.interface';
 import { LedgerService } from '../../modules/ledger/LedgerService';
@@ -25,15 +26,20 @@ export class TransfersPoller {
 
   static register() {
     WorkerControlService.register('transfers-poller', async () => {
+      const settings = await SettingsService.getSettings();
+      let schedule: any = { every: 30000 }; // 30 seconds
+      if (settings.workersConfig?.has('transfers-poller')) {
+        const config = settings.workersConfig.get('transfers-poller');
+        if (config?.cronSchedule) schedule = config.cronSchedule;
+      }
+
+      await QueueService.removeRepeatableJobs('transfers-poller');
+      await QueueService.scheduleRepeatableJob('transfers-poller', schedule);
+
       return QueueService.createWorker(
         'transfers-poller',
         async () => {
-          await this.pollPendingTransfers();
-        },
-        {
-          repeat: { every: 30000 }, // 30 seconds
-          removeOnComplete: 10,
-          removeOnFail: 50
+          await this.processPendingTransfers();
         }
       );
     });

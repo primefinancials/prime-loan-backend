@@ -18,6 +18,7 @@ import { UnauthorizedError } from '../../exceptions';
 import { SettingsService } from './settings.service';
 import { Settings } from './settings.model';
 import BillPaymentService from '../bill-payments/bill.payment.service';
+import { WorkerControlService } from '../workers/worker-control.service';
 
 const adminService = new AdminService();
 
@@ -679,6 +680,17 @@ export class AdminController {
         admin?._id as any || "",
         req.body
       );
+
+      // If worker configs were updated, dynamically restart active workers to apply changes
+      if (req.body.workersConfig || req.body.defaulterCallConfig) {
+        const statuses = await WorkerControlService.getStatuses();
+        for (const status of statuses) {
+          if (status.isRunning) {
+            // Restart in background to not block response
+            WorkerControlService.restart(status.name).catch(console.error);
+          }
+        }
+      }
 
       res.status(200).json({
         status: 'success',
