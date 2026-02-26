@@ -1,4 +1,5 @@
 import WorkerLog, { IWorkerLog } from './worker-log.model';
+import { SocketService } from '../../shared/sockets';
 
 export class WorkerLogService {
     /**
@@ -17,7 +18,18 @@ export class WorkerLogService {
                 message,
                 metadata
             });
-            return await log.save();
+            const savedLog = await log.save();
+
+            // Emit via WebSocket to Admin namespace for real-time UI updates
+            try {
+                const io = SocketService.getIO();
+                const adminNamespace = io.of('/admin');
+                adminNamespace.emit('worker_log', savedLog);
+            } catch (socketErr) {
+                // Ignore socket errors to prevent worker disruption
+            }
+
+            return savedLog;
         } catch (error) {
             console.error('Failed to save worker log:', error);
             // Return a partial object or throw, depending on how strict we want to be.

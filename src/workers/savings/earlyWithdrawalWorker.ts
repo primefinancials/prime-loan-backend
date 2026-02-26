@@ -3,6 +3,7 @@
  * Processes scheduled early withdrawals for savings plans
  */
 import { QueueService } from '../../shared/queue';
+import { SettingsService } from '../../modules/admin/settings.service';
 import { SavingsPlan } from '../../modules/savings/savings.plan.model';
 import { SavingsService } from '../../modules/savings/savings.service';
 import { DatabaseService } from '../../shared/db';
@@ -15,15 +16,20 @@ const logger = pino({ name: 'savings-early-withdrawal' });
 export class SavingsEarlyWithdrawalWorker {
     static register() {
         WorkerControlService.register('savings-early-withdrawal', async () => {
+            const settings = await SettingsService.getSettings();
+            let schedule = '0 * * * *'; // Every hour
+            if (settings.workersConfig?.has('savings-early-withdrawal')) {
+                const config = settings.workersConfig.get('savings-early-withdrawal');
+                if (config?.cronSchedule) schedule = config.cronSchedule;
+            }
+
+            await QueueService.removeRepeatableJobs('savings-early-withdrawal');
+            await QueueService.scheduleRepeatableJob('savings-early-withdrawal', schedule);
+
             return QueueService.createWorker(
                 'savings-early-withdrawal',
                 async () => {
                     await this.processScheduledWithdrawals();
-                },
-                {
-                    repeat: { pattern: '0 * * * *' }, // Every hour
-                    removeOnComplete: 5,
-                    removeOnFail: 10
                 }
             );
         });

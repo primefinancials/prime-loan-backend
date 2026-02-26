@@ -146,6 +146,7 @@ router.delete("/fees/:id", verifyJwtRest(), AdminController.deleteFeeEntry as an
    WORKER MANAGEMENT
 ============================= */
 router.get("/workers", verifyJwtRest(), WorkerController.listWorkers as any);
+router.get("/workers/:name/logs", verifyJwtRest(), WorkerController.getWorkerLogs as any);
 router.post("/workers/:name/start", verifyJwtRest(), WorkerController.startWorker as any);
 router.post("/workers/:name/stop", verifyJwtRest(), WorkerController.stopWorker as any);
 router.post("/workers/:name/restart", verifyJwtRest(), WorkerController.restartWorker as any);

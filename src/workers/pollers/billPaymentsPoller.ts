@@ -3,6 +3,7 @@
  * Polls pending bill payments and updates status based on provider responses
  */
 import { QueueService } from '../../shared/queue';
+import { SettingsService } from '../../modules/admin/settings.service';
 import { BillPayment } from '../../modules/bill-payments/bill-payment.model';
 import { IBillPayment } from '../../modules/bill-payments/bill-payment.interface';
 import { LedgerService } from '../../modules/ledger/LedgerService';
@@ -56,16 +57,20 @@ async function flutterwaveGet<T = any>(path: string, params?: Record<string, any
 export class BillPaymentsPoller {
   static register() {
     WorkerControlService.register('bill-payments-poller', async () => {
-      // Return the worker instance from QueueService
+      const settings = await SettingsService.getSettings();
+      let schedule: any = { every: 2 * 60 * 60 * 1000 }; // 2 hours
+      if (settings.workersConfig?.has('bill-payments-poller')) {
+        const config = settings.workersConfig.get('bill-payments-poller');
+        if (config?.cronSchedule) schedule = config.cronSchedule;
+      }
+
+      await QueueService.removeRepeatableJobs('bill-payments-poller');
+      await QueueService.scheduleRepeatableJob('bill-payments-poller', schedule);
+
       return QueueService.createWorker(
         'bill-payments-poller',
         async () => {
           await this.pollPendingBillPayments();
-        },
-        {
-          repeat: { every: 2 * 60 * 60 * 1000 }, // 2 hours
-          removeOnComplete: 10,
-          removeOnFail: 50
         }
       );
     });

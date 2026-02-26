@@ -6,6 +6,7 @@
  */
 
 import { QueueService } from "../../shared/queue";
+import { SettingsService } from "../../modules/admin/settings.service";
 import { DatabaseService } from "../../shared/db";
 import { ProfitService } from "../../modules/profits/profits.service";
 import Profit from "../../modules/profits/profits.model";
@@ -19,15 +20,20 @@ const logger = pino({ name: "profit-realization-cron" });
 export class ProfitRealizationCron {
   static register() {
     WorkerControlService.register("profit-realization", async () => {
+      const settings = await SettingsService.getSettings();
+      let schedule = '0 */2 * * *'; // Every 2 hours
+      if (settings.workersConfig?.has('profit-realization')) {
+        const config = settings.workersConfig.get('profit-realization');
+        if (config?.cronSchedule) schedule = config.cronSchedule;
+      }
+
+      await QueueService.removeRepeatableJobs('profit-realization');
+      await QueueService.scheduleRepeatableJob('profit-realization', schedule);
+
       return QueueService.createWorker(
         "profit-realization",
         async () => {
           await this.processUnrealizedProfits();
-        },
-        {
-          repeat: { pattern: "0 */2 * * *" }, // Every 2 hours
-          removeOnComplete: 5,
-          removeOnFail: 10,
         }
       );
     });

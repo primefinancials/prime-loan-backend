@@ -61,6 +61,33 @@ export class QueueService {
   }
 
   /**
+   * Schedule a repeatable job
+   */
+  static async scheduleRepeatableJob(queueName: string, repeatConfig: any, data: any = {}) {
+    const queue = this.createQueue(queueName);
+    const repeat = typeof repeatConfig === 'string' ? { pattern: repeatConfig } : repeatConfig;
+    // Use the queue name as the job name to keep it simple
+    await queue.add(queueName, data, {
+      repeat,
+      removeOnComplete: 5,
+      removeOnFail: 10
+    });
+    logger.info(`Scheduled repeatable job for ${queueName} with repeat config: ${JSON.stringify(repeat)}`);
+  }
+
+  /**
+   * Remove all repeatable jobs for a queue (useful when config changes)
+   */
+  static async removeRepeatableJobs(queueName: string) {
+    const queue = this.createQueue(queueName);
+    const repeatableJobs = await queue.getRepeatableJobs();
+    for (const job of repeatableJobs) {
+      await queue.removeRepeatableByKey(job.key);
+    }
+    logger.info(`Removed existing repeatable jobs for ${queueName}`);
+  }
+
+  /**
    * Graceful shutdown
    */
   static async closeAll() {
