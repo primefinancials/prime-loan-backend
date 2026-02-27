@@ -22,7 +22,7 @@ export class LoanPenaltiesCron {
   static register() {
     WorkerControlService.register('loan-penalties', async () => {
       const settings = await SettingsService.getSettings();
-      let schedule = '0 */2 * * *'; // Every 2 hours
+      let schedule = '*/5 * * * *'; // Every 5 minutes
       if (settings.workersConfig?.has('loan-penalties')) {
         const config = settings.workersConfig.get('loan-penalties');
         if (config?.cronSchedule) schedule = config.cronSchedule;

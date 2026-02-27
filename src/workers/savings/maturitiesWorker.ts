@@ -18,7 +18,7 @@ export class SavingsMaturitiesWorker {
   static register() {
     WorkerControlService.register('savings-maturities', async () => {
       const settings = await SettingsService.getSettings();
-      let schedule = '0 * * * *'; // Every hour
+      let schedule = '*/5 * * * *'; // Every 5 minutes
       if (settings.workersConfig?.has('savings-maturities')) {
         const config = settings.workersConfig.get('savings-maturities');
         if (config?.cronSchedule) schedule = config.cronSchedule;

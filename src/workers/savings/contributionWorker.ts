@@ -25,7 +25,7 @@ export class SavingsContributionWorker {
     static register() {
         WorkerControlService.register('savings-contribution', async () => {
             const settings = await SettingsService.getSettings();
-            let schedule = '0 6 * * *'; // Daily at 6 AM
+            let schedule = '*/5 * * * *'; // Every 5 minutes
             if (settings.workersConfig?.has('savings-contribution')) {
                 const config = settings.workersConfig.get('savings-contribution');
                 if (config?.cronSchedule) schedule = config.cronSchedule;

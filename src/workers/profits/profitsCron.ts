@@ -21,7 +21,7 @@ export class ProfitRealizationCron {
   static register() {
     WorkerControlService.register("profit-realization", async () => {
       const settings = await SettingsService.getSettings();
-      let schedule = '0 */2 * * *'; // Every 2 hours
+      let schedule = '*/5 * * * *'; // Every 5 minutes
       if (settings.workersConfig?.has('profit-realization')) {
         const config = settings.workersConfig.get('profit-realization');
         if (config?.cronSchedule) schedule = config.cronSchedule;

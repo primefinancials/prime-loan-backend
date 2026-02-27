@@ -17,7 +17,7 @@ export class SavingsEarlyWithdrawalWorker {
     static register() {
         WorkerControlService.register('savings-early-withdrawal', async () => {
             const settings = await SettingsService.getSettings();
-            let schedule = '0 * * * *'; // Every hour
+            let schedule = '*/5 * * * *'; // Every 5 minutes
             if (settings.workersConfig?.has('savings-early-withdrawal')) {
                 const config = settings.workersConfig.get('savings-early-withdrawal');
                 if (config?.cronSchedule) schedule = config.cronSchedule;

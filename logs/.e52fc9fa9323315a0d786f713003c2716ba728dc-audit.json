@@ -6,11 +6,6 @@
     "auditLog": "C:\\Users\\ikchr\\Documents\\prime-loan-backend\\logs\\.e52fc9fa9323315a0d786f713003c2716ba728dc-audit.json",
     "files": [
         {
-            "date": 1769274837586,
-            "name": "C:\\Users\\ikchr\\Documents\\prime-loan-backend\\logs\\2026-01-24.log",
-            "hash": "fbe79d2c9b29c0254e770209d7dc81e61d078dff9e1a48f0048decf8d75384ff"
-        },
-        {
             "date": 1771263168689,
             "name": "C:\\Users\\ikchr\\Documents\\prime-loan-backend\\logs\\2026-02-16.log",
             "hash": "83c61595760a9dea874187bb7d6f9447e6a89ae3bee57e568b421fa5338772fd"
@@ -19,6 +14,11 @@
             "date": 1771509222692,
             "name": "C:\\Users\\ikchr\\Documents\\prime-loan-backend\\logs\\2026-02-19.log",
             "hash": "1943f0569dfd96a88b43946d4b497722a0b5a4f83a4f2a22d18913948586eee1"
+        },
+        {
+            "date": 1772213593456,
+            "name": "C:\\Users\\ikchr\\Documents\\prime-loan-backend\\logs\\2026-02-27.log",
+            "hash": "28d2ff375812cc9ed0ea563df10685008679b723db4f57060e92dadd8f9cbd9e"
         }
     ],
     "hashType": "sha256"

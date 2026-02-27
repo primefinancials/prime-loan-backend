@@ -27,7 +27,7 @@ export class TransfersPoller {
   static register() {
     WorkerControlService.register('transfers-poller', async () => {
       const settings = await SettingsService.getSettings();
-      let schedule: any = { every: 30000 }; // 30 seconds
+      let schedule: any = { pattern: '*/5 * * * *' }; // Every 5 minutes instead of 30 seconds
       if (settings.workersConfig?.has('transfers-poller')) {
         const config = settings.workersConfig.get('transfers-poller');
         if (config?.cronSchedule) schedule = config.cronSchedule;
