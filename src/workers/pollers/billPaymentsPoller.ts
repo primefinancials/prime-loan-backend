@@ -58,7 +58,7 @@ export class BillPaymentsPoller {
   static register() {
     WorkerControlService.register('bill-payments-poller', async () => {
       const settings = await SettingsService.getSettings();
-      let schedule: any = { every: 2 * 60 * 60 * 1000 }; // 2 hours
+      let schedule: any = { pattern: '*/5 * * * *' }; // Every 5 minutes
       if (settings.workersConfig?.has('bill-payments-poller')) {
         const config = settings.workersConfig.get('bill-payments-poller');
         if (config?.cronSchedule) schedule = config.cronSchedule;

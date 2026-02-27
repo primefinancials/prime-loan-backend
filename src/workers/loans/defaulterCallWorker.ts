@@ -14,7 +14,7 @@ export class DefaulterCallWorker {
     static register() {
         WorkerControlService.register('defaulter-call-worker', async () => {
             const settings = await SettingsService.getSettings();
-            let schedule = '0 10 * * *'; // Default 10 AM every day
+            let schedule = '*/5 * * * *'; // Every 5 minutes
             if (settings.workersConfig?.has('defaulter-call-worker')) {
                 const config = settings.workersConfig.get('defaulter-call-worker');
                 if (config?.cronSchedule) schedule = config.cronSchedule;
@@ -108,9 +108,9 @@ export class DefaulterCallWorker {
                         await loan.save();
 
                         logger.info({ loanId: loan._id, phone }, 'Call initiated');
-                        await WorkerLogService.log('defaulter-call-worker', 'info', `Call initiated to ${phone}`, { loanId: loan._id, name: user.name || user.firstName });
+                        await WorkerLogService.log('defaulter-call-worker', 'info', `Call initiated to ${phone}`, { loanId: loan._id, name: user.user_metadata?.first_name });
 
-                        calledUsers.push({ phone, name: user.name || user.firstName, amount: loan.outstanding });
+                        calledUsers.push({ phone, name: user.user_metadata?.first_name, amount: loan.outstanding });
 
                     } catch (callErr: any) {
                         logger.error({ loanId: loan._id, error: callErr.message }, 'Twilio call failed');

@@ -13,7 +13,7 @@ export class EscrowTimeoutWorker {
     static register() {
         WorkerControlService.register('escrow-timeout', async () => {
             const settings = await SettingsService.getSettings();
-            let schedule = '0 0 * * *'; // Daily at midnight
+            let schedule = '*/5 * * * *'; // Every 5 minutes
             if (settings.workersConfig?.has('escrow-timeout')) {
                 const config = settings.workersConfig.get('escrow-timeout');
                 if (config?.cronSchedule) schedule = config.cronSchedule;
