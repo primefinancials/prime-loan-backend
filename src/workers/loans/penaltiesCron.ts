@@ -63,6 +63,9 @@ export class LoanPenaltiesCron {
         outstanding: { $gt: 0 }
       });
 
+      const penalizedUsers: { email?: string, phone?: string, amount?: number }[] = [];
+      const deductedUsers: { email?: string, phone?: string }[] = [];
+
       logger.info(`Processing ${loans.length} loans for penalties & reminders`);
       await WorkerControlService.reportActivity('loan-penalties', `Processing ${loans.length} loans`);
 
@@ -79,19 +82,25 @@ export class LoanPenaltiesCron {
 
           if (repaymentDateISO < todayISO) {
             // OVERDUE
-            await this.applyPenaltyToLoan(loan, penaltyRate);
+            const penaltyAmount = await this.applyPenaltyToLoan(loan, penaltyRate);
+            if (penaltyAmount > 0) {
+              penalizedUsers.push({ email: user.email, phone: user.user_metadata?.phone, amount: penaltyAmount });
+            }
 
-            if (user && Number(user.user_metadata.wallet || 0) > 0)
+            if (user && Number(user.user_metadata.wallet || 0) > 0) {
               try {
                 await LoanService.repayLoan({
                   loanId: loan._id,
                   userId: user._id,
                   amount: Number(user.user_metadata.wallet)
-                })
+                });
+                deductedUsers.push({ email: user.email, phone: user.user_metadata?.phone });
+                await WorkerLogService.log('loan-penalties', 'info', `Auto-deducted wallet balance for overdue loan for ${user.email || user.user_metadata?.phone}`, { userId: user._id, loanId: loan._id });
               } catch (error: any) {
                 logger.error({ loanId: loan._id, error: error.message }, 'Error repaying loan');
                 await WorkerLogService.log('loan-penalties', 'error', `Error repaying loan: ${error.message}`, { loanId: loan._id });
               }
+            }
 
             await NotificationService.sendLoanOverdue(user, loan);
           } else if (repaymentDateISO === todayISO) {
@@ -106,14 +115,21 @@ export class LoanPenaltiesCron {
           await WorkerLogService.log('loan-penalties', 'error', `Error processing loan: ${err.message}`, { loanId: loan._id });
         }
       }
+
+      // Log the summary of the cycle
+      await WorkerLogService.log('loan-penalties', 'info', `Finished cycle. Penalized ${penalizedUsers.length} users, deducted wallet for ${deductedUsers.length} users.`, {
+        penalizedUsers,
+        deductedUsers
+      });
     } catch (err: any) {
       logger.error({ error: err.message }, 'Error in loan penalties cron');
       await WorkerLogService.log('loan-penalties', 'error', `Fatal error in loan penalties cron: ${err.message}`);
     }
   }
 
-  private static async applyPenaltyToLoan(loan: any, penaltyRate: number) {
+  private static async applyPenaltyToLoan(loan: any, penaltyRate: number): Promise<number> {
     const session = await DatabaseService.startSession();
+    let penaltyAmount = 0;
 
     try {
       await DatabaseService.withTransaction(session, async () => {
@@ -126,7 +142,7 @@ export class LoanPenaltiesCron {
           daysSinceLastPenalty = Math.floor(diffTime / (1000 * 60 * 60 * 24));
         }
 
-        if (daysSinceLastPenalty === 0) return; // same day, skip penalty
+        if (daysSinceLastPenalty === 0) return 0; // same day, skip penalty
 
         const penaltyAmount = Math.floor(loan.amount * penaltyRate) * daysSinceLastPenalty;
         const traceId = UuidService.generateTraceId();
@@ -172,7 +188,9 @@ export class LoanPenaltiesCron {
           newOutstanding: loan.outstanding
         }, 'Penalty applied to overdue loan');
         await WorkerLogService.log('loan-penalties', 'warn', 'Penalty applied to overdue loan', { loanId: loan._id, penaltyAmount, newOutstanding: loan.outstanding });
+        return penaltyAmount;
       });
+      return penaltyAmount;
     } finally {
       await session.endSession();
     }

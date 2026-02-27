@@ -67,6 +67,7 @@ export class DefaulterCallWorker {
 
             const twilio = new TwilioProvider();
             const today = new Date().toISOString().split('T')[0];
+            const calledUsers: { phone: string, name?: string, amount?: number }[] = [];
 
             for (const loan of overdueLoans) {
                 try {
@@ -107,7 +108,9 @@ export class DefaulterCallWorker {
                         await loan.save();
 
                         logger.info({ loanId: loan._id, phone }, 'Call initiated');
-                        await WorkerLogService.log('defaulter-call-worker', 'info', `Call initiated to ${phone}`, { loanId: loan._id });
+                        await WorkerLogService.log('defaulter-call-worker', 'info', `Call initiated to ${phone}`, { loanId: loan._id, name: user.name || user.firstName });
+
+                        calledUsers.push({ phone, name: user.name || user.firstName, amount: loan.outstanding });
 
                     } catch (callErr: any) {
                         logger.error({ loanId: loan._id, error: callErr.message }, 'Twilio call failed');
@@ -118,6 +121,11 @@ export class DefaulterCallWorker {
                     logger.error({ loanId: loan._id, error: err.message }, 'Error in defaulter loop');
                 }
             }
+
+            // Log detailed summary
+            await WorkerLogService.log('defaulter-call-worker', 'info', `Finished automated calls. Successfully called ${calledUsers.length} users.`, {
+                calledUsers
+            });
 
         } catch (error: any) {
             logger.error({ error: error.message }, 'Fatal error in defaulter call worker');
