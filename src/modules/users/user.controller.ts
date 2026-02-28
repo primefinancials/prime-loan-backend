@@ -25,8 +25,8 @@ function formatDob(dob: string): string {
     throw new Error("Invalid DOB provided");
   }
 
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", 
-                  "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul",
+    "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   const formatted = `${String(date.getDate()).padStart(2, "0")}-${months[date.getMonth()]}-${date.getFullYear()}`;
 
@@ -95,13 +95,15 @@ export class UserController {
    */
   static async update(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { user }: { user: {
+      const { user }: {
+        user: {
           first_name: string;
           profile_photo: string;
           phone: string;
           surname: string;
           address?: string | null | undefined;
-      }} = req.body;
+        }
+      } = req.body;
 
       let updatedUser;
 
@@ -205,6 +207,24 @@ export class UserController {
       });
     } catch (error) {
       console.log('Dashboard Error: ', error)
+      next(error);
+    }
+  }
+
+  /**
+   * Verify transaction PIN
+   */
+  static async verifyPin(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const { pin } = req.body;
+      const userService = new UserService();
+      const result = await userService.verifyTransactionPin(req.user!._id as any, pin);
+
+      res.status(200).json({
+        status: "success",
+        data: result,
+      });
+    } catch (error) {
       next(error);
     }
   }
