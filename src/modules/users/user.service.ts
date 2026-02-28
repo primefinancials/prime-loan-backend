@@ -501,6 +501,22 @@ export class UserService {
     }
 
     /**
+     * Verify transaction PIN
+     */
+    async verifyTransactionPin(userId: string, pin: string) {
+        if (!pin) throw new BadRequestError("PIN is required");
+
+        const user = await User.findById(userId);
+        if (!user) throw new NotFoundError("No user found");
+
+        if ((user.user_metadata as any).pin !== pin && user.user_metadata.pin !== pin) {
+            throw new UnauthorizedError("Incorrect PIN!");
+        }
+
+        return true;
+    }
+
+    /**
      * Find user by account number
      */
     static async findByAccountNo(accountNo: string) {
