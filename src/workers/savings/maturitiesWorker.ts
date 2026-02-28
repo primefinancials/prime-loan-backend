@@ -57,9 +57,9 @@ export class SavingsMaturitiesWorker {
 
       logger.info(`Processing ${maturedPlans.length} matured savings plans`);
       await WorkerControlService.reportActivity('savings-maturities', `Processing ${maturedPlans.length} plans`);
-      if (maturedPlans.length > 0) {
-        await WorkerLogService.log('savings-maturities', 'info', `Processing ${maturedPlans.length} matured savings plans`);
-      }
+      await WorkerLogService.log('savings-maturities', 'info', `Processing ${maturedPlans.length} matured savings plans`);
+
+      if (maturedPlans.length === 0) return;
 
       for (const plan of maturedPlans) {
         try {

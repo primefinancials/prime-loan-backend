@@ -101,10 +101,9 @@ export class BillPaymentsPoller {
       logger.info(`Polling ${pendingPayments.length} pending bill payments`);
       // Update heartbeat
       await WorkerControlService.reportActivity('bill-payments-poller', `Polling ${pendingPayments.length} payments`);
+      await WorkerLogService.log('bill-payments-poller', 'info', `Polling ${pendingPayments.length} pending bill payments`);
 
-      if (pendingPayments.length > 0) {
-        await WorkerLogService.log('bill-payments-poller', 'info', `Polling ${pendingPayments.length} pending bill payments`);
-      }
+      if (pendingPayments.length === 0) return;
 
       await Promise.all(
         pendingPayments.map((payment) =>

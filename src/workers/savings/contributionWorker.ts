@@ -56,7 +56,6 @@ export class SavingsContributionWorker {
             const currentDay = now.getDay(); // 0-6
             const currentDate = now.getDate(); // 1-31
 
-            // Find all active Flexible plans with contribution configured
             const plans = await SavingsPlan.find({
                 status: 'ACTIVE',
                 planType: 'FLEXIBLE',
@@ -65,6 +64,9 @@ export class SavingsContributionWorker {
 
             logger.info(`Processing ${plans.length} Flexible savings plans for contributions`);
             await WorkerControlService.reportActivity('savings-contribution', `Checking ${plans.length} plans`);
+            await WorkerLogService.log('savings-contribution', 'info', `Processing ${plans.length} Flexible savings plans for contributions`);
+
+            if (plans.length === 0) return;
 
             for (const plan of plans) {
                 try {

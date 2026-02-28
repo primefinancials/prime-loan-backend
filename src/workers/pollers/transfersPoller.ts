@@ -72,10 +72,9 @@ export class TransfersPoller {
 
       logger.info(`Polling ${pendingTransfers.length} pending transfers`);
       await WorkerControlService.reportActivity('transfers-poller', `Polling ${pendingTransfers.length} transfers`);
+      await WorkerLogService.log('transfers-poller', 'info', `Polling ${pendingTransfers.length} pending transfers`);
 
-      if (pendingTransfers.length > 0) {
-        await WorkerLogService.log('transfers-poller', 'info', `Polling ${pendingTransfers.length} pending transfers`);
-      }
+      if (pendingTransfers.length === 0) return;
 
       // Process in parallel with limit
       await Promise.all(
