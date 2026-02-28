@@ -10,6 +10,11 @@ import { DatabaseService } from '../../shared/db';
 import { UuidService } from '../../shared/utils/uuid';
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 import { WorkerControlService } from '../../modules/workers/worker-control.service';
+import { VfdProvider } from '../../shared/providers/vfd.provider';
+import { TransferService } from '../../modules/transfers/transfer.service';
+import User from '../../modules/users/user.model';
+import { TransferRequest } from '../../shared/providers/vfd.provider';
+import { sha512 } from 'js-sha512';
 import pino from 'pino';
 
 const logger = pino({ name: 'savings-maturities' });
@@ -83,59 +88,102 @@ export class SavingsMaturitiesWorker {
         const annualRate = plan.interestRate;
         const dailyRate = annualRate / 365;
         const interestAmount = Math.floor(plan.principal * dailyRate * daysActive);
+        const totalAmount = plan.principal + interestAmount;
 
-        const traceId = UuidService.generateTraceId();
+        const vfdProvider = new VfdProvider();
+        const user = await User.findById(plan.userId);
+        if (!user) throw new Error(`User not found for plan ${plan._id}`);
 
-        // Create interest ledger entries
-        await LedgerService.createDoubleEntry(
-          traceId,
-          'interest_pool',
-          `user_wallet:${plan.userId}`,
-          interestAmount,
-          'savings',
-          {
-            userId: plan.userId,
-            subtype: 'interest',
-            session,
-            meta: {
-              planId: plan._id,
-              principal: plan.principal,
-              interestRate: plan.interestRate,
-              daysActive
-            }
-          }
-        );
+        const to = (await vfdProvider.getAccountInfo(user.user_metadata.accountNo)).data;
+        const from = (await vfdProvider.getPrimeAccountInfo()).data;
 
-        // Return principal to user
-        await LedgerService.createDoubleEntry(
-          traceId,
-          'savings_pool',
-          `user_wallet:${plan.userId}`,
-          plan.principal,
-          'savings',
-          {
-            userId: plan.userId,
-            subtype: 'principal_return',
-            session,
-            meta: {
-              planId: plan._id
-            }
-          }
-        );
+        const remark = `Savings maturity payout for ${plan.planName}`;
 
-        // Update plan status
-        plan.status = 'COMPLETED';
-        plan.completedAt = new Date();
-        plan.interestEarned = interestAmount;
-        await plan.save({ session });
-
-        logger.info({
-          planId: plan._id,
+        const trxn = await TransferService.initiateTransfer({
+          fromAccount: from.accountNo,
+          toAccount: to.accountNo,
+          amount: totalAmount,
           userId: plan.userId,
-          principal: plan.principal,
-          interestEarned: interestAmount
-        }, 'Savings plan matured and processed');
-        await WorkerLogService.log('savings-maturities', 'info', 'Savings plan matured and processed', { planId: plan._id, interestEarned: interestAmount });
+          beneficiaryName: to.client,
+          transferType: "intra",
+          bankCode: "999999",
+          remark,
+          walletBalance: String(to.accountBalance)
+        }, "savings-withdrawal");
+
+        const transferReq: TransferRequest = {
+          uniqueSenderAccountId: from.accountId,
+          fromAccount: from.accountNo,
+          fromClientId: from.clientId,
+          fromClient: from.client,
+          fromSavingsId: from.accountId,
+          toAccount: to.accountNo,
+          toClient: to.client,
+          toSession: to.accountId,
+          toClientId: to.clientId,
+          toSavingsId: to.accountId,
+          toBank: "999999",
+          amount: totalAmount,
+          signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
+          remark,
+          transferType: "intra",
+          reference: trxn.reference,
+        };
+
+        const providerRes = await vfdProvider.transfer(transferReq);
+
+        if (providerRes.status == "00") {
+          await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
+
+          const traceId = UuidService.generateTraceId();
+
+          // Create interest ledger entries
+          await LedgerService.createDoubleEntry(
+            traceId,
+            'interest_pool',
+            `user_wallet:${plan.userId}`,
+            interestAmount,
+            'savings',
+            {
+              userId: plan.userId,
+              subtype: 'interest',
+              session,
+              meta: { planId: plan._id, principal: plan.principal, interestRate: plan.interestRate, daysActive }
+            }
+          );
+
+          // Return principal to user
+          await LedgerService.createDoubleEntry(
+            traceId,
+            'savings_pool',
+            `user_wallet:${plan.userId}`,
+            plan.principal,
+            'savings',
+            {
+              userId: plan.userId,
+              subtype: 'principal_return',
+              session,
+              meta: { planId: plan._id }
+            }
+          );
+
+          // Update plan status
+          plan.status = 'COMPLETED';
+          plan.completedAt = new Date();
+          plan.interestEarned = interestAmount;
+          await plan.save({ session });
+
+          logger.info({
+            planId: plan._id,
+            userId: plan.userId,
+            principal: plan.principal,
+            interestEarned: interestAmount
+          }, 'Savings plan matured and processed');
+          await WorkerLogService.log('savings-maturities', 'info', 'Savings plan matured and processed', { planId: plan._id, interestEarned: interestAmount });
+        } else {
+          await TransferService.failTransfer(trxn.reference);
+          throw new Error(`Transfer failed: ${providerRes.message}`);
+        }
       });
     } finally {
       await session.endSession();

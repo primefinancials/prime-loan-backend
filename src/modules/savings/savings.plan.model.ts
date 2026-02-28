@@ -18,7 +18,7 @@ export interface ISavingsPlan extends Document {
   durationDays?: number;
   durationMonths?: number; // For Fixed plans (alternative to days)
   interestRate: number; // annual percentage
-  status: 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+  status: 'ACTIVE' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
   maturityDate?: Date;
   locked: boolean;
   createdAt: Date;
@@ -71,7 +71,7 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
   interestRate: { type: Number, required: true }, // annual percentage
   status: {
     type: String,
-    enum: ['ACTIVE', 'COMPLETED', 'CANCELLED'],
+    enum: ['ACTIVE', 'PROCESSING', 'COMPLETED', 'CANCELLED'],
     default: 'ACTIVE',
     index: true
   },

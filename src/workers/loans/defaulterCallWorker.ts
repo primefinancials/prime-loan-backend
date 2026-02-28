@@ -72,11 +72,18 @@ export class DefaulterCallWorker {
             for (const loan of overdueLoans) {
                 try {
                     const user = await UserService.getUser(loan.userId);
-                    const phone = user?.user_metadata?.phone;
+                    let phone = user?.user_metadata?.phone;
 
                     if (!phone) {
                         logger.warn({ loanId: loan._id }, 'User has no phone number');
                         continue;
+                    }
+
+                    // Strict E.164 formatting for Twilio
+                    if (phone.startsWith('0')) {
+                        phone = '+234' + phone.substring(1);
+                    } else if (phone.startsWith('234')) {
+                        phone = '+' + phone;
                     }
 
                     // Check call history limit

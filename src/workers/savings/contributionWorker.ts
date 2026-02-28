@@ -87,13 +87,38 @@ export class SavingsContributionWorker {
         const contribution = plan.contribution;
         if (!contribution || !contribution.frequency || !contribution.amount) return;
 
-        // Check if today is a deduction day
-        const isDueDay =
-            (contribution.frequency === 'weekly' && contribution.dayOfWeek === currentDay) ||
-            (contribution.frequency === 'monthly' && contribution.dayOfMonth === currentDate);
+        let isDue = false;
+
+        if (!contribution.lastDeductionDate) {
+            isDue = true; // First time deduction
+        } else {
+            const now = new Date();
+            const lastDeduction = new Date(contribution.lastDeductionDate);
+            const diffDays = Math.floor((now.getTime() - lastDeduction.getTime()) / (1000 * 60 * 60 * 24));
+
+            if (contribution.frequency === 'weekly' && diffDays >= 7) {
+                isDue = true;
+            } else if (contribution.frequency === 'monthly' && diffDays >= 28) {
+                if (now.getDate() >= (contribution.dayOfMonth || 1) || diffDays >= 31) {
+                    isDue = true;
+                }
+            }
+        }
+
+        // Exact day matched fallback
+        if (!isDue) {
+            const isExactDay =
+                (contribution.frequency === 'weekly' && contribution.dayOfWeek === currentDay) ||
+                (contribution.frequency === 'monthly' && contribution.dayOfMonth === currentDate);
+
+            // Only flag if exact day AND we haven't deducted today (within 24 hours)
+            if (isExactDay && (!contribution.lastDeductionDate || (new Date().getTime() - new Date(contribution.lastDeductionDate).getTime() > 24 * 60 * 60 * 1000))) {
+                isDue = true;
+            }
+        }
 
         // Mark as pending if due day or already pending
-        if (isDueDay && !contribution.pendingDeduction) {
+        if (isDue && !contribution.pendingDeduction) {
             plan.contribution.pendingDeduction = true;
             await plan.save();
             logger.info(`Marked plan ${plan._id} for pending deduction`);

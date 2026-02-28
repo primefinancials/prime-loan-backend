@@ -134,9 +134,9 @@ export class BillPaymentsPoller {
               }
 
               const resp = await flutterwaveGet(`/v3/bills/${encodeURIComponent(payment?.providerRef || "")}`);
-              const { data } = resp;
+              const responseData = resp?.data;
 
-              if (data.status === 'success' || data.status === 'successful') {
+              if (resp.status === 'success' && (responseData?.status === 'successful' || responseData?.status === 'success')) {
                 // Optimization: Provider confirmed success. We must mark as COMPLETED.
                 // Do NOT refund.
                 const session = await DatabaseService.startSession();
@@ -154,7 +154,7 @@ export class BillPaymentsPoller {
                   await session.endSession();
                 }
 
-              } else if (data.status === 'error' || data.status === 'failed') {
+              } else if (resp.status === 'error' || responseData?.status === 'failed' || responseData?.status === 'error') {
                 // Provider confirmed failure. Refund.
                 await this.refundBillPayment(payment);
               }

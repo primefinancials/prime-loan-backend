@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { User } from "../users/user.interface";
+import { SettingsService } from "../admin/settings.service";
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,             // smtp.mailgun.org
@@ -63,29 +64,35 @@ export class NotificationService {
   }
 
   static async sendLoanOverdue(user: User, loan: any) {
+    const settings = await SettingsService.getSettings();
+    const msg = settings.loan?.reminders?.overdue || `Your loan payment of ₦${loan.outstanding} was due on ${loan.repayment_date}.`;
     return this.sendLoanReminder(
       user,
       loan,
       "Your Loan is Overdue",
-      `Your loan payment of ₦${loan.outstanding} was due on ${loan.repayment_date}.`
+      msg
     );
   }
 
   static async sendLoanDueToday(user: User, loan: any) {
+    const settings = await SettingsService.getSettings();
+    const msg = settings.loan?.reminders?.dueToday || `Your loan payment of ₦${loan.outstanding} is due <strong>today</strong>.`;
     return this.sendLoanReminder(
       user,
       loan,
       "Your Loan is Due Today",
-      `Your loan payment of ₦${loan.outstanding} is due <strong>today</strong>.`
+      msg
     );
   }
 
   static async sendLoanDueTomorrow(user: User, loan: any) {
+    const settings = await SettingsService.getSettings();
+    const msg = settings.loan?.reminders?.dueTomorrow || `Your loan payment of ₦${loan.outstanding} will be due <strong>tomorrow</strong>.`;
     return this.sendLoanReminder(
       user,
       loan,
       "Your Loan Will Be Due Tomorrow",
-      `Your loan payment of ₦${loan.outstanding} will be due <strong>tomorrow</strong>.`
+      msg
     );
   }
 

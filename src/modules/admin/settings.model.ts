@@ -71,6 +71,11 @@ export interface ISettings extends Document {
       dailyRate: number;
       gracePeriod: number; // days
     };
+    reminders: {
+      dueTomorrow: string;
+      dueToday: string;
+      overdue: string;
+    };
   };
 
   // System Settings
@@ -196,6 +201,11 @@ const SettingsSchema = new Schema<ISettings>(
       penalty: {
         dailyRate: { type: Number, default: 10 },
         gracePeriod: { type: Number, default: 1 }
+      },
+      reminders: {
+        dueTomorrow: { type: String, default: "Your loan is due tomorrow. Please ensure your wallet is funded." },
+        dueToday: { type: String, default: "Your loan is due today. Please fund your wallet to avoid penalties." },
+        overdue: { type: String, default: "Your loan is overdue. Penalties are now being applied." }
       }
     },
 

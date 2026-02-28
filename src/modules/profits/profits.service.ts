@@ -4,6 +4,7 @@ import { VfdProvider } from "../../shared/providers/vfd.provider";
 import { NotFoundError, APIError } from "../../exceptions";
 import { TransferRequest } from "../../shared/providers/vfd.provider";
 import { sha512 } from "js-sha512";
+import { TransferService } from "../transfers/transfer.service";
 
 export class ProfitService {
   private static vfd = new VfdProvider();
@@ -47,39 +48,59 @@ export class ProfitService {
       throw new Error("Could not fetch valid account information for transfer");
     }
 
-    const transferRequest: TransferRequest = {
-      fromAccount: userAcc.accountNo,
-      uniqueSenderAccountId: userAcc.accountId,
-      fromClientId: userAcc.clientId,
-      fromClient: userAcc.client,
-      fromSavingsId: userAcc.accountId,
-      toClientId: primeInfo.clientId,
-      toClient: primeInfo.client,
-      toSavingsId: primeInfo.accountId,
-      toSession: primeInfo.accountId,
-      toAccount: primeInfo.accountNo,
-      toBank: "999999",
-      amount: String(params.amount),
-      signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
-      remark: `${params.source} Profit`,
-      transferType: "intra",
-      reference: params.reference,
-    } as any;
+    const remark = `${params.source} Profit`;
+    let transferResult;
 
     try {
+      transferResult = await TransferService.initiateTransfer({
+        fromAccount: userAcc.accountNo,
+        userId: params.userId,
+        toAccount: primeInfo.accountNo,
+        amount: params.amount,
+        beneficiaryName: primeInfo.client,
+        transferType: "intra",
+        bankCode: "999999",
+        remark,
+        walletBalance: String(userAcc.accountBalance)
+      });
+
+      const transferRequest: TransferRequest = {
+        uniqueSenderAccountId: userAcc.accountId,
+        fromAccount: userAcc.accountNo,
+        fromClientId: userAcc.clientId,
+        fromClient: userAcc.client,
+        fromSavingsId: userAcc.accountId,
+        toClientId: primeInfo.clientId,
+        toClient: primeInfo.client,
+        toSavingsId: primeInfo.accountId,
+        toSession: primeInfo.accountId,
+        toAccount: primeInfo.accountNo,
+        toBank: "999999",
+        amount: params.amount,
+        signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
+        remark,
+        transferType: "intra",
+        reference: transferResult.reference,
+      } as any;
+
       const providerResponse = await ProfitService.vfd.transfer(transferRequest);
 
       if (providerResponse?.status === "00") {
+        await TransferService.completeTransfer(transferResult.reference);
         profit.type = "realized";
         profit.isRealized = true;
         profit.realizedAt = new Date();
       } else {
+        await TransferService.failTransfer(transferResult.reference);
         console.warn(
           `Profit realization failed for reference ${params.reference}:`,
           providerResponse?.message || "Unknown error"
         );
       }
     } catch (err: any) {
+      if (transferResult) {
+        await TransferService.failTransfer(transferResult.reference);
+      }
       console.error(
         `Error realizing profit for ${params.reference}:`,
         err.response?.data?.message || err.message
@@ -94,7 +115,7 @@ export class ProfitService {
    * Record a new unrealized or realized profit
    */
 
-  
+
   async recordProfit(params: {
     reference: string;
     userId: string;
@@ -148,7 +169,7 @@ export class ProfitService {
     limit = 10
   ) {
     const skip = (page - 1) * limit;
-    let query: any = { };
+    let query: any = {};
 
     if (type) query.type = type;
     if (source) query.source = source;

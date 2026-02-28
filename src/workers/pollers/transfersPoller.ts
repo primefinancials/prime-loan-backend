@@ -128,8 +128,12 @@ export class TransfersPoller {
 
     try {
       await DatabaseService.withTransaction(session, async () => {
+        const callSuccess = providerStatus.status === '00' || providerStatus.status === 'success' || providerStatus.status === 'successful';
+        const txStatus = providerStatus.data?.transactionStatus || providerStatus.data?.status || '';
+        const mappedStatus = String(txStatus).toUpperCase();
+
         // Optimization: Handle "Success at Provider" -> Complete
-        if (providerStatus.status === '00' || providerStatus.status === 'success' || providerStatus.status === 'successful') {
+        if (callSuccess && (mappedStatus === '00' || mappedStatus === 'SUCCESS' || mappedStatus === 'SUCCESSFUL')) {
           // Transfer successful
           transfer.status = 'COMPLETED';
           transfer.processedAt = new Date();
@@ -152,7 +156,7 @@ export class TransfersPoller {
             }, session);
           }
 
-        } else if (providerStatus.status === 'FAILED' || providerStatus.status === 'failed') {
+        } else if (providerStatus.status === 'FAILED' || providerStatus.status === 'failed' || mappedStatus === 'FAILED' || mappedStatus === 'ERROR') {
           // Transfer failed - refund user
           await this.refundTransfer(transfer, session);
         }
