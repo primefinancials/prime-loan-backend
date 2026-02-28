@@ -224,7 +224,11 @@ export class TransferService {
         const user = await User.findById(transfer.userId);
 
         if (user && type == "transfer") {
-          await NotificationService.sendDebitAlert(user, transfer.amount);
+          try {
+            await NotificationService.sendDebitAlert(user, transfer.amount);
+          } catch (emailError) {
+            console.warn('Failed to send debit alert email (non-fatal):', emailError);
+          }
         }
 
         return result;
@@ -472,7 +476,11 @@ export class TransferService {
       { new: true, upsert: true }
     )
 
-    await NotificationService.sendCreditAlert(user, body.amount, body.originator_account_name, body.reference);
+    try {
+      await NotificationService.sendCreditAlert(user, body.amount, body.originator_account_name, body.reference);
+    } catch (emailError) {
+      console.warn('Failed to send credit alert email (non-fatal):', emailError);
+    }
 
     return txn;
   }

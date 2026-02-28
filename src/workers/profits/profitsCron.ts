@@ -80,7 +80,7 @@ export class ProfitRealizationCron {
           }
 
           // Attempt to re-realize the profit
-          await profitService.recordRealizedProfit({
+          const savedProfit = await profitService.recordRealizedProfit({
             reference: profit.reference,
             userId: profit.userId,
             source: profit.source,
@@ -89,11 +89,18 @@ export class ProfitRealizationCron {
             description: profit.description,
           });
 
-          logger.info(
-            { reference: profit.reference, userId: profit.userId },
-            "Profit re-realized successfully"
-          );
-          await WorkerLogService.log('profit-realization', 'info', 'Profit re-realized successfully', { reference: profit.reference, userId: profit.userId });
+          if (savedProfit.isRealized) {
+            logger.info(
+              { reference: profit.reference, userId: profit.userId },
+              "Profit re-realized successfully"
+            );
+            await WorkerLogService.log('profit-realization', 'info', 'Profit re-realized successfully', { reference: profit.reference, userId: profit.userId });
+          } else {
+            logger.warn(
+              { reference: profit.reference, userId: profit.userId },
+              "Profit re-realization failed, will retry later"
+            );
+          }
         } catch (err: any) {
           logger.error(
             { reference: profit.reference, error: err.message },
