@@ -42,6 +42,8 @@ export class DefaulterCallWorker {
 
     private static async processDefaulters() {
         try {
+            await WorkerLogService.log('defaulter-call-worker', 'info', 'Starting defaulter call processing loop...');
+
             // 1. Get Settings
             const settings = await SettingsService.getSettings();
             const config = settings.defaulterCallConfig;
@@ -49,6 +51,7 @@ export class DefaulterCallWorker {
             if (!config || !config.enabled) {
                 logger.info('Defaulter calls are disabled in settings');
                 await WorkerControlService.reportActivity('defaulter-call-worker', 'Calls disabled');
+                await WorkerLogService.log('defaulter-call-worker', 'warn', 'Defaulter calls are currently disabled in settings. Skipping...');
                 return;
             }
 
@@ -64,6 +67,11 @@ export class DefaulterCallWorker {
 
             logger.info(`Found ${overdueLoans.length} overdue loans`);
             await WorkerControlService.reportActivity('defaulter-call-worker', `Processing ${overdueLoans.length} overdue loans`);
+            await WorkerLogService.log('defaulter-call-worker', 'info', `Found ${overdueLoans.length} overdue loans to process.`);
+
+            if (overdueLoans.length === 0) {
+                return; // Nothing to process
+            }
 
             const twilio = new TwilioProvider();
             const today = new Date().toISOString().split('T')[0];
@@ -93,6 +101,7 @@ export class DefaulterCallWorker {
 
                     if (callsToday >= config.maxCallsPerDay) {
                         logger.info({ loanId: loan._id }, 'Max calls reached for today');
+                        await WorkerLogService.log('defaulter-call-worker', 'warn', `Skipping ${phone}: Max calls (${config.maxCallsPerDay}) reached for today for this loan.`);
                         continue;
                     }
 
