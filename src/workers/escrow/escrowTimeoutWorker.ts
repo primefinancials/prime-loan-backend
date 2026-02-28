@@ -50,6 +50,7 @@ export class EscrowTimeoutWorker {
 
             logger.info(`Found ${expiredPending.length} expired PENDING escrows`);
             await WorkerControlService.reportActivity('escrow-timeout', `Found ${expiredPending.length} expired PENDING`);
+            await WorkerLogService.log('escrow-timeout', 'info', `Found ${expiredPending.length} expired PENDING escrows`);
 
             for (const escrow of expiredPending) {
                 escrow.status = 'CANCELLED';

@@ -52,10 +52,9 @@ export class SavingsEarlyWithdrawalWorker {
 
             logger.info(`Processing ${scheduledPlans.length} scheduled early withdrawals`);
             await WorkerControlService.reportActivity('savings-early-withdrawal', `Processing ${scheduledPlans.length} plans`);
+            await WorkerLogService.log('savings-early-withdrawal', 'info', `Processing ${scheduledPlans.length} scheduled early withdrawals`);
 
-            if (scheduledPlans.length > 0) {
-                await WorkerLogService.log('savings-early-withdrawal', 'info', `Processing ${scheduledPlans.length} scheduled early withdrawals`);
-            }
+            if (scheduledPlans.length === 0) return;
 
             for (const plan of scheduledPlans) {
                 try {
