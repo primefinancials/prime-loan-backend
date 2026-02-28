@@ -60,3 +60,7 @@ export const changePasswordSchema = Joi.object({
   oldPassword: Joi.string().required(),
   newPassword: Joi.string().min(8).required(),
 });
+
+export const verifyPinSchema = Joi.object({
+  pin: Joi.string().length(4).pattern(/^\d+$/).required(),
+});

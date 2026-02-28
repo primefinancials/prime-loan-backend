@@ -38,6 +38,7 @@ import {
   initiateResetSchema,
   validateResetSchema,
   updatePasswordOrPinSchema,
+  verifyPinSchema,
   // Transfer schemas
   transferInitiateSchema,
   transferStatusQuerySchema,
@@ -112,6 +113,13 @@ router.post(
   "/users/update-password-pin",
   validateReqBody(updatePasswordOrPinSchema),
   UserController.updatePasswordOrPin
+);
+
+router.post(
+  "/users/verify-pin",
+  verifyJwtRest(),
+  validateReqBody(verifyPinSchema),
+  UserController.verifyPin as unknown as express.RequestHandler
 );
 
 /* -------------------------------------------------------------------------- */
