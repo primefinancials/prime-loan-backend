@@ -405,7 +405,7 @@ export class SavingsService {
               traceId
             });
 
-            plan.principal -= amount;
+            plan.status = 'PROCESSING';
             await plan.save({ session });
 
             return {
