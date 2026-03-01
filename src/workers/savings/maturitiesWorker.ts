@@ -84,11 +84,26 @@ export class SavingsMaturitiesWorker {
     try {
       await DatabaseService.withTransaction(session, async () => {
         // Calculate interest
-        const daysActive = plan.durationDays || 30;
+        let daysActive = plan.durationDays;
+        if (!daysActive && plan.maturityDate && plan.createdAt) {
+          daysActive = Math.ceil((new Date(plan.maturityDate).getTime() - new Date(plan.createdAt).getTime()) / (1000 * 3600 * 24));
+        }
+        daysActive = daysActive || 30;
+
         const annualRate = plan.interestRate;
         const dailyRate = annualRate / 365;
         const interestAmount = Math.floor(plan.principal * dailyRate * daysActive);
         const totalAmount = plan.principal + interestAmount;
+
+        if (totalAmount <= 0) {
+          plan.status = 'COMPLETED';
+          plan.completedAt = new Date();
+          plan.interestEarned = 0;
+          await plan.save({ session });
+          logger.info({ planId: plan._id }, 'Completed zero-amount savings plan');
+          await WorkerLogService.log('savings-maturities', 'info', 'Completed zero-amount savings plan', { planId: plan._id });
+          return;
+        }
 
         const vfdProvider = new VfdProvider();
         const user = await User.findById(plan.userId);
