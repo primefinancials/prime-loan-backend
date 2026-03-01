@@ -55,6 +55,7 @@ export class ProfitRealizationCron {
         type: "unrealized",
         isRealized: false,
         source: "transaction",
+        amount: { $gt: 0 },
       }).lean();
 
       if (unrealizedProfits.length === 0) {

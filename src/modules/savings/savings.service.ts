@@ -376,11 +376,13 @@ export class SavingsService {
           }
 
           const subType = params.subType || 'INSTANT';
+          const now = new Date();
+          const isEarlyWithdrawal = plan.maturityDate && now < plan.maturityDate;
 
           // 1. STANDARD (Delayed)
           if (subType === 'STANDARD') {
             const delayHours = setting.savings.flexible.standard.withdrawalDelayHours || 24;
-            const penaltyRate = (setting.savings.flexible.standard.penaltyRate || 0) / 100;
+            const penaltyRate = isEarlyWithdrawal ? ((setting.savings.flexible.standard.penaltyRate || 0) / 100) : 0;
 
             // Calculate scheduled date
             const scheduledDate = new Date();
@@ -420,7 +422,7 @@ export class SavingsService {
           // 2. INSTANT
           // Proceed to immediate processing below...
           // Apply Instant Penalty
-          const penaltyRate = (setting.savings.flexible.instant.penaltyRate || 0) / 100;
+          const penaltyRate = isEarlyWithdrawal ? ((setting.savings.flexible.instant.penaltyRate || 0) / 100) : 0;
           const penalty = Math.floor(amount * penaltyRate);
           const netAmount = amount - penalty;
 
@@ -441,7 +443,7 @@ export class SavingsService {
             idempotencyKey: params.idempotencyKey,
             walletBalance: String(to.accountBalance),
             meta: {
-              earlyWithdrawal: false,
+              earlyWithdrawal: !!isEarlyWithdrawal,
               penalty,
               principal: amount,
               subType: 'INSTANT'
@@ -911,7 +913,7 @@ export class SavingsService {
   static async getAllPlans(
     page = 1,
     limit = 20,
-    filter: 'all' | 'active' | 'awaiting_withdrawal' | 'completed' | 'cancelled' | 'fixed' | 'flexible' = 'all',
+    filter: 'all' | 'active' | 'awaiting_withdrawal' | 'completed' | 'cancelled' | 'fixed' | 'flexible' | 'early_withdrawal' | 'maturity_savings' = 'all',
     search?: string
   ) {
     const skip = (page - 1) * limit;
@@ -943,6 +945,21 @@ export class SavingsService {
         break;
       case 'flexible':
         query = { planType: 'FLEXIBLE' };
+        break;
+      case 'early_withdrawal':
+        query = {
+          status: { $in: ['ACTIVE', 'PROCESSING'] },
+          $or: [
+            { earlyWithdrawalDate: { $ne: null } },
+            { 'pendingWithdrawals.status': 'PENDING' }
+          ]
+        };
+        break;
+      case 'maturity_savings':
+        query = {
+          status: 'ACTIVE',
+          maturityDate: { $lte: new Date() }
+        };
         break;
       case 'all':
       default:

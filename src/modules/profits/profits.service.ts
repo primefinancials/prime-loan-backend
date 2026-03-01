@@ -35,6 +35,13 @@ export class ProfitService {
       });
     }
 
+    if (params.amount <= 0) {
+      profit.type = "realized";
+      profit.isRealized = true;
+      profit.realizedAt = new Date();
+      return await profit.save();
+    }
+
     // Fetch both account infos concurrently for speed
     const [primeRes, userRes] = await Promise.all([
       ProfitService.vfd.getPrimeAccountInfo(),
