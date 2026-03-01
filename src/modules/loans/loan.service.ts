@@ -329,13 +329,13 @@ export class LoanService {
 
         // 1️⃣ Try to atomically lock the loan for disbursement
         const loan = await Loan.findOneAndUpdate(
-          { _id: loanId, status: { $nin: ["accepted", "processing"] } },
+          { _id: loanId, status: "pending" },
           { $set: { status: "processing" } },
           { new: true, session }
         );
 
         if (!loan) {
-          throw new BadRequestError("Loan already being processed or accepted");
+          throw new BadRequestError("Loan must be in a pending state to be disbursed");
         }
 
         const user = await User.findById(loan.userId).session(session);
@@ -645,9 +645,7 @@ export class LoanService {
 
     const loan = await Loan.findById(loanId);
     if (!loan) throw new NotFoundError("Loan not found");
-    if (loan.status === "accepted") throw new BadRequestError("Cannot cancel accepted loan");
-    if (loan.status === "rejected") throw new BadRequestError("Cannot cancel rejected loan");
-    if (loan.status === "canceled") throw new BadRequestError("Loan already canceled");
+    if (loan.status !== "pending") throw new BadRequestError(`Cannot cancel loan in ${loan.status} state`);
 
     loan.outstanding = 0;
     loan.rejectionReason = reason;
@@ -669,24 +667,30 @@ export class LoanService {
     requiredParam("loanId", loanId);
     requiredParam("reason", reason);
 
-    console.log(" In reject loan")
+    const loan = await Loan.findOneAndUpdate(
+      { _id: loanId, status: "pending" },
+      { $set: { status: "processing_rejection" } },
+      { new: true }
+    );
 
-    const loan = await Loan.findById(loanId);
-    if (!loan) throw new NotFoundError("Loan not found");
-    if (loan.status === "accepted") throw new BadRequestError("Cannot reject accepted loan");
-    if (loan.status === "rejected") throw new BadRequestError("Loan already rejected");
+    if (!loan) {
+      const existingLoan = await Loan.findById(loanId);
+      if (!existingLoan) throw new NotFoundError("Loan not found");
+      throw new BadRequestError(`Cannot reject loan in ${existingLoan.status} state`);
+    }
 
     loan.outstanding = 0;
     loan.rejectionReason = reason;
     loan.status = "rejected";
     loan.percentage = typeof loan.percentage === "string"
       ? Number(String(loan.percentage).replace("%", ""))
-      : loan.percentage,
-      loan.adminAction = {
-        adminId,
-        action: "Reject",
-        date: new Date().toISOString()
-      };
+      : loan.percentage;
+
+    loan.adminAction = {
+      adminId,
+      action: "Reject",
+      date: new Date().toISOString()
+    };
 
     await loan.save();
 
