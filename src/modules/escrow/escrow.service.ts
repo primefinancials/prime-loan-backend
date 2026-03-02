@@ -1017,7 +1017,7 @@ export class EscrowService {
                     $group: {
                         _id: "$status",
                         count: { $sum: 1 },
-                        amount: { $sum: "$totalAmount" }
+                        amount: { $sum: "$amount" }
                     }
                 }
             ]),
@@ -1026,7 +1026,8 @@ export class EscrowService {
                 {
                     $group: {
                         _id: null,
-                        totalRevenue: { $sum: "$fee" }
+                        totalRevenue: { $sum: "$fee" },
+                        revenueCount: { $sum: 1 }
                     }
                 }
             ]),
@@ -1036,12 +1037,14 @@ export class EscrowService {
         const stats = {
             totalCount,
             totalRevenue: revenueAgg[0]?.totalRevenue || 0,
+            revenueCount: revenueAgg[0]?.revenueCount || 0,
             statusBreakdown: {
                 pending: { count: 0, amount: 0 },
                 locked: { count: 0, amount: 0 },
                 completed: { count: 0, amount: 0 },
                 disputed: { count: 0, amount: 0 },
                 cancelled: { count: 0, amount: 0 },
+                refunded: { count: 0, amount: 0 },
             }
         };
 
