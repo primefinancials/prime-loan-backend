@@ -168,6 +168,7 @@ router.post("/chat/upload", verifyJwtRest(), ChatController.upload as any);
    MARKETPLACE MANAGEMENT
 ============================= */
 // Marketplace Vendors
+router.get("/marketplace/vendors/stats", verifyJwtRest(), MarketplaceController.getVendorDashboardStats as any);
 router.get("/marketplace/vendors", verifyJwtRest(), MarketplaceController.listVendors as any);
 router.get("/marketplace/vendors/:id", verifyJwtRest(), MarketplaceController.getVendorDetails as any); // Vendor Details
 router.put("/marketplace/vendors/:id/approve", verifyJwtRest(), MarketplaceController.approveVendor as any);

@@ -460,6 +460,45 @@ export class MarketplaceService {
         return { data, total, page, pages: Math.ceil(total / limit) };
     }
 
+    /**
+     * Admin: Get Overall Vendor Dashboard Stats
+     */
+    static async getVendorDashboardStats() {
+        const [
+            totalVendors,
+            activeVendors,
+            suspendedVendors,
+            totalProducts,
+            orderStats
+        ] = await Promise.all([
+            Vendor.countDocuments(),
+            Vendor.countDocuments({ status: VendorStatus.APPROVED }),
+            Vendor.countDocuments({ status: VendorStatus.SUSPENDED }),
+            Product.countDocuments(),
+            Order.aggregate([
+                {
+                    $match: {
+                        status: { $in: [OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DELIVERED] }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        totalRevenue: { $sum: "$totalAmount" }
+                    }
+                }
+            ])
+        ]);
+
+        return {
+            totalVendors,
+            activeVendors,
+            suspendedVendors,
+            totalProducts,
+            totalGeneratedVolume: orderStats[0]?.totalRevenue || 0
+        };
+    }
+
     static async getAdminEscrows(page = 1, limit = 20) {
         const skip = (page - 1) * limit;
         const [escrows, total] = await Promise.all([

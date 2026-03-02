@@ -49,6 +49,15 @@ export class MarketplaceController {
         }
     }
 
+    static async getVendorDashboardStats(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const stats = await MarketplaceService.getVendorDashboardStats();
+            res.status(200).json({ status: "success", data: stats });
+        } catch (error) {
+            next(error);
+        }
+    }
+
     static async approveVendor(req: ProtectedRequest, res: Response, next: NextFunction) {
         try {
             const { id } = req.params;
