@@ -177,6 +177,7 @@ router.put("/marketplace/vendors/:id/reactivate", verifyJwtRest(), MarketplaceCo
 router.get("/marketplace/vendors/:id/products", verifyJwtRest(), MarketplaceController.getVendorProducts as any); // Products by Vendor
 
 // Admin Escrows (with vendor filter replaced/augmented by general adminGetEscrows)
+router.get("/escrow/stats", verifyJwtRest(), EscrowController.adminGetEscrowStats as any);
 router.get("/escrows", verifyJwtRest(), EscrowController.adminGetEscrows as any);
 
 /* =============================

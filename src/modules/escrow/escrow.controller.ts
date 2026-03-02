@@ -222,6 +222,21 @@ export class EscrowController {
     }
 
     /**
+     * Admin: Get Escrow Statistics Widgets
+     */
+    static async adminGetEscrowStats(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const result = await EscrowService.getAdminEscrowStats();
+            res.status(200).json({
+                status: "success",
+                data: result
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /**
      * Admin: Get All Escrows
      */
     static async adminGetEscrows(req: ProtectedRequest, res: Response, next: NextFunction) {
