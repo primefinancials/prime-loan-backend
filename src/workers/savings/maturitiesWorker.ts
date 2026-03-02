@@ -55,11 +55,11 @@ export class SavingsMaturitiesWorker {
         maturityDate: { $lte: new Date() }
       });
 
+      if (maturedPlans.length === 0) return;
+
       logger.info(`Processing ${maturedPlans.length} matured savings plans`);
       await WorkerControlService.reportActivity('savings-maturities', `Processing ${maturedPlans.length} plans`);
       await WorkerLogService.log('savings-maturities', 'info', `Processing ${maturedPlans.length} matured savings plans`);
-
-      if (maturedPlans.length === 0) return;
 
       for (const plan of maturedPlans) {
         try {
