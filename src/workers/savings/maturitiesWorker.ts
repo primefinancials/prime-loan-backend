@@ -50,8 +50,9 @@ export class SavingsMaturitiesWorker {
 
   private static async processMaturedPlans() {
     try {
+      const settings = await SettingsService.getSettings();
       const maturedPlans = await SavingsPlan.find({
-        status: 'ACTIVE',
+        status: { $in: ['ACTIVE', 'PROCESSING'] },
         maturityDate: { $lte: new Date() }
       });
 
@@ -63,7 +64,7 @@ export class SavingsMaturitiesWorker {
 
       for (const plan of maturedPlans) {
         try {
-          await this.processMaturedPlan(plan);
+          await this.processMaturedPlan(plan, settings);
         } catch (error: any) {
           logger.error({
             planId: plan._id,
@@ -78,19 +79,42 @@ export class SavingsMaturitiesWorker {
     }
   }
 
-  private static async processMaturedPlan(plan: any) {
+  private static async processMaturedPlan(plan: any, settings: any) {
     const session = await DatabaseService.startSession();
 
     try {
       await DatabaseService.withTransaction(session, async () => {
-        // Calculate interest
-        let daysActive = plan.durationDays;
-        if (!daysActive && plan.maturityDate && plan.createdAt) {
+        // Enforce Delay period logic before completion
+        let delayMs = 0;
+        if (plan.planType === 'LOCKED') {
+          const config = settings.savings?.fixed?.earlyWithdrawal;
+          if (config?.type === 'delayed') {
+            delayMs = (config.delayDays || 0) * 24 * 60 * 60 * 1000;
+          }
+        } else if (plan.planType === 'FLEXIBLE' && plan.subType === 'STANDARD') {
+          const delayHours = settings.savings?.flexible?.standard?.withdrawalDelayHours || 24;
+          delayMs = delayHours * 60 * 60 * 1000;
+        }
+
+        const maturityWithDelay = new Date(plan.maturityDate).getTime() + delayMs;
+
+        if (new Date().getTime() < maturityWithDelay) {
+          if (plan.status !== 'PROCESSING') {
+            plan.status = 'PROCESSING';
+            await plan.save({ session });
+            logger.info({ planId: plan._id }, 'Plan matured but in delay period, set to PROCESSING');
+          }
+          return;
+        }
+
+        // Calculate interest (duration is strictly maturityDate - createdAt for every plan)
+        let daysActive = 30; // fallback
+        if (plan.maturityDate && plan.createdAt) {
           daysActive = Math.ceil((new Date(plan.maturityDate).getTime() - new Date(plan.createdAt).getTime()) / (1000 * 3600 * 24));
         }
-        daysActive = daysActive || 30;
+        daysActive = Math.max(1, daysActive);
 
-        const annualRate = plan.interestRate;
+        const annualRate = plan.interestRate || 0;
         const dailyRate = annualRate / 365;
         const interestAmount = Math.floor(plan.principal * dailyRate * daysActive);
         const totalAmount = plan.principal + interestAmount;
