@@ -1029,7 +1029,9 @@ export class SavingsService {
       durationDays: 1,
       maturityDate: 1,
       status: 1,
-      createdAt: 1
+      createdAt: 1,
+      earlyWithdrawalDate: 1,
+      pendingWithdrawals: 1
     });
 
     let totalPlans = 0;
@@ -1041,6 +1043,11 @@ export class SavingsService {
     let maturedPlans = 0;
     let withdrawnPlans = 0;
 
+    let earlyWithdrawalCount = 0;
+    let earlyWithdrawalAmount = 0;
+    let maturityCount = 0;
+    let maturityAmount = 0;
+
     for (const plan of plans) {
       totalPlans++;
       totalPrincipal += plan.principal || 0;
@@ -1050,10 +1057,23 @@ export class SavingsService {
       const expectedInterest = Math.floor((plan.principal || 0) * (plan.interestRate) * (duration / 365));
       totalInterestExpected += expectedInterest;
 
-      if (plan.status === "ACTIVE") {
-        activePlans++;
-        if (plan.maturityDate && plan.maturityDate <= now) {
+      if (plan.status === "ACTIVE" || plan.status === "PROCESSING") {
+        if (plan.status === "ACTIVE") activePlans++;
+
+        if (plan.maturityDate && plan.maturityDate <= now && plan.status === "ACTIVE") {
           maturedPlans++;
+          maturityCount++;
+          maturityAmount += plan.principal || 0;
+        }
+
+        const hasPendingWithdrawals = plan.pendingWithdrawals && plan.pendingWithdrawals.some((w: any) => w.status === 'PENDING');
+        if (plan.earlyWithdrawalDate || hasPendingWithdrawals) {
+          earlyWithdrawalCount++;
+          if (hasPendingWithdrawals) {
+            earlyWithdrawalAmount += plan.pendingWithdrawals.filter((w: any) => w.status === 'PENDING').reduce((acc: number, w: any) => acc + (w.amount || 0), 0);
+          } else {
+            earlyWithdrawalAmount += plan.principal || 0;
+          }
         }
       }
 
@@ -1074,7 +1094,11 @@ export class SavingsService {
       unrealizedProfit,
       activePlans,
       maturedPlans,
-      withdrawnPlans
+      withdrawnPlans,
+      earlyWithdrawalCount,
+      earlyWithdrawalAmount,
+      maturityCount,
+      maturityAmount
     };
   }
 
