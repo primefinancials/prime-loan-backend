@@ -1070,7 +1070,7 @@ export class SavingsService {
         if (plan.earlyWithdrawalDate || hasPendingWithdrawals) {
           earlyWithdrawalCount++;
           if (hasPendingWithdrawals) {
-            earlyWithdrawalAmount += plan.pendingWithdrawals.filter((w: any) => w.status === 'PENDING').reduce((acc: number, w: any) => acc + (w.amount || 0), 0);
+            earlyWithdrawalAmount += (plan.pendingWithdrawals || []).filter((w: any) => w.status === 'PENDING').reduce((acc: number, w: any) => acc + (w.amount || 0), 0);
           } else {
             earlyWithdrawalAmount += plan.principal || 0;
           }
