@@ -1030,13 +1030,20 @@ export class SavingsService {
       maturityDate: 1,
       status: 1,
       createdAt: 1,
+      completedAt: 1,
       earlyWithdrawalDate: 1,
-      pendingWithdrawals: 1
+      pendingWithdrawals: 1,
+      planType: 1,
+      targetAmount: 1,
+      meta: 1
     });
+
+    const settings = await SettingsService.getSettings();
+    const defaultFixedPenaltyRate = (settings.savings?.fixed?.penaltyRate || 5) / 100;
 
     let totalPlans = 0;
     let totalPrincipal = 0;
-    let totalInterestExpected = 0;
+    let totalInterestExpected = 0; // This now effectively maps to Expected Profit
     let realizedProfit = 0;
     let unrealizedProfit = 0;
     let activePlans = 0;
@@ -1051,11 +1058,6 @@ export class SavingsService {
     for (const plan of plans) {
       totalPlans++;
       totalPrincipal += plan.principal || 0;
-
-      // Calculate expected interest (simple: principal * rate * (duration/365))
-      const duration = plan.durationDays || 0;
-      const expectedInterest = Math.floor((plan.principal || 0) * (plan.interestRate) * (duration / 365));
-      totalInterestExpected += expectedInterest;
 
       if (plan.status === "ACTIVE" || plan.status === "PROCESSING") {
         if (plan.status === "ACTIVE") activePlans++;
@@ -1079,10 +1081,44 @@ export class SavingsService {
 
       if (plan.status === "COMPLETED") {
         withdrawnPlans++;
-        // Assume realized profit = expectedInterest
-        realizedProfit += expectedInterest;
-      } else {
-        unrealizedProfit += expectedInterest;
+      }
+
+      // Profit Calculations (Requested by User)
+      // Expected Profit: Penalties from ALL early withdrawal requests (pending + processed)
+      // Realized Profit: Penalties from PROCESSED/COMPLETED early withdrawals ONLY.
+
+      if (plan.planType === 'FLEXIBLE') {
+        if (plan.pendingWithdrawals && plan.pendingWithdrawals.length > 0) {
+          for (const w of plan.pendingWithdrawals) {
+            if (w.status === 'PENDING' || w.status === 'PROCESSED') {
+              totalInterestExpected += (w.penalty || 0);
+
+              if (w.status === 'PROCESSED') {
+                realizedProfit += (w.penalty || 0);
+              }
+            }
+          }
+        }
+      } else if (plan.planType === 'LOCKED') {
+        let penaltyRate = plan.meta?.penaltyRate;
+        if (penaltyRate === undefined) {
+          penaltyRate = defaultFixedPenaltyRate;
+        } else if (penaltyRate > 1) {
+          penaltyRate = penaltyRate / 100;
+        }
+
+        // If it's pending early withdrawal
+        if (plan.earlyWithdrawalDate && plan.status !== 'COMPLETED') {
+          const penalty = Math.floor((plan.principal || 0) * penaltyRate);
+          totalInterestExpected += penalty;
+        }
+
+        // If it was completed early
+        if (plan.status === 'COMPLETED' && plan.completedAt && plan.maturityDate && plan.completedAt < plan.maturityDate) {
+          const penalty = Math.floor((plan.targetAmount || 0) * penaltyRate); // use targetAmount as original deposit base
+          totalInterestExpected += penalty;
+          realizedProfit += penalty;
+        }
       }
     }
 

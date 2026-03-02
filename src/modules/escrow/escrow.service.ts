@@ -1004,4 +1004,58 @@ export class EscrowService {
             }
         };
     }
+
+    /**
+     * Admin: Get Escrow Statistics
+     * Aggregates total escrows, status-based volume, and platform revenue
+     */
+    static async getAdminEscrowStats() {
+        // Aggregate escrows by status
+        const [statusAgg, revenueAgg, totalCount] = await Promise.all([
+            EscrowTransaction.aggregate([
+                {
+                    $group: {
+                        _id: "$status",
+                        count: { $sum: 1 },
+                        amount: { $sum: "$totalAmount" }
+                    }
+                }
+            ]),
+            EscrowTransaction.aggregate([
+                { $match: { status: 'COMPLETED' } },
+                {
+                    $group: {
+                        _id: null,
+                        totalRevenue: { $sum: "$fee" }
+                    }
+                }
+            ]),
+            EscrowTransaction.countDocuments()
+        ]);
+
+        const stats = {
+            totalCount,
+            totalRevenue: revenueAgg[0]?.totalRevenue || 0,
+            statusBreakdown: {
+                pending: { count: 0, amount: 0 },
+                locked: { count: 0, amount: 0 },
+                completed: { count: 0, amount: 0 },
+                disputed: { count: 0, amount: 0 },
+                cancelled: { count: 0, amount: 0 },
+            }
+        };
+
+        for (const stat of statusAgg) {
+            const statusKey = String(stat._id).toLowerCase() as keyof typeof stats.statusBreakdown;
+            if (stats.statusBreakdown[statusKey]) {
+                stats.statusBreakdown[statusKey] = {
+                    count: stat.count,
+                    amount: stat.amount
+                };
+            }
+        }
+
+        return stats;
+    }
 }
+
