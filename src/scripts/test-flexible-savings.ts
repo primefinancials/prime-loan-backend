@@ -59,11 +59,11 @@ async function runTest() {
 
         // Verify Pending
         const planAfter = await SavingsPlan.findById(standardPlan._id);
-        console.log('Pending Withdrawals:', JSON.stringify(planAfter?.pendingWithdrawals, null, 2));
+        console.log('Withdrawal History:', JSON.stringify(planAfter?.withdrawalHistory, null, 2));
 
-        if (planAfter?.pendingWithdrawals && planAfter.pendingWithdrawals.length > 0) {
-            // Fast-forward time for test
-            const pending = planAfter.pendingWithdrawals[0];
+        if (planAfter?.withdrawalHistory && planAfter.withdrawalHistory.length > 0) {
+            // Note: Early or standard withdrawal test logic can go here.
+            const pending = planAfter.withdrawalHistory[0];
             pending.scheduledDate = new Date(Date.now() - 1000); // 1 sec ago
             await planAfter.save();
             console.log('Fast-forwarded withdrawal schedule');
@@ -73,7 +73,7 @@ async function runTest() {
 
             // Verify processed
             const finalPlan = await SavingsPlan.findById(standardPlan._id);
-            const processedItem = finalPlan?.pendingWithdrawals?.[0];
+            const processedItem = finalPlan?.withdrawalHistory?.[0];
             console.log('Processed Item Status:', processedItem?.status);
             console.log('Transaction ID:', processedItem?.transactionId);
         }

@@ -231,6 +231,18 @@ export class UserService {
         if (user.status !== "active")
             throw new UnauthorizedError(`Account has been suspended! Contact admin for revert action.`);
 
+        // Hydrate live VFD balance dynamically upon profile retrieval
+        if (user.user_metadata?.accountNo) {
+            try {
+                const vfdAccount = await VfdProvider.getAccountInfo(user.user_metadata.accountNo);
+                if (vfdAccount?.data?.balance !== undefined) {
+                    user.set('user_metadata.wallet', vfdAccount.data.balance.toString());
+                }
+            } catch (err: any) {
+                console.error("Failed to fetch live VFD balance for user profile:", err.message);
+            }
+        }
+
         return user;
     }
 
@@ -546,8 +558,7 @@ export class UserService {
         const userStats = user?.user_metadata?.stats;
 
         // Parallelize initial fetches
-        const [walletBalance, activeLoans, pendingLoans, savingsPlans, billPayments, savings, transfers] = await Promise.all([
-            LedgerService.getUserWalletBalance(user?._id as any || ""),
+        const [activeLoans, pendingLoans, savingsPlans, billPayments, savings, transfers] = await Promise.all([
             Loan.find({
                 userId: user?._id as any || "",
                 status: "accepted",
@@ -562,6 +573,19 @@ export class UserService {
             SavingsService.getUserPlans(user?._id as any || ""),
             TransferService.transfers(user?._id as any || "")
         ]);
+
+        let liveBalance = 0;
+        if (user?.user_metadata?.accountNo) {
+            try {
+                const vfdAccount = await VfdProvider.getAccountInfo(user.user_metadata.accountNo);
+                liveBalance = vfdAccount?.data?.balance || 0;
+            } catch (err: any) {
+                console.error("Failed to fetch live VFD balance for dashboard, falling back to Ledger:", err.message);
+                liveBalance = await LedgerService.getUserWalletBalance(user?._id as any || "");
+            }
+        } else {
+            liveBalance = await LedgerService.getUserWalletBalance(user?._id as any || "");
+        }
 
         // Fallback aggregation (or primary if stats not updated)
         // Note: Real implementation should have workers updating 'user.stats' on every transaction
@@ -632,7 +656,7 @@ export class UserService {
         activity.sort((a, b) => b.date.getTime() - a.date.getTime());
 
         return {
-            walletBalance: user?.user_metadata?.wallet || walletBalance, // Prefer primitive wallet if in sync
+            walletBalance: liveBalance, // Live VFD Balance
             // Use cached stats if available AND > 0 (optimistic), else fall back to live aggregation
             totalLoanOutstanding: userStats?.activeLoanCount ? totalLoanOutstanding : totalLoanOutstanding,
             totalSavings: userStats?.totalSavings || totalSavings,

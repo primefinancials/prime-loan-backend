@@ -24,6 +24,7 @@ import { getMailsByPermission } from "../../shared/utils/checkPermission";
 import { ILoanLadder } from "./loan-ladder.model";
 import { Transfer } from "../transfers/transfer.model";
 import { SettingsService } from "../admin/settings.service";
+import { SocketService } from "../../shared/sockets";
 
 /* ---------- Types ---------- */
 
@@ -465,6 +466,8 @@ export class LoanService {
           console.warn("Notification error:", err);
         }
 
+        SocketService.broadcastBalanceUpdate(String(user._id)).catch(console.error);
+
         return { loan, providerResponse, trxnRes };
       });
     } finally {
@@ -609,6 +612,8 @@ export class LoanService {
         } catch (err) {
           console.warn("Failed updating credit score (non-fatal):", err);
         }
+
+        SocketService.broadcastBalanceUpdate(String(user._id)).catch(console.error);
 
         return { loan, providerResponse, trxnRes };
       });

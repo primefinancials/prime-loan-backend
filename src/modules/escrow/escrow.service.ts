@@ -10,6 +10,7 @@ import User from '../users/user.model';
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../../exceptions';
 import { sha512 } from 'js-sha512';
 import { TransferRequest } from '../../shared/providers/vfd.provider';
+import { SocketService } from '../../shared/sockets';
 
 export class EscrowService {
 
@@ -203,6 +204,8 @@ export class EscrowService {
                     }
                 }
             }
+
+            SocketService.broadcastBalanceUpdate(params.buyerId).catch(console.error);
 
             return finalEscrow;
 
@@ -409,6 +412,8 @@ export class EscrowService {
                 escrow.rejectionReason = reason;
                 await escrow.save({ session });
 
+                SocketService.broadcastBalanceUpdate(escrow.buyerId).catch(console.error);
+
                 return escrow;
             });
         } catch (error) {
@@ -576,6 +581,8 @@ export class EscrowService {
                 if (isSystem) escrow.resolutionNote = "Auto-completed due to timeout";
                 await escrow.save({ session });
 
+                SocketService.broadcastBalanceUpdate(escrow.sellerId).catch(console.error);
+
                 return escrow;
             });
         } catch (error) {
@@ -729,6 +736,9 @@ export class EscrowService {
                 escrow.completedAt = new Date();
                 await escrow.save({ session });
 
+                SocketService.broadcastBalanceUpdate(escrow.buyerId).catch(console.error);
+                if (escrow.sellerId) SocketService.broadcastBalanceUpdate(escrow.sellerId).catch(console.error);
+
                 return escrow;
             });
         } catch (error) {
@@ -828,6 +838,8 @@ export class EscrowService {
 
                 escrow.status = 'CANCELLED';
                 await escrow.save({ session });
+
+                SocketService.broadcastBalanceUpdate(escrow.buyerId).catch(console.error);
 
                 return escrow;
             });

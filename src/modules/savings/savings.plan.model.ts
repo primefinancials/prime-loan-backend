@@ -37,14 +37,22 @@ export interface ISavingsPlan extends Document {
     pendingDeduction: boolean; // true if deduction is due/overdue
     lastDeductionDate?: Date;
   };
-  // Pending Withdrawals for Standard Flexible Plans
-  pendingWithdrawals?: {
+  // Comprehensive Transaction Histories
+  contributionHistory?: {
+    amount: number;
+    initiated: Date;
+    processed: boolean;
+    transactionId?: string;
+  }[];
+  withdrawalHistory?: {
     amount: number;
     penalty: number;
     netAmount: number;
-    requestDate: Date;
-    scheduledDate: Date;
-    status: 'PENDING' | 'PROCESSED' | 'FAILED';
+    scheduledDate?: Date;
+    initiated: Date;
+    completed?: Date | null;
+    earlyWithdrawal: boolean;
+    processed: boolean;
     traceId?: string;
     transactionId?: string;
   }[];
@@ -92,13 +100,22 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
     pendingDeduction: { type: Boolean, default: false },
     lastDeductionDate: { type: Date }
   },
-  pendingWithdrawals: [{
+  // Comprehensive Histories
+  contributionHistory: [{
+    amount: { type: Number, required: true },
+    initiated: { type: Date, default: Date.now },
+    processed: { type: Boolean, default: false },
+    transactionId: { type: String }
+  }],
+  withdrawalHistory: [{
     amount: { type: Number, required: true },
     penalty: { type: Number, default: 0 },
     netAmount: { type: Number, required: true },
-    requestDate: { type: Date, default: Date.now },
-    scheduledDate: { type: Date, required: true },
-    status: { type: String, enum: ['PENDING', 'PROCESSED', 'FAILED'], default: 'PENDING' },
+    scheduledDate: { type: Date },
+    initiated: { type: Date, default: Date.now },
+    completed: { type: Date, default: null },
+    earlyWithdrawal: { type: Boolean, default: false },
+    processed: { type: Boolean, default: false },
     traceId: { type: String },
     transactionId: { type: String }
   }],

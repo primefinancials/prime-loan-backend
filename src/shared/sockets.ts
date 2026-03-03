@@ -55,7 +55,13 @@ export class SocketService {
         });
 
         this.io.on('connection', (socket) => {
-            logger.info(`Socket connected: ${socket.id} (User: ${(socket as any).user?.id || 'unknown'})`);
+            const userId = (socket as any).user?.id || (socket as any).user?._id;
+            logger.info(`Socket connected: ${socket.id} (User: ${userId || 'unknown'})`);
+
+            if (userId) {
+                socket.join(`user_${userId}`);
+                logger.info(`Socket ${socket.id} joined room user_${userId}`);
+            }
 
             socket.on('disconnect', () => {
                 logger.info(`Socket disconnected: ${socket.id}`);
@@ -160,5 +166,45 @@ export class SocketService {
     static getIO() {
         if (!this.io) throw new Error("Socket.io not initialized!");
         return this.io;
+    }
+
+    /**
+     * Broadcasts a live VFD balance update to a specific user's private socket room.
+     */
+    static async broadcastBalanceUpdate(userId: string, accountNo?: string) {
+        if (!this.io) return;
+        try {
+            const { User } = await import('../modules/users/user.model');
+            const { VFDProvider } = await import('../providers/vfd.provider');
+
+            let targetAccountNo = accountNo;
+
+            // Fetch account number if not provided
+            if (!targetAccountNo) {
+                const user = await User.findById(userId).select('user_metadata.accountNo');
+                if (user && user.user_metadata?.accountNo) {
+                    targetAccountNo = user.user_metadata.accountNo;
+                }
+            }
+
+            if (!targetAccountNo) {
+                logger.warn(`Cannot broadcast balance update for user ${userId}: No account number found.`);
+                return;
+            }
+
+            // Sync with VFD Live
+            const vfdInfo = await VFDProvider.getAccountInfo(targetAccountNo);
+            const liveBalance = vfdInfo?.data?.balance || 0;
+
+            // Emit to private user room
+            this.io.to(`user_${userId}`).emit('balance_updated', {
+                event: 'balance_updated',
+                data: { newBalance: liveBalance }
+            });
+            logger.info(`Broadcasted live balance (₦${liveBalance}) to user_${userId}`);
+
+        } catch (error: any) {
+            logger.error({ error: error.message }, `Failed to broadcast balance update to user ${userId}`);
+        }
     }
 }
