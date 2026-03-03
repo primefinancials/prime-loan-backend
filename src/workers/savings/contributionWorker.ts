@@ -199,6 +199,15 @@ export class SavingsContributionWorker {
                 plan.principal += amount;
                 plan.contribution.pendingDeduction = false;
                 plan.contribution.lastDeductionDate = new Date();
+
+                if (!plan.contributionHistory) plan.contributionHistory = [];
+                plan.contributionHistory.push({
+                    amount,
+                    initiated: new Date(),
+                    processed: true,
+                    transactionId: trxnRes?.transferId || trxn.reference
+                });
+
                 await plan.save();
 
                 // Ledger entry

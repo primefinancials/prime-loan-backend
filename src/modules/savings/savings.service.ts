@@ -13,6 +13,7 @@ import { TransferService } from '../transfers/transfer.service';
 import { TransferRequest } from '../../shared/providers/vfd.provider';
 import { sha512 } from 'js-sha512';
 import { SettingsService } from '../admin/settings.service';
+import { SocketService } from '../../shared/sockets';
 
 export interface CreatePlanParams {
   userId: string;
@@ -201,7 +202,14 @@ export class SavingsService {
             dayOfMonth: params.contribution.dayOfMonth,
             pendingDeduction: false,
             lastDeductionDate: undefined
-          } : undefined
+          } : undefined,
+          contributionHistory: initialDeposit > 0 ? [{
+            amount: initialDeposit,
+            initiated: new Date(),
+            processed: true,
+            transactionId: trxnRes?.transferId || ""
+          }] : [],
+          withdrawalHistory: []
         }], { session });
 
         // Ledger entry for initial deposit (Fixed only)
@@ -240,6 +248,7 @@ export class SavingsService {
           result
         );
 
+        SocketService.broadcastBalanceUpdate(params.userId).catch(console.error);
         return result;
       });
     } finally {
@@ -335,6 +344,7 @@ export class SavingsService {
             }
           );
 
+          SocketService.broadcastBalanceUpdate(params.userId).catch(console.error);
           return {
             planId: plan._id,
             newPrincipal: plan.principal,
@@ -395,15 +405,16 @@ export class SavingsService {
             // Deduct from Principal based on logic: Reserve Funds immediately
             plan.principal -= amount;
 
-            // Add to Pending Withdrawals
-            if (!plan.pendingWithdrawals) plan.pendingWithdrawals = [];
-            plan.pendingWithdrawals.push({
+            // Add to Withdrawal History as pending status
+            if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
+            plan.withdrawalHistory.push({
               amount,
               penalty,
               netAmount,
-              requestDate: new Date(),
+              initiated: new Date(),
               scheduledDate,
-              status: 'PENDING',
+              earlyWithdrawal: !!isEarlyWithdrawal,
+              processed: false,
               traceId
             });
 
@@ -498,10 +509,24 @@ export class SavingsService {
               }, session);
             }
 
-            plan.principal -= amount;
             if (plan.principal <= 0) {
               plan.status = 'COMPLETED';
             }
+
+            // Record to Withdrawal History
+            if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
+            plan.withdrawalHistory.push({
+              amount,
+              penalty,
+              netAmount,
+              initiated: new Date(),
+              completed: new Date(),
+              earlyWithdrawal: !!isEarlyWithdrawal,
+              processed: true,
+              traceId,
+              transactionId: trxn.reference
+            });
+
             await plan.save({ session });
 
             return {
@@ -624,7 +649,23 @@ export class SavingsService {
             plan.completedAt = new Date();
             plan.principal = 0;
           }
+
+          // Record to Withdrawal History
+          if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
+          plan.withdrawalHistory.push({
+            amount,
+            penalty,
+            netAmount,
+            initiated: new Date(),
+            completed: new Date(),
+            earlyWithdrawal: !!isEarlyWithdrawal,
+            processed: true,
+            traceId,
+            transactionId: trxn.reference
+          });
+
           await plan.save({ session });
+          SocketService.broadcastBalanceUpdate(params.userId).catch(console.error);
 
           return { traceId, transactionId: trxn.reference, withdrawnAmount: amount, penalty, netAmount, newPrincipal: plan.principal };
         }
@@ -643,19 +684,19 @@ export class SavingsService {
    */
   static async processPendingWithdrawals() {
     const now = new Date();
-    // Find plans with pending withdrawals that are due
+    // Find plans with pending withdrawals that are due from the new withdrawalHistory array
     const plans = await SavingsPlan.find({
-      'pendingWithdrawals.status': 'PENDING',
-      'pendingWithdrawals.scheduledDate': { $lte: now }
+      'withdrawalHistory.processed': false,
+      'withdrawalHistory.scheduledDate': { $lte: now }
     });
 
     console.log(`Processing ${plans.length} plans with due withdrawals at ${now.toISOString()}`);
 
     for (const plan of plans) {
-      if (!plan.pendingWithdrawals) continue;
+      if (!plan.withdrawalHistory) continue;
 
       // Filter due items
-      const dueItems = plan.pendingWithdrawals.filter(w => w.status === 'PENDING' && w.scheduledDate <= now);
+      const dueItems = plan.withdrawalHistory.filter(w => !w.processed && w.scheduledDate && w.scheduledDate <= now);
 
       if (dueItems.length === 0) continue;
 
@@ -739,12 +780,14 @@ export class SavingsService {
               }
 
               // Update status
-              withdrawal.status = 'PROCESSED';
+              withdrawal.processed = true;
+              withdrawal.completed = new Date();
               withdrawal.transactionId = trxn.reference;
 
               if (plan.principal <= 0) {
                 plan.status = 'COMPLETED';
               }
+              SocketService.broadcastBalanceUpdate(String(plan.userId)).catch(console.error);
             } else {
               await TransferService.failTransfer(trxn.reference);
               console.error(`Transfer failed for plan ${plan._id} pending withdrawal: ${providerRes.message}`);
@@ -781,11 +824,11 @@ export class SavingsService {
       });
     }
 
-    if (!plan.pendingWithdrawals) {
-      throw new Error("No pending withdrawals found for this plan");
+    if (!plan.withdrawalHistory) {
+      throw new Error("No withdrawal history found for this plan");
     }
 
-    const withdrawalIndex = plan.pendingWithdrawals.findIndex(
+    const withdrawalIndex = plan.withdrawalHistory.findIndex(
       (w, idx) => (w as any).traceId === traceId || (w as any)._id?.toString() === traceId || idx.toString() === traceId
     );
 
@@ -793,10 +836,10 @@ export class SavingsService {
       throw new Error("Specific withdrawal not found");
     }
 
-    const withdrawal = plan.pendingWithdrawals[withdrawalIndex];
+    const withdrawal = plan.withdrawalHistory[withdrawalIndex];
 
-    if (withdrawal.status !== 'PENDING') {
-      throw new Error(`Withdrawal is already ${withdrawal.status}`);
+    if (withdrawal.processed) {
+      throw new Error(`Withdrawal is already processed`);
     }
 
     const session = await DatabaseService.startSession();
@@ -879,12 +922,14 @@ export class SavingsService {
           }
 
           // Update status
-          withdrawal.status = 'PROCESSED';
+          withdrawal.processed = true;
+          withdrawal.completed = new Date();
           (withdrawal as any).transactionId = trxn.reference;
 
           if (plan.principal <= 0) {
             plan.status = 'COMPLETED';
           }
+          SocketService.broadcastBalanceUpdate(String(plan.userId)).catch(console.error);
         } else {
           await TransferService.failTransfer(trxn.reference);
           throw new Error(`Transfer failed: ${providerRes.message}`);
@@ -923,14 +968,14 @@ export class SavingsService {
 
     switch (filter) {
       case 'active':
-        query = { status: 'ACTIVE', earlyWithdrawalDate: { $eq: null }, 'pendingWithdrawals.status': { $ne: 'PENDING' } };
+        query = { status: 'ACTIVE', earlyWithdrawalDate: { $eq: null }, 'withdrawalHistory.processed': { $ne: false } };
         break;
       case 'awaiting_withdrawal':
         query = {
           status: 'ACTIVE',
           $or: [
             { earlyWithdrawalDate: { $ne: null } },
-            { 'pendingWithdrawals.status': 'PENDING' }
+            { 'withdrawalHistory.processed': false }
           ]
         };
         break;
@@ -951,7 +996,7 @@ export class SavingsService {
           status: { $in: ['ACTIVE', 'PROCESSING'] },
           $or: [
             { earlyWithdrawalDate: { $ne: null } },
-            { 'pendingWithdrawals.status': 'PENDING' }
+            { 'withdrawalHistory.processed': false }
           ]
         };
         break;
@@ -1032,7 +1077,8 @@ export class SavingsService {
       createdAt: 1,
       completedAt: 1,
       earlyWithdrawalDate: 1,
-      pendingWithdrawals: 1,
+      withdrawalHistory: 1,
+      contributionHistory: 1,
       planType: 1,
       targetAmount: 1,
       meta: 1
@@ -1074,46 +1120,51 @@ export class SavingsService {
 
     for (const plan of plans) {
       totalPlans++;
-      const pAmt = plan.principal || 0;
+      const currentBalance = plan.principal || 0;
 
-      totalPrincipal += pAmt;
+      // Calculate All-Time Deposits for Total Principal metrics
+      const totalDeposited = (plan.contributionHistory || [])
+        .filter((c: any) => c.processed)
+        .reduce((sum: number, c: any) => sum + (c.amount || 0), 0);
 
-      // Group by type (All Statuses)
+      totalPrincipal += totalDeposited;
+
+      // Group by type (All Statuses - Uses All-Time Deposits)
       if (plan.planType === 'LOCKED') {
         totalFixedCount++;
-        totalFixedAmount += pAmt;
+        totalFixedAmount += totalDeposited;
       } else if (plan.planType === 'FLEXIBLE') {
         totalFlexibleCount++;
-        totalFlexibleAmount += pAmt;
+        totalFlexibleAmount += totalDeposited;
       }
 
-      // ACTIVE or PROCESSING Bucket
+      // ACTIVE or PROCESSING Bucket (Uses current alive balance)
       if (plan.status === "ACTIVE" || plan.status === "PROCESSING") {
-        totalActivePrincipal += pAmt;
+        totalActivePrincipal += currentBalance;
 
         if (plan.status === "ACTIVE") activePlans++;
 
         if (plan.planType === 'LOCKED') {
           activeFixedCount++;
-          activeFixedAmount += pAmt;
+          activeFixedAmount += currentBalance;
         } else if (plan.planType === 'FLEXIBLE') {
           activeFlexibleCount++;
-          activeFlexibleAmount += pAmt;
+          activeFlexibleAmount += currentBalance;
         }
 
         if (plan.maturityDate && plan.maturityDate <= now && plan.status === "ACTIVE") {
           maturedPlans++;
           maturityCount++;
-          maturityAmount += pAmt;
+          maturityAmount += currentBalance;
         }
 
-        const hasPendingWithdrawals = plan.pendingWithdrawals && plan.pendingWithdrawals.some((w: any) => w.status === 'PENDING');
+        const hasPendingWithdrawals = plan.withdrawalHistory && plan.withdrawalHistory.some((w: any) => !w.processed);
         if (plan.earlyWithdrawalDate || hasPendingWithdrawals) {
           earlyWithdrawalCount++;
           if (hasPendingWithdrawals) {
-            earlyWithdrawalAmount += (plan.pendingWithdrawals || []).filter((w: any) => w.status === 'PENDING').reduce((acc: number, w: any) => acc + (w.amount || 0), 0);
+            earlyWithdrawalAmount += (plan.withdrawalHistory || []).filter((w: any) => !w.processed).reduce((acc: number, w: any) => acc + (w.amount || 0), 0);
           } else {
-            earlyWithdrawalAmount += pAmt;
+            earlyWithdrawalAmount += currentBalance;
           }
         }
       }
@@ -1124,7 +1175,7 @@ export class SavingsService {
 
       // PREPARE PROFIT CALCULATIONS 
       // EXPECTED: Realized profit + Uncalculated theoretical penalty of ALL currently active principals (if they withdrew right now)
-      // REALIZED: The sum of all stored penalty values in the `earlyWithdrawal` flows (whether pending, processed, or withdrawn).
+      // REALIZED: The sum of all processed penalty values explicitly recorded in withdrawalHistory where earlyWithdrawal = true
 
       let theoreticalPenalty = 0;
 
@@ -1133,46 +1184,32 @@ export class SavingsService {
         if (penaltyRate === undefined) penaltyRate = defaultFixedPenaltyRate;
         else if (penaltyRate > 1) penaltyRate = penaltyRate / 100;
 
-        // If it was completed early, grab actual penalty from realized
-        if (plan.status === 'COMPLETED' && plan.completedAt && plan.maturityDate && plan.completedAt < plan.maturityDate) {
-          const penalty = Math.floor((plan.targetAmount || 0) * penaltyRate);
-          realizedProfit += penalty;
-          totalInterestExpected += penalty; // Add realized to expected
-        } else if (plan.status === 'ACTIVE' || plan.status === 'PROCESSING') {
+        if (plan.status === 'ACTIVE' || plan.status === 'PROCESSING') {
           // Active plan theoretical penalty or early withdrawal 
-          theoreticalPenalty = Math.floor(pAmt * penaltyRate);
+          theoreticalPenalty = Math.floor(currentBalance * penaltyRate);
           totalInterestExpected += theoreticalPenalty;
-
-          if (plan.earlyWithdrawalDate) {
-            realizedProfit += theoreticalPenalty; // For fixed, scheduled withdrawal immediately guarantees penalty capture
-          }
         }
       } else if (plan.planType === 'FLEXIBLE') {
-        let currentFlexiblePenaltySum = 0;
-
-        // Sum penalties from all withdrawal requests
-        if (plan.pendingWithdrawals && plan.pendingWithdrawals.length > 0) {
-          for (const w of plan.pendingWithdrawals) {
-            const wPenalty = w.penalty || 0;
-            currentFlexiblePenaltySum += wPenalty;
-
-            // Any request (pending, scheduled, processed) adds to realized immediately upon request
-            if (['PENDING', 'PROCESSED', 'SCHEDULED'].includes(w.status?.toUpperCase() || '')) {
-              realizedProfit += wPenalty;
-            }
-          }
-        }
-
         // Calculate theoretical penalty for the REMAINING active principal balance
-        if ((plan.status === 'ACTIVE' || plan.status === 'PROCESSING') && pAmt > 0 && plan.maturityDate && plan.maturityDate > now) {
+        if ((plan.status === 'ACTIVE' || plan.status === 'PROCESSING') && currentBalance > 0 && plan.maturityDate && plan.maturityDate > now) {
           let flexiblePenaltyRate = plan.meta?.penaltyRate;
           if (flexiblePenaltyRate === undefined) flexiblePenaltyRate = 0.025; // fallback
           else if (flexiblePenaltyRate > 1) flexiblePenaltyRate = flexiblePenaltyRate / 100;
 
-          theoreticalPenalty = Math.floor(pAmt * flexiblePenaltyRate);
+          theoreticalPenalty = Math.floor(currentBalance * flexiblePenaltyRate);
         }
 
-        totalInterestExpected += (currentFlexiblePenaltySum + theoreticalPenalty);
+        totalInterestExpected += theoreticalPenalty;
+      }
+
+      // Calculate explicitly realized profits directly from withdrawal history
+      if (plan.withdrawalHistory && plan.withdrawalHistory.length > 0) {
+        const planRealizedProfit = plan.withdrawalHistory
+          .filter((w: any) => w.earlyWithdrawal && w.processed)
+          .reduce((sum: number, w: any) => sum + (w.penalty || 0), 0);
+
+        realizedProfit += planRealizedProfit;
+        totalInterestExpected += planRealizedProfit;
       }
     }
 

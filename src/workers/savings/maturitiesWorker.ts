@@ -210,6 +210,20 @@ export class SavingsMaturitiesWorker {
           plan.status = 'COMPLETED';
           plan.completedAt = new Date();
           plan.interestEarned = interestAmount;
+
+          if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
+          plan.withdrawalHistory.push({
+            amount: plan.principal,
+            penalty: 0,
+            netAmount: totalAmount,
+            initiated: new Date(),
+            completed: new Date(),
+            earlyWithdrawal: false,
+            processed: true,
+            traceId,
+            transactionId: trxn.reference
+          });
+
           await plan.save({ session });
 
           logger.info({
