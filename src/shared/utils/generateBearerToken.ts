@@ -21,6 +21,7 @@ export const generateBearerToken = async (consumerKey: string, consumerSecret: s
   try {
     const response = await axios.post(authUrl, requestBody, {
       headers: { "Content-Type": "application/json" },
+      timeout: 15000,
     });
 
     if (response.status !== 200) {
