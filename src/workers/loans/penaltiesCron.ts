@@ -22,10 +22,14 @@ export class LoanPenaltiesCron {
   static register() {
     WorkerControlService.register('loan-penalties', async () => {
       const settings = await SettingsService.getSettings();
-      let schedule = '*/5 * * * *'; // Every 5 minutes
-      if (settings.workersConfig?.has('loan-penalties')) {
-        const config = settings.workersConfig.get('loan-penalties');
-        if (config?.cronSchedule) schedule = config.cronSchedule;
+      let schedule = '0 */12 * * *'; // Default: Every 12 hours
+
+      const workersConfig = settings.workersConfig as any;
+      if (workersConfig && typeof workersConfig.get === 'function' && workersConfig.has('loan-penalties')) {
+        const config = workersConfig.get('loan-penalties');
+        if (config && config.cronSchedule && config.cronSchedule.trim() !== '') {
+          schedule = config.cronSchedule;
+        }
       }
 
       await QueueService.removeRepeatableJobs('loan-penalties');

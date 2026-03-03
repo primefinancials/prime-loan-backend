@@ -1042,10 +1042,27 @@ export class SavingsService {
     const defaultFixedPenaltyRate = (settings.savings?.fixed?.penaltyRate || 5) / 100;
 
     let totalPlans = 0;
-    let totalPrincipal = 0;
-    let totalInterestExpected = 0; // This now effectively maps to Expected Profit
+
+    // Principal Buckets
+    let totalPrincipal = 0; // All time
+    let totalActivePrincipal = 0; // Only ACTIVE or PROCESSING
+
+    // Type Breakdowns (Total and Active)
+    let totalFixedCount = 0;
+    let totalFixedAmount = 0;
+    let totalFlexibleCount = 0;
+    let totalFlexibleAmount = 0;
+
+    let activeFixedCount = 0;
+    let activeFixedAmount = 0;
+    let activeFlexibleCount = 0;
+    let activeFlexibleAmount = 0;
+
+    // Profit Buckets
+    let totalInterestExpected = 0; // Expected Profit
     let realizedProfit = 0;
-    let unrealizedProfit = 0;
+
+    // Global counts
     let activePlans = 0;
     let maturedPlans = 0;
     let withdrawnPlans = 0;
@@ -1057,15 +1074,37 @@ export class SavingsService {
 
     for (const plan of plans) {
       totalPlans++;
-      totalPrincipal += plan.principal || 0;
+      const pAmt = plan.principal || 0;
 
+      totalPrincipal += pAmt;
+
+      // Group by type (All Statuses)
+      if (plan.planType === 'LOCKED') {
+        totalFixedCount++;
+        totalFixedAmount += pAmt;
+      } else if (plan.planType === 'FLEXIBLE') {
+        totalFlexibleCount++;
+        totalFlexibleAmount += pAmt;
+      }
+
+      // ACTIVE or PROCESSING Bucket
       if (plan.status === "ACTIVE" || plan.status === "PROCESSING") {
+        totalActivePrincipal += pAmt;
+
         if (plan.status === "ACTIVE") activePlans++;
+
+        if (plan.planType === 'LOCKED') {
+          activeFixedCount++;
+          activeFixedAmount += pAmt;
+        } else if (plan.planType === 'FLEXIBLE') {
+          activeFlexibleCount++;
+          activeFlexibleAmount += pAmt;
+        }
 
         if (plan.maturityDate && plan.maturityDate <= now && plan.status === "ACTIVE") {
           maturedPlans++;
           maturityCount++;
-          maturityAmount += plan.principal || 0;
+          maturityAmount += pAmt;
         }
 
         const hasPendingWithdrawals = plan.pendingWithdrawals && plan.pendingWithdrawals.some((w: any) => w.status === 'PENDING');
@@ -1074,7 +1113,7 @@ export class SavingsService {
           if (hasPendingWithdrawals) {
             earlyWithdrawalAmount += (plan.pendingWithdrawals || []).filter((w: any) => w.status === 'PENDING').reduce((acc: number, w: any) => acc + (w.amount || 0), 0);
           } else {
-            earlyWithdrawalAmount += plan.principal || 0;
+            earlyWithdrawalAmount += pAmt;
           }
         }
       }
@@ -1083,51 +1122,75 @@ export class SavingsService {
         withdrawnPlans++;
       }
 
-      // Profit Calculations (Requested by User)
-      // Expected Profit: Penalties from ALL early withdrawal requests (pending + processed)
-      // Realized Profit: Penalties from PROCESSED/COMPLETED early withdrawals ONLY.
+      // PREPARE PROFIT CALCULATIONS 
+      // EXPECTED: Realized profit + Uncalculated theoretical penalty of ALL currently active principals (if they withdrew right now)
+      // REALIZED: The sum of all stored penalty values in the `earlyWithdrawal` flows (whether pending, processed, or withdrawn).
 
-      if (plan.planType === 'FLEXIBLE') {
+      let theoreticalPenalty = 0;
+
+      if (plan.planType === 'LOCKED') {
+        let penaltyRate = plan.meta?.penaltyRate;
+        if (penaltyRate === undefined) penaltyRate = defaultFixedPenaltyRate;
+        else if (penaltyRate > 1) penaltyRate = penaltyRate / 100;
+
+        // If it was completed early, grab actual penalty from realized
+        if (plan.status === 'COMPLETED' && plan.completedAt && plan.maturityDate && plan.completedAt < plan.maturityDate) {
+          const penalty = Math.floor((plan.targetAmount || 0) * penaltyRate);
+          realizedProfit += penalty;
+          totalInterestExpected += penalty; // Add realized to expected
+        } else if (plan.status === 'ACTIVE' || plan.status === 'PROCESSING') {
+          // Active plan theoretical penalty or early withdrawal 
+          theoreticalPenalty = Math.floor(pAmt * penaltyRate);
+          totalInterestExpected += theoreticalPenalty;
+
+          if (plan.earlyWithdrawalDate) {
+            realizedProfit += theoreticalPenalty; // For fixed, scheduled withdrawal immediately guarantees penalty capture
+          }
+        }
+      } else if (plan.planType === 'FLEXIBLE') {
+        let currentFlexiblePenaltySum = 0;
+
+        // Sum penalties from all withdrawal requests
         if (plan.pendingWithdrawals && plan.pendingWithdrawals.length > 0) {
           for (const w of plan.pendingWithdrawals) {
-            if (w.status === 'PENDING' || w.status === 'PROCESSED') {
-              totalInterestExpected += (w.penalty || 0);
+            const wPenalty = w.penalty || 0;
+            currentFlexiblePenaltySum += wPenalty;
 
-              if (w.status === 'PROCESSED') {
-                realizedProfit += (w.penalty || 0);
-              }
+            // Any request (pending, scheduled, processed) adds to realized immediately upon request
+            if (['PENDING', 'PROCESSED', 'SCHEDULED'].includes(w.status?.toUpperCase() || '')) {
+              realizedProfit += wPenalty;
             }
           }
         }
-      } else if (plan.planType === 'LOCKED') {
-        let penaltyRate = plan.meta?.penaltyRate;
-        if (penaltyRate === undefined) {
-          penaltyRate = defaultFixedPenaltyRate;
-        } else if (penaltyRate > 1) {
-          penaltyRate = penaltyRate / 100;
+
+        // Calculate theoretical penalty for the REMAINING active principal balance
+        if ((plan.status === 'ACTIVE' || plan.status === 'PROCESSING') && pAmt > 0 && plan.maturityDate && plan.maturityDate > now) {
+          let flexiblePenaltyRate = plan.meta?.penaltyRate;
+          if (flexiblePenaltyRate === undefined) flexiblePenaltyRate = 0.025; // fallback
+          else if (flexiblePenaltyRate > 1) flexiblePenaltyRate = flexiblePenaltyRate / 100;
+
+          theoreticalPenalty = Math.floor(pAmt * flexiblePenaltyRate);
         }
 
-        // If it's pending early withdrawal
-        if (plan.earlyWithdrawalDate && plan.status !== 'COMPLETED') {
-          const penalty = Math.floor((plan.principal || 0) * penaltyRate);
-          totalInterestExpected += penalty;
-        }
-
-        // If it was completed early
-        if (plan.status === 'COMPLETED' && plan.completedAt && plan.maturityDate && plan.completedAt < plan.maturityDate) {
-          const penalty = Math.floor((plan.targetAmount || 0) * penaltyRate); // use targetAmount as original deposit base
-          totalInterestExpected += penalty;
-          realizedProfit += penalty;
-        }
+        totalInterestExpected += (currentFlexiblePenaltySum + theoreticalPenalty);
       }
     }
 
     return {
       totalPlans,
       totalPrincipal,
+      totalActivePrincipal,
+      totalFixedCount,
+      totalFixedAmount,
+      totalFlexibleCount,
+      totalFlexibleAmount,
+      activeFixedCount,
+      activeFixedAmount,
+      activeFlexibleCount,
+      activeFlexibleAmount,
       totalInterestExpected,
       realizedProfit,
-      unrealizedProfit,
+      unrealizedProfit: totalInterestExpected - realizedProfit,
       activePlans,
       maturedPlans,
       withdrawnPlans,

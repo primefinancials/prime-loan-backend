@@ -175,7 +175,7 @@ export class EscrowService {
             // Notify
             // (Notifications logic moved here, outside transaction)
             const notifService = (await import('../notifications/notification.service')).NotificationService;
-            const escrowLink = `https://primefinance.live/dashboard/escrow/${finalEscrow._id}`;
+            const escrowLink = `https://primefinance.live/login`;
 
             if (inviteEmail) {
                 try {
