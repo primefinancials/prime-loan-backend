@@ -176,6 +176,7 @@ export class VfdProvider {
         AccessToken: accessToken,
         "Content-Type": "application/json",
       };
+      config.timeout = config.timeout || 20000; // 20 seconds maximum externally
       config.url = `${baseUrl}${config.url}`;
 
       const response = await axios(config);
