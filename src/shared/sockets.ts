@@ -167,44 +167,4 @@ export class SocketService {
         if (!this.io) throw new Error("Socket.io not initialized!");
         return this.io;
     }
-
-    /**
-     * Broadcasts a live VFD balance update to a specific user's private socket room.
-     */
-    static async broadcastBalanceUpdate(userId: string, accountNo?: string) {
-        if (!this.io) return;
-        try {
-            const { default: User } = await import('../modules/users/user.model');
-            const { VfdProvider } = await import('./providers/vfd.provider');
-
-            let targetAccountNo = accountNo;
-
-            // Fetch account number if not provided
-            if (!targetAccountNo) {
-                const user = await User.findById(userId).select('user_metadata.accountNo');
-                if (user && user.user_metadata?.accountNo) {
-                    targetAccountNo = user.user_metadata.accountNo;
-                }
-            }
-
-            if (!targetAccountNo) {
-                logger.warn(`Cannot broadcast balance update for user ${userId}: No account number found.`);
-                return;
-            }
-
-            // Sync with VFD Live
-            const vfdInfo = await new VfdProvider().getAccountInfo(targetAccountNo);
-            const liveBalance = Number(vfdInfo?.data?.accountBalance) || 0;
-
-            // Emit to private user room
-            this.io.to(`user_${userId}`).emit('balance_updated', {
-                event: 'balance_updated',
-                data: { newBalance: liveBalance }
-            });
-            logger.info(`Broadcasted live balance (₦${liveBalance}) to user_${userId}`);
-
-        } catch (error: any) {
-            logger.error({ error: error.message }, `Failed to broadcast balance update to user ${userId}`);
-        }
-    }
 }

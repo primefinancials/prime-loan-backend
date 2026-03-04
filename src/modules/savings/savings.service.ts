@@ -13,7 +13,6 @@ import { TransferService } from '../transfers/transfer.service';
 import { TransferRequest } from '../../shared/providers/vfd.provider';
 import { sha512 } from 'js-sha512';
 import { SettingsService } from '../admin/settings.service';
-import { SocketService } from '../../shared/sockets';
 
 export interface CreatePlanParams {
   userId: string;
@@ -248,7 +247,6 @@ export class SavingsService {
           result
         );
 
-        SocketService.broadcastBalanceUpdate(params.userId).catch(console.error);
         return result;
       });
     } finally {
@@ -323,9 +321,9 @@ export class SavingsService {
 
           // 3. Update Plan
           plan.principal += params.amount;
-          if(plan.contributionHistory){
+          if (plan.contributionHistory) {
             plan.contributionHistory = [
-              ...plan.contributionHistory, 
+              ...plan.contributionHistory,
               {
                 amount: params.amount,
                 initiated: new Date(),
@@ -355,7 +353,6 @@ export class SavingsService {
             }
           );
 
-          SocketService.broadcastBalanceUpdate(params.userId).catch(console.error);
           return {
             planId: plan._id,
             newPrincipal: plan.principal,
@@ -676,7 +673,6 @@ export class SavingsService {
           });
 
           await plan.save({ session });
-          SocketService.broadcastBalanceUpdate(params.userId).catch(console.error);
 
           return { traceId, transactionId: trxn.reference, withdrawnAmount: amount, penalty, netAmount, newPrincipal: plan.principal };
         }
@@ -798,7 +794,8 @@ export class SavingsService {
               if (plan.principal <= 0) {
                 plan.status = 'COMPLETED';
               }
-              SocketService.broadcastBalanceUpdate(String(plan.userId)).catch(console.error);
+
+              await plan.save({ session });
             } else {
               await TransferService.failTransfer(trxn.reference);
               console.error(`Transfer failed for plan ${plan._id} pending withdrawal: ${providerRes.message}`);

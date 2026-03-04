@@ -2,9 +2,8 @@
  * VFD Provider - Banking operations adapter
  * Wraps VFD API calls with retry logic and circuit breaker
  */
-import axios, { AxiosRequestConfig } from "axios";
-import { CircuitBreaker } from "../utils/circuit";
-import { generateBearerToken } from "../utils/generateBearerToken";
+import axios, { AxiosRequestConfig, AxiosError } from "axios";
+import { generateBearerToken, clearBearerToken } from "../utils/generateBearerToken";
 import { customerKey, customerSecret, baseUrl } from "../../config";
 
 /* ---------- TYPES ---------- */
@@ -157,33 +156,35 @@ export interface NameEnquiryResponse {
 /* ---------- PROVIDER CLASS ---------- */
 
 export class VfdProvider {
-  private circuitBreaker: CircuitBreaker;
-
   constructor() {
-    this.circuitBreaker = new CircuitBreaker({
-      failureThreshold: 5,
-      resetTimeout: 60000,
-      windowDuration: 300000,
-    });
+    // Circuit breaker removed for faster and more direct VFD requests without premature timeouts
   }
 
-  private async request<T>(config: AxiosRequestConfig): Promise<T> {
-    return this.circuitBreaker.execute(async () => {
-      const accessToken = await generateBearerToken(customerKey, customerSecret);
+  private async request<T>(config: AxiosRequestConfig, isRetry = false): Promise<T> {
+    const accessToken = await generateBearerToken(customerKey, customerSecret);
 
-      config.headers = {
-        ...(config.headers || {}),
-        AccessToken: accessToken,
-        "Content-Type": "application/json",
-      };
-      config.timeout = config.timeout || 20000; // 20 seconds maximum externally
-      config.url = `${baseUrl}${config.url}`;
+    config.headers = {
+      ...(config.headers || {}),
+      AccessToken: accessToken,
+      "Content-Type": "application/json",
+    };
+    config.url = `${baseUrl}${config.url}`;
 
+    try {
       const response = await axios(config);
-
-      console.log({ response, accessToken });
       return response.data as T;
-    });
+    } catch (error) {
+      const axiosError = error as AxiosError;
+      // If unauthorized, clear the token and retry exactly once
+      if (axiosError.response?.status === 401 && !isRetry) {
+        clearBearerToken();
+        // The URL already has baseUrl prepended from the first attempt, so we strip it or pass a clean config
+        // Actually, easier to reconstruct the config to avoid double prepending
+        const retryConfig = { ...config, url: config.url.replace(baseUrl, "") };
+        return this.request<T>(retryConfig, true);
+      }
+      throw error;
+    }
   }
 
   /* ---------- CLIENT ---------- */
