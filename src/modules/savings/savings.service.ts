@@ -323,6 +323,17 @@ export class SavingsService {
 
           // 3. Update Plan
           plan.principal += params.amount;
+          if(plan.contributionHistory){
+            plan.contributionHistory = [
+              ...plan.contributionHistory, 
+              {
+                amount: params.amount,
+                initiated: new Date(),
+                processed: true,
+                transactionId: trxnRes?.transferId || ""
+              }
+            ]
+          }
           await plan.save({ session });
 
           // 4. Ledger Entry
