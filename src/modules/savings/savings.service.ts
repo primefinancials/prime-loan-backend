@@ -523,6 +523,8 @@ export class SavingsService {
 
             // Record to Withdrawal History
             if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
+            // Deduct from Principal based on logic: Reserve Funds immediately
+            plan.principal -= amount;
             plan.withdrawalHistory.push({
               amount,
               penalty,
