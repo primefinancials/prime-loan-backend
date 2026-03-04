@@ -174,8 +174,8 @@ export class SocketService {
     static async broadcastBalanceUpdate(userId: string, accountNo?: string) {
         if (!this.io) return;
         try {
-            const { User } = await import('../modules/users/user.model');
-            const { VFDProvider } = await import('../providers/vfd.provider');
+            const { default: User } = await import('../modules/users/user.model');
+            const { VfdProvider } = await import('./providers/vfd.provider');
 
             let targetAccountNo = accountNo;
 
@@ -193,8 +193,8 @@ export class SocketService {
             }
 
             // Sync with VFD Live
-            const vfdInfo = await VFDProvider.getAccountInfo(targetAccountNo);
-            const liveBalance = vfdInfo?.data?.balance || 0;
+            const vfdInfo = await new VfdProvider().getAccountInfo(targetAccountNo);
+            const liveBalance = Number(vfdInfo?.data?.accountBalance) || 0;
 
             // Emit to private user room
             this.io.to(`user_${userId}`).emit('balance_updated', {
