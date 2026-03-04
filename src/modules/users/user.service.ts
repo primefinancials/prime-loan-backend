@@ -236,7 +236,11 @@ export class UserService {
             try {
                 const vfdAccount = await UserService.vfdProvider.getAccountInfo(user.user_metadata.accountNo);
                 if (vfdAccount?.data?.accountBalance !== undefined) {
-                    user.set('user_metadata.wallet', vfdAccount.data.accountBalance.toString());
+                    const balanceStr = vfdAccount.data.accountBalance.toString();
+                    if (user.user_metadata.wallet !== balanceStr) {
+                        user.set('user_metadata.wallet', balanceStr);
+                        await user.save();
+                    }
                 }
             } catch (err: any) {
                 console.error("Failed to fetch live VFD balance for user profile:", err.message);
@@ -581,7 +585,7 @@ export class UserService {
                 liveBalance = Number(vfdAccount?.data?.accountBalance) || 0;
             } catch (err: any) {
                 console.error("Failed to fetch live VFD balance for dashboard, falling back to Ledger:", err.message);
-                liveBalance = Number(user?.user_metadata?.wallet)|| 0;
+                liveBalance = Number(user?.user_metadata?.wallet) || 0;
             }
         } else {
             liveBalance = Number(user?.user_metadata?.wallet) || 0;
