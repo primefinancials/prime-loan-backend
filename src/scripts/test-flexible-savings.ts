@@ -74,7 +74,7 @@ async function runTest() {
             // Verify processed
             const finalPlan = await SavingsPlan.findById(standardPlan._id);
             const processedItem = finalPlan?.withdrawalHistory?.[0];
-            console.log('Processed Item Status:', processedItem?.status);
+            console.log('Processed Item Status:', processedItem?.processed);
             console.log('Transaction ID:', processedItem?.transactionId);
         }
 

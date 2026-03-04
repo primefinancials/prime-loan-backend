@@ -234,9 +234,9 @@ export class UserService {
         // Hydrate live VFD balance dynamically upon profile retrieval
         if (user.user_metadata?.accountNo) {
             try {
-                const vfdAccount = await VfdProvider.getAccountInfo(user.user_metadata.accountNo);
-                if (vfdAccount?.data?.balance !== undefined) {
-                    user.set('user_metadata.wallet', vfdAccount.data.balance.toString());
+                const vfdAccount = await UserService.vfdProvider.getAccountInfo(user.user_metadata.accountNo);
+                if (vfdAccount?.data?.accountBalance !== undefined) {
+                    user.set('user_metadata.wallet', vfdAccount.data.accountBalance.toString());
                 }
             } catch (err: any) {
                 console.error("Failed to fetch live VFD balance for user profile:", err.message);
@@ -577,8 +577,8 @@ export class UserService {
         let liveBalance = 0;
         if (user?.user_metadata?.accountNo) {
             try {
-                const vfdAccount = await VfdProvider.getAccountInfo(user.user_metadata.accountNo);
-                liveBalance = vfdAccount?.data?.balance || 0;
+                const vfdAccount = await UserService.vfdProvider.getAccountInfo(user.user_metadata.accountNo);
+                liveBalance = Number(vfdAccount?.data?.accountBalance) || 0;
             } catch (err: any) {
                 console.error("Failed to fetch live VFD balance for dashboard, falling back to Ledger:", err.message);
                 liveBalance = await LedgerService.getUserWalletBalance(user?._id as any || "");
