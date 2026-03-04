@@ -581,10 +581,10 @@ export class UserService {
                 liveBalance = Number(vfdAccount?.data?.accountBalance) || 0;
             } catch (err: any) {
                 console.error("Failed to fetch live VFD balance for dashboard, falling back to Ledger:", err.message);
-                liveBalance = await LedgerService.getUserWalletBalance(user?._id as any || "");
+                liveBalance = Number(user?.user_metadata?.wallet)|| 0;
             }
         } else {
-            liveBalance = await LedgerService.getUserWalletBalance(user?._id as any || "");
+            liveBalance = Number(user?.user_metadata?.wallet) || 0;
         }
 
         // Fallback aggregation (or primary if stats not updated)
