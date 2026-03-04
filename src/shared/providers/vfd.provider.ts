@@ -178,7 +178,7 @@ export class VfdProvider {
       console.log("VFD Error", error);
       const axiosError = error as AxiosError;
       // If unauthorized, clear the token and retry exactly once
-      if (axiosError.response?.status === 401 && !isRetry) {
+      if ((axiosError.response?.status === 401 || axiosError.response?.status === 403) && !isRetry) {
         clearBearerToken();
         // The URL already has baseUrl prepended from the first attempt, so we strip it or pass a clean config
         // Actually, easier to reconstruct the config to avoid double prepending
