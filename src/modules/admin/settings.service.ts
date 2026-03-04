@@ -110,6 +110,16 @@ export class SettingsService {
       await settings.save();
     }
 
+    if (!settings.workersConfig) {
+      settings.workersConfig = new Map() as any;
+      await settings.save();
+    }
+
+    if (!settings.workersConfig.has('loan-penalties')) {
+      settings.workersConfig.set('loan-penalties', { enabled: true, cronSchedule: '0 */12 * * *' });
+      await settings.save();
+    }
+
     return settings;
   }
 
