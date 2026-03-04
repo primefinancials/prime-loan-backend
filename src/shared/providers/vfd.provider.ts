@@ -172,8 +172,10 @@ export class VfdProvider {
 
     try {
       const response = await axios(config);
+      console.log("VFD Response", response);
       return response.data as T;
     } catch (error) {
+      console.log("VFD Error", error);
       const axiosError = error as AxiosError;
       // If unauthorized, clear the token and retry exactly once
       if (axiosError.response?.status === 401 && !isRetry) {
