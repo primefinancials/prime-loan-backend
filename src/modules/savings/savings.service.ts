@@ -937,7 +937,6 @@ export class SavingsService {
           if (plan.principal <= 0) {
             plan.status = 'COMPLETED';
           }
-          SocketService.broadcastBalanceUpdate(String(plan.userId)).catch(console.error);
         } else {
           await TransferService.failTransfer(trxn.reference);
           throw new Error(`Transfer failed: ${providerRes.message}`);
