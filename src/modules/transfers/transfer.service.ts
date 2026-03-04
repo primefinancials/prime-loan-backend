@@ -13,7 +13,6 @@ import { sha512 } from 'js-sha512';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
 import counterModel from '../users/counter.model';
 import { NotificationService } from '../notifications/notification.service';
-import { SocketService } from '../../shared/sockets';
 
 export interface InitiateTransferRequest {
   fromAccount: string;
@@ -236,9 +235,7 @@ export class TransferService {
         // Note: It's safer to run this outside the transaction or just catch errors.
         if (transfer.transferType === 'intra') {
           const toUser = await User.findOne({ "user_metadata.accountNo": transfer.toAccount });
-          if (toUser) SocketService.broadcastBalanceUpdate(String(toUser._id), transfer.toAccount).catch(console.error);
         }
-        SocketService.broadcastBalanceUpdate(transfer.userId, transfer.fromAccount).catch(console.error);
 
         return result;
       });
