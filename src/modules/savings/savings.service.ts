@@ -519,6 +519,8 @@ export class SavingsService {
 
             if (plan.principal <= 0) {
               plan.status = 'COMPLETED';
+            } else {
+              plan.status = 'ACTIVE';
             }
 
             // Record to Withdrawal History
@@ -658,6 +660,8 @@ export class SavingsService {
             plan.status = 'COMPLETED';
             plan.completedAt = new Date();
             plan.principal = 0;
+          } else {
+            plan.status = 'ACTIVE';
           }
 
           // Record to Withdrawal History
@@ -795,6 +799,8 @@ export class SavingsService {
 
               if (plan.principal <= 0) {
                 plan.status = 'COMPLETED';
+              } else {
+                plan.status = 'ACTIVE';
               }
 
               await plan.save({ session });
@@ -937,6 +943,8 @@ export class SavingsService {
 
           if (plan.principal <= 0) {
             plan.status = 'COMPLETED';
+          } else {
+            plan.status = 'ACTIVE';
           }
 
           await plan.save({ session });
