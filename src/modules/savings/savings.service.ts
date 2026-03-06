@@ -798,6 +798,7 @@ export class SavingsService {
               }
 
               await plan.save({ session });
+              return plan;
             } else {
               await TransferService.failTransfer(trxn.reference);
               console.error(`Transfer failed for plan ${plan._id} pending withdrawal: ${providerRes.message}`);
@@ -812,8 +813,6 @@ export class SavingsService {
           await session.endSession();
         }
       }
-      // Save plan after processing items
-      await plan.save();
     }
   }
 
@@ -939,6 +938,9 @@ export class SavingsService {
           if (plan.principal <= 0) {
             plan.status = 'COMPLETED';
           }
+
+          await plan.save({ session });
+          return plan;
         } else {
           await TransferService.failTransfer(trxn.reference);
           throw new Error(`Transfer failed: ${providerRes.message}`);
@@ -947,9 +949,6 @@ export class SavingsService {
     } finally {
       await session.endSession();
     }
-
-    await plan.save();
-    return plan;
   }
 
   static async getUserPlans(userId: string, page = 1, limit = 20,) {
