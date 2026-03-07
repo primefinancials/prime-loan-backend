@@ -96,6 +96,8 @@ export interface ILoan extends Document {
     action: string;
   }[];
   lastInterestAdded: string;
+  lastRemindedAt?: string;
+  remindersToday?: number;
   rejectionReason?: string;
   debit_account: string;
   adminAction: {
