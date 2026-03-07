@@ -22,7 +22,7 @@ export class LoanPenaltiesCron {
   static register() {
     WorkerControlService.register('loan-penalties', async () => {
       const settings = await SettingsService.getSettings();
-      let schedule = '0 */12 * * *'; // Default: Every 12 hours
+      let schedule = '*/5 * * * *'; // Default: Every 5 minutes
 
       const workersConfig = settings.workersConfig as any;
       if (workersConfig && typeof workersConfig.get === 'function' && workersConfig.has('loan-penalties')) {
@@ -84,14 +84,18 @@ export class LoanPenaltiesCron {
 
           if (!user || Array.isArray(user)) continue;
 
+          // 1. Penalty (Only for overdue)
+          let penaltyAmount = 0;
           if (repaymentDateISO < todayISO) {
-            // OVERDUE
-            const penaltyAmount = await this.applyPenaltyToLoan(loan, penaltyRate);
+            penaltyAmount = await this.applyPenaltyToLoan(loan, penaltyRate);
             if (penaltyAmount > 0) {
               penalizedUsers.push({ email: user.email, phone: user.user_metadata?.phone, amount: penaltyAmount });
             }
+          }
 
-            if (user && Number(user.user_metadata.wallet || 0) > 0) {
+          // 2. Deduction (Only for overdue)
+          if (repaymentDateISO < todayISO) {
+            if (Number(user.user_metadata?.wallet || 0) > 0) {
               try {
                 await LoanService.repayLoan({
                   loanId: loan._id,
@@ -105,14 +109,53 @@ export class LoanPenaltiesCron {
                 await WorkerLogService.log('loan-penalties', 'error', `Error repaying loan: ${error.message}`, { loanId: loan._id });
               }
             }
+          }
 
-            await NotificationService.sendLoanOverdue(user, loan);
-          } else if (repaymentDateISO === todayISO) {
-            // DUE TODAY
-            await NotificationService.sendLoanDueToday(user, loan);
-          } else if (repaymentDateISO === tomorrowISO) {
-            // DUE TOMORROW
-            await NotificationService.sendLoanDueTomorrow(user, loan);
+          // 3. Reminders (Overdue, Due Today, Due Tomorrow)
+          const timeSinceLastReminder = loan.lastRemindedAt ? today.getTime() - new Date(loan.lastRemindedAt).getTime() : Infinity;
+          const hoursSinceLastReminder = timeSinceLastReminder / (1000 * 60 * 60);
+
+          let isNewDay = true;
+          if (loan.lastRemindedAt) {
+            const lastReminderDateISO = new Date(loan.lastRemindedAt).toISOString().split('T')[0];
+            if (lastReminderDateISO === todayISO) {
+              isNewDay = false;
+            }
+          }
+
+          const currentRemindersToday = isNewDay ? 0 : (loan.remindersToday || 0);
+
+          let shouldRemind = false;
+          if (currentRemindersToday < 2) {
+            if (currentRemindersToday === 0 || hoursSinceLastReminder >= 4) {
+              shouldRemind = true;
+            }
+          }
+
+          if (shouldRemind) {
+            let reminded = false;
+            if (repaymentDateISO < todayISO) {
+              await NotificationService.sendLoanOverdue(user, loan);
+              reminded = true;
+            } else if (repaymentDateISO === todayISO) {
+              await NotificationService.sendLoanDueToday(user, loan);
+              reminded = true;
+            } else if (repaymentDateISO === tomorrowISO) {
+              await NotificationService.sendLoanDueTomorrow(user, loan);
+              reminded = true;
+            }
+
+            if (reminded) {
+              await Loan.updateOne(
+                { _id: loan._id },
+                {
+                  $set: {
+                    lastRemindedAt: today.toISOString(),
+                    remindersToday: currentRemindersToday + 1
+                  }
+                }
+              );
+            }
           }
         } catch (err: any) {
           logger.error({ loanId: loan._id, error: err.message }, 'Error processing loan');

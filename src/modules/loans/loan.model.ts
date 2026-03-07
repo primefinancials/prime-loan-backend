@@ -104,6 +104,8 @@ const LoanSchema: Schema = new Schema(
     credit_score: CreditScoreSchema,
     repayment_history: [RepaymentHistorySchema],
     lastInterestAdded: { type: String, required: false },
+    lastRemindedAt: { type: String, required: false },
+    remindersToday: { type: Number, required: false, default: 0 },
     rejectionReason: { type: String, required: false },
     debit_account: { type: String },
     adminAction,
