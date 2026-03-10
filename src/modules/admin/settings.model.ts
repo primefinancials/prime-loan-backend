@@ -76,6 +76,8 @@ export interface ISettings extends Document {
       dueToday: string;
       overdue: string;
     };
+    serviceFee: number;
+    interestPercentage: number;
   };
 
   // System Settings
@@ -206,7 +208,9 @@ const SettingsSchema = new Schema<ISettings>(
         dueTomorrow: { type: String, default: "Your loan is due tomorrow. Please ensure your wallet is funded." },
         dueToday: { type: String, default: "Your loan is due today. Please fund your wallet to avoid penalties." },
         overdue: { type: String, default: "Your loan is overdue. Penalties are now being applied." }
-      }
+      },
+      serviceFee: { type: Number, default: 500 },
+      interestPercentage: { type: Number, default: 10 }
     },
 
     // System Config

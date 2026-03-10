@@ -60,7 +60,9 @@ export class SettingsService {
           penalty: {
             dailyRate: 10,
             gracePeriod: 1
-          }
+          },
+          serviceFee: 500,
+          interestPercentage: 10
         },
         system: {
           currency: "NGN",
@@ -100,7 +102,9 @@ export class SettingsService {
           dueTomorrow: "Your loan is due tomorrow. Please ensure your wallet is funded.",
           dueToday: "Your loan is due today. Please fund your wallet to avoid penalties.",
           overdue: "Your loan is overdue. Penalties are now being applied."
-        }
+        },
+        serviceFee: 500,
+        interestPercentage: 10
       };
       await settings.save();
     }

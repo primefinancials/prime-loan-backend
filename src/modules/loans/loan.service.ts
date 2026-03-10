@@ -262,19 +262,25 @@ export class LoanService {
     const repaymentDate = new Date(loanDate);
     repaymentDate.setDate(repaymentDate.getDate() + Number(params.duration));
 
+    // Fetch dynamic loan interest and fee
+    const settings = await SettingsService.getSettings();
+    const fee = settings.loan?.serviceFee || 0;
+    const percentage = settings.loan?.interestPercentage || 0;
+
+    const repaymentAmount = params.amount + fee + (params.amount * (percentage / 100));
+
     // Build and persist loan record
     const loanPayload: Partial<ILoan> = {
       ...params,
-      percentage: typeof params.percentage === "string"
-        ? Number(String(params.percentage).replace("%", ""))
-        : params.percentage,
+      percentage,
       userId: params.userId,
       requested_amount: params.amount,
       amount: params.amount, // store Naira
+      repayment_amount: repaymentAmount,
       loan_date: loanDate.toISOString(),
       repayment_date: repaymentDate.toISOString(),
       loan_payment_status: "not-started",
-      outstanding: params.amount,
+      outstanding: repaymentAmount,
       credit_message: mono?.error || "available",
       credit_score: creditScoreObj,
       status: params.status as LOANSTATUS || "pending",
@@ -424,8 +430,7 @@ export class LoanService {
 
         // 6️⃣ Compute repayment details
         const duration = loan.duration || 21;
-        const fee = await SettingsService.calculateProfit("loan", "send", params.amount);
-        const total = Number(params.amount) + fee;
+        const total = loan.repayment_amount || params.amount;
 
         const loanDate = new Date();
 
