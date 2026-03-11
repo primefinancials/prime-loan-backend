@@ -425,7 +425,11 @@ export class LoanService {
 
         // 6️⃣ Compute repayment details
         const duration = loan.duration || 21;
-        const total = loan.repayment_amount || params.amount;
+        const settings = await SettingsService.getSettings();
+        const fee = settings.loan?.serviceFee || 0;
+        const percentage = settings.loan?.interestPercentage || 0;
+
+        const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (Number(percentage) / 100));
 
         const loanDate = new Date();
 
@@ -567,7 +571,7 @@ export class LoanService {
         const now = new Date();
         loan.repayment_history = [...loan.repayment_history, {
           amount: params.amount,
-          outstanding: newOutstanding,
+          outstanding: newOutstanding >= 0? newOutstanding : 0,
           action: "repayment",
           date: now.toISOString()
         }];
