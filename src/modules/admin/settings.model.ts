@@ -201,7 +201,7 @@ const SettingsSchema = new Schema<ISettings>(
         defaultInterest: { type: Number, default: 5 }
       },
       penalty: {
-        dailyRate: { type: Number, default: 10 },
+        dailyRate: { type: Number, default: 1 },
         gracePeriod: { type: Number, default: 1 }
       },
       reminders: {
