@@ -415,6 +415,7 @@ router.get("/marketplace/orders", verifyJwtRest(), OrderController.getMyOrders a
 /*                              SETTINGS ROUTES                                */
 /* -------------------------------------------------------------------------- */
 
+router.get("/settings", verifyJwtRest(), SettingsController.getSettings);
 router.get("/fees", SettingsController.getFees);
 router.get("/settings/calculate-profit", verifyJwtRest(), AdminController.calculateProfit as any);
 router.get("/settings/profit-config", verifyJwtRest(), AdminController.getProfitConfig as any);

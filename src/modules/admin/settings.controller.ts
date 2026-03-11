@@ -23,4 +23,21 @@ export class SettingsController {
             next(error);
         }
     }
+
+    /**
+     * Get global settings for the frontend (loan parameters, etc.)
+     * Public or Authenticated generic user access.
+     */
+    static async getSettings(req: Request, res: Response, next: NextFunction) {
+        try {
+            const settings = await SettingsService.getSettings();
+
+            res.status(200).json({
+                status: "success",
+                data: settings
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
 }
