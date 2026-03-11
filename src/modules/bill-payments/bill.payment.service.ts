@@ -247,7 +247,7 @@ export default class BillPaymentService {
 
             if (!item) {
               // call product orders endpoint if product code isn't available in itemCode
-              const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/payment`, payload).catch(() => null);
+              const resp = await flutterwavePost(`/v3/billers/${encodeURIComponent(billerCode)}/items/payment`, payload);
               return resp;
             }
 

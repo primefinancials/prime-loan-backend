@@ -95,12 +95,16 @@ export class LoanPenaltiesCron {
 
           // 2. Deduction (Only for overdue)
           if (repaymentDateISO < todayISO) {
-            if (Number(user.user_metadata?.wallet || 0) > 0) {
+            const walletBalance = Number(user.user_metadata?.wallet || 0);
+            const outstanding = Number(loan.outstanding || 0);
+            const repaymentAmount = Math.min(walletBalance, outstanding);
+
+            if (walletBalance > 0 && repaymentAmount > 0) {
               try {
                 await LoanService.repayLoan({
                   loanId: loan._id,
                   userId: user._id,
-                  amount: Number(user.user_metadata.wallet)
+                  amount: repaymentAmount
                 });
                 deductedUsers.push({ email: user.email, phone: user.user_metadata?.phone });
                 await WorkerLogService.log('loan-penalties', 'info', `Auto-deducted wallet balance for overdue loan for ${user.email || user.user_metadata?.phone}`, { userId: user._id, loanId: loan._id });
