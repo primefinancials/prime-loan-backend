@@ -85,7 +85,7 @@ export async function processTransaction({
         billPayment.status = "FAILED";
         billPayment.meta = { ...billPayment.meta, txnResponse };
         await billPayment.save({ session });
-        console.log(`message: ${txnResponse.message } status: ${txnResponse.statusCode}`)
+        console.log(`message: ${txnResponse.message} status: ${txnResponse.statusCode}`)
         await TransferService.failTransfer(txnResponse?.reference || "");
         throw new Error(txnResponse.message || "BillPayment failed during initialization");
       }
@@ -139,7 +139,7 @@ export async function processTransaction({
             message: "Bill payment completed successfully",
           };
         } else {
-          if (providerStatus !== "success" && (providerStatus !== "failed" || providerStatus !== "error")) {
+          if (providerStatus !== "success" && providerStatus !== "failed" && providerStatus !== "error") {
             // 4️⃣ Complete transaction (mark completed)
             await TransferService.completeTransfer(
               txnResponse.reference,
@@ -187,9 +187,21 @@ export async function processTransaction({
       } catch (err: any) {
         console.log("Provider Error:", err.message);
 
+        // ❌ Provider failed → trigger refund
+
+        // Mark the original internal transfer as "failed" to reflect the overall business context
+        await TransferService.failTransfer(txnResponse?.reference || "");
+
         // 5️⃣ Attempt refund
         try {
           refundResponse = await refundProvider();
+
+          if (refundResponse?.status === "00") {
+            await TransferService.completeTransfer(refundResponse.reference, "bill-payment");
+          } else {
+            await TransferService.failTransfer(refundResponse?.reference || "");
+          }
+
           await LedgerService.createDoubleEntry(
             UuidService.generate(),
             `bill-payment:${serviceType}`,
@@ -222,8 +234,6 @@ export async function processTransaction({
           providerError: err.message,
         };
         await billPayment.save({ session });
-
-        await TransferService.failTransfer(txnResponse?.reference || "");
 
         throw new APIError(400, err.message || "Transaction failed and refund attempted")
       }

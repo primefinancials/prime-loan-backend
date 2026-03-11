@@ -132,7 +132,7 @@ export class NotificationService {
         <p style="margin-top:20px;">Best regards,<br/>Prime Finance System</p>
       </div>
     `;
-    return this.sendEmail(to, "Welcome to Prime Finance", html);
+    return this.sendEmail(to, "New User SignUp", html);
   }
 
   static async sendLoginAlert(to: string, firstName: string) {

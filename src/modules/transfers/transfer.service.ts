@@ -103,40 +103,20 @@ export class TransferService {
         }], { session });
 
         if (user) {
-          // Create debit ledger entry
-          // Fix: Use the 'type' argument to determine category instead of hardcoded 'transfer'
-          // Mapping:
-          // transfer -> category: transfer
-          // bill-payment -> category: bill-payment
-          // savings-deposit -> category: savings
-          // savings-withdrawal -> category: savings
-          // loan-disbursement -> category: loan
-          // loan-repayment -> category: loan
-
-          let ledgerCategory: any = 'transfer';
-          if (type === 'bill-payment') ledgerCategory = 'bill-payment';
-          else if (type.startsWith('savings')) ledgerCategory = 'savings';
-          else if (type.startsWith('loan')) ledgerCategory = 'loan';
-
-          await LedgerService.createEntry({
-            traceId,
-            userId: user._id as any,
-            account: `user_wallet:${user._id}`,
-            entryType: 'DEBIT',
-            category: ledgerCategory,
-            amount: request.amount,
-            status: 'PENDING',
-            idempotencyKey: request.idempotencyKey,
-            meta: { transferId: transfer._id, toAccount: request.toAccount, subtype: type }
-          }, session);
-        }
-
-        if (user) {
-          await User.findOneAndUpdate(
-            { _id: user._id },
-            { user_metadata: { ...user.user_metadata, wallet: String(Number(request.walletBalance || 0) - Number(transfer.amount)) } },
-            { new: true, upsert: true }
-          )
+          // Create debit ledger entry ONLY for basic transfers to avoid double-entry with domain services
+          if (type === 'transfer') {
+            await LedgerService.createEntry({
+              traceId,
+              userId: user._id as any,
+              account: `user_wallet:${user._id}`,
+              entryType: 'DEBIT',
+              category: 'transfer',
+              amount: request.amount,
+              status: 'PENDING',
+              idempotencyKey: request.idempotencyKey,
+              meta: { transferId: transfer._id, toAccount: request.toAccount, subtype: type }
+            }, session);
+          }
         }
 
         const result: TransferResult = {
@@ -177,19 +157,14 @@ export class TransferService {
           const user = await User.findOne({ "user_metadata.accountNo": transfer.toAccount }).session(session);
 
           if (user) {
-            if (type) {
-              // Fix: dynamic ledger category
-              let ledgerCategory: any = 'transfer';
-              if (type === 'bill-payment') ledgerCategory = 'bill-payment';
-              else if (type.startsWith('savings')) ledgerCategory = 'savings';
-              else if (type.startsWith('loan')) ledgerCategory = 'loan';
-
+            if (type === 'transfer') {
+              // Create credit ledger entry ONLY for basic transfers to avoid double-entry
               await LedgerService.createEntry({
                 userId: user._id as any,
                 traceId: transfer.traceId,
-                account: `user_wallet:${transfer.toAccount}`,
+                account: `user_wallet:${user._id}`,
                 entryType: 'CREDIT',
-                category: ledgerCategory,
+                category: 'transfer',
                 amount: transfer.amount,
                 status: 'COMPLETED',
                 relatedTo: String(transfer._id),
@@ -197,14 +172,26 @@ export class TransferService {
               }, session);
             }
 
-            user.user_metadata.wallet = String(Number(user?.user_metadata.wallet || 0) + Number(transfer.amount));
-            await user.save();
+            // Sync wallet balance with VFD source of truth
+            try {
+              const accountInfo = await TransferService.vfdProvider.getAccountInfo(transfer.toAccount);
+              if (accountInfo?.data?.accountBalance) {
+                user.user_metadata.wallet = String(accountInfo.data.accountBalance);
+              } else {
+                user.user_metadata.wallet = String(Number(user?.user_metadata.wallet || 0) + Number(transfer.amount));
+              }
+            } catch (err) {
+              console.error("Failed to sync wallet balance from VFD:", err);
+              user.user_metadata.wallet = String(Number(user?.user_metadata.wallet || 0) + Number(transfer.amount));
+            }
+            await user.save({ session });
 
             const fromuser = await User.findOne({ "user_metadata.accountNo": transfer.fromAccount }).session(session);
+            const originatorName = fromuser ? `${fromuser.user_metadata.first_name || ""} ${fromuser.user_metadata.surname || ""}`.trim() : "Prime Finance";
 
             // Send credit alert notification (best-effort, non-blocking)
             try {
-              await NotificationService.sendCreditAlert(user, transfer.amount, `${fromuser?.user_metadata.first_name} ${fromuser?.user_metadata.surname}`, transfer.reference);
+              await NotificationService.sendCreditAlert(user, transfer.amount, originatorName || "System", transfer.reference);
             } catch (emailError) {
               console.warn('Failed to send credit alert email (non-fatal):', emailError);
             }
@@ -221,20 +208,27 @@ export class TransferService {
           reference: transfer.reference
         };
 
-        const user = await User.findById(transfer.userId);
+        const user = await User.findById(transfer.userId).session(session);
 
-        if (user && type == "transfer") {
+        if (user) {
+          // Sync sender wallet balance with VFD source of truth
           try {
-            await NotificationService.sendDebitAlert(user, transfer.amount);
-          } catch (emailError) {
-            console.warn('Failed to send debit alert email (non-fatal):', emailError);
+            const accountInfo = await TransferService.vfdProvider.getAccountInfo(transfer.fromAccount);
+            if (accountInfo?.data?.accountBalance) {
+              user.user_metadata.wallet = String(accountInfo.data.accountBalance);
+              await user.save({ session });
+            }
+          } catch (err) {
+            console.error("Failed to sync sender wallet balance from VFD:", err);
           }
-        }
 
-        // Fire socket events async after commit (inside transaction still but will resolve after)
-        // Note: It's safer to run this outside the transaction or just catch errors.
-        if (transfer.transferType === 'intra') {
-          const toUser = await User.findOne({ "user_metadata.accountNo": transfer.toAccount });
+          if (type == "transfer") {
+            try {
+              await NotificationService.sendDebitAlert(user, transfer.amount);
+            } catch (emailError) {
+              console.warn('Failed to send debit alert email (non-fatal):', emailError);
+            }
+          }
         }
 
         return result;
@@ -273,11 +267,22 @@ export class TransferService {
           reference: transfer.reference
         };
 
-        const user = await User.findById(transfer.userId);
+        const user = await User.findById(transfer.userId).session(session);
 
         if (user) {
-          user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(transfer.amount));
-          await user.save();
+          // Sync sender wallet balance with VFD source of truth
+          try {
+            const accountInfo = await TransferService.vfdProvider.getAccountInfo(transfer.fromAccount);
+            if (accountInfo?.data?.accountBalance) {
+              user.user_metadata.wallet = String(accountInfo.data.accountBalance);
+            } else {
+              user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(transfer.amount));
+            }
+          } catch (err) {
+            console.error("Failed to sync sender wallet balance from VFD:", err);
+            user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(transfer.amount));
+          }
+          await user.save({ session });
         }
 
         return result;
@@ -354,9 +359,10 @@ export class TransferService {
           user.user_metadata.signupBonusReceived = true;
           await user.save({ session });
 
-          counterModel.findOneAndUpdate(
+          await counterModel.findOneAndUpdate(
             { name: 'signupBonus' },
-            { $inc: { count: 1 } }
+            { $inc: { count: 1 } },
+            { session, new: true, upsert: true }
           );
         }
 
