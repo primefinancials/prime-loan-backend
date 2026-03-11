@@ -752,6 +752,7 @@ export class LoanService {
       {},
       {
         amount: 1,
+        requested_amount: 1,
         repayment_amount: 1,
         outstanding: 1,
         loan_payment_status: 1,
