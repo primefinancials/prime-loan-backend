@@ -822,7 +822,7 @@ export class LoanService {
       const outstanding = loan.outstanding || 0;
       const dueDate = loan.repayment_date ? new Date(loan.repayment_date) : null;
 
-      stats.totalApplied += amount;
+      stats.totalApplied += loan.requested_amount;
       stats.appliedUsers++;
 
       // ✅ Disbursed loans
