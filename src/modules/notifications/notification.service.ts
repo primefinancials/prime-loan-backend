@@ -57,7 +57,7 @@ export class NotificationService {
       await twilioClient.calls.create({
         twiml,
         to: formatted,
-        from: process.env.TWILIO_PHONE_NUMBER,
+        from: process.env.TWILIO_PHONE_NUMBER as string,
       });
     } catch (error) {
       console.error("Voice Call Broadcast Error:", error);
