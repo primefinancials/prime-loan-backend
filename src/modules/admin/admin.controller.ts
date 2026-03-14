@@ -1112,6 +1112,111 @@ export class AdminController {
       next(error);
     }
   }
+
+  /**
+   * Fetch users for push notifications
+   */
+  static async getNotificationRecipients(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      checkPermission(req.admin!, 'manage_users', { throwOnFail: true });
+      const { category } = req.query;
+      let users: any[] = [];
+      const User = mongoose.model('User');
+
+      if (category === 'all') {
+        users = await User.find({ role: 'user', status: 'active' })
+          .select('email user_metadata.first_name user_metadata.surname user_metadata.phone')
+          .lean();
+      } else if (category === 'active_loans') {
+        const Loan = mongoose.model('loans');
+        const loans = await Loan.find({ status: 'accepted', loan_payment_status: { $in: ['not-started', 'in-progress'] } }).distinct('userId');
+        users = await User.find({ _id: { $in: loans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
+      } else if (category === 'overdue_loans') {
+        const now = new Date();
+        const Loan = mongoose.model('loans');
+        const loans = await Loan.find({
+          status: 'accepted',
+          loan_payment_status: { $in: ['not-started', 'in-progress'] },
+          $expr: { $lt: [{ $toDate: "$repayment_date" }, now] }
+        }).distinct('userId');
+        users = await User.find({ _id: { $in: loans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
+      } else if (category === 'due_loans') {
+        const today = new Date();
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const Loan = mongoose.model('loans');
+        const loans = await Loan.find({
+          status: 'accepted',
+          loan_payment_status: { $in: ['not-started', 'in-progress'] },
+          $expr: {
+            $and: [
+              { $gte: [{ $toDate: "$repayment_date" }, today] },
+              { $lt: [{ $toDate: "$repayment_date" }, tomorrow] }
+            ]
+          }
+        }).distinct('userId');
+        users = await User.find({ _id: { $in: loans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
+      } else if (category === 'active_savings') {
+        const SavingsPlan = mongoose.model('SavingsPlan');
+        const plans = await SavingsPlan.find({ status: 'ACTIVE' }).distinct('userId');
+        users = await User.find({ _id: { $in: plans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
+      } else if (category === 'active_escrow') {
+        try {
+          const Escrow = mongoose.model('EscrowTransaction');
+          const escrows = await Escrow.find({ status: { $in: ['pending', 'funded', 'in_progress', 'disputed'] } });
+          const userIds = [...new Set(escrows.flatMap((e: any) => [e.buyerId, e.sellerId]).filter(Boolean))];
+          users = await User.find({ _id: { $in: userIds } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
+        } catch (e) {
+          // Ignore if Escrow is not loaded
+        }
+      }
+
+      const formatted = users.map(u => ({
+        id: u._id,
+        email: u.email,
+        name: `${u.user_metadata?.first_name || ''} ${u.user_metadata?.surname || ''}`.trim(),
+        phone: u.user_metadata?.phone
+      }));
+
+      res.json({ status: 'success', data: formatted });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Broadcast messages to subsets of users
+   */
+  static async sendBroadcast(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      checkPermission(req.admin!, 'manage_users', { throwOnFail: true });
+      const { userIds, channels, subject, message } = req.body;
+      if (!userIds || !Array.isArray(userIds) || !channels || !message) {
+        throw new Error('Invalid payload');
+      }
+
+      const User = mongoose.model('User');
+      const users = await User.find({ _id: { $in: userIds } }).lean();
+      const emails = users.map((u: any) => u.email).filter(Boolean);
+      const phones = users.map((u: any) => u.user_metadata?.phone).filter(Boolean);
+
+      const { NotificationService } = require('../notifications/notification.service');
+
+      if (channels.includes('email') && emails.length > 0) {
+        NotificationService.sendBulkEmail(emails, subject || 'Notification', message).catch(console.error);
+      }
+      if (channels.includes('sms') && phones.length > 0) {
+        phones.forEach((phone: any) => NotificationService.sendActionSms(phone, message));
+      }
+      if (channels.includes('call') && phones.length > 0) {
+        phones.forEach((phone: any) => NotificationService.sendVoiceCall(phone, message));
+      }
+
+      res.json({ status: 'success', message: 'Broadcast initiated successfully' });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 export default AdminController;

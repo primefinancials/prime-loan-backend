@@ -1,6 +1,12 @@
 import nodemailer from "nodemailer";
+import twilio from "twilio";
 import { User } from "../users/user.interface";
 import { SettingsService } from "../admin/settings.service";
+
+/* ----------- Providers Initialization ----------- */
+const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+  : null;
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,             // smtp.mailgun.org
@@ -20,6 +26,53 @@ export class NotificationService {
       subject,
       html,
     });
+  }
+
+  /* ----------- Broadcasting Providers ----------- */
+  static async sendActionSms(to: string, message: string) {
+    try {
+      if (!twilioClient) {
+        console.log(`[SMS Simulation] To: ${to} | Body: ${message}`);
+        return;
+      }
+      const formatted = to.startsWith('+') ? to : `+234${to.replace(/^0/, '')}`;
+      await twilioClient.messages.create({
+        body: message,
+        from: process.env.TWILIO_PHONE_NUMBER || 'PrimeFin',
+        to: formatted,
+      });
+    } catch (error) {
+      console.error("SMS Broadcast Error:", error);
+    }
+  }
+
+  static async sendVoiceCall(to: string, message: string) {
+    try {
+      if (!twilioClient) {
+        console.log(`[Voice Simulation] To: ${to} | Say: ${message}`);
+        return;
+      }
+      const formatted = to.startsWith('+') ? to : `+234${to.replace(/^0/, '')}`;
+      const twiml = `<Response><Say voice="alice">${message}</Say></Response>`;
+      await twilioClient.calls.create({
+        twiml,
+        to: formatted,
+        from: process.env.TWILIO_PHONE_NUMBER,
+      });
+    } catch (error) {
+      console.error("Voice Call Broadcast Error:", error);
+    }
+  }
+
+  static async sendBulkEmail(toAddresses: string[], subject: string, message: string) {
+    try {
+      const promises = toAddresses.map(email =>
+        this.sendEmail(email, subject, this.template(subject, `<p>${message}</p>`))
+      );
+      await Promise.allSettled(promises);
+    } catch (error) {
+      console.error("Bulk Email Error:", error);
+    }
   }
 
   /* ----------- Shared Template Wrapper ----------- */
