@@ -58,6 +58,13 @@ router.post("/update-password-pin", validateReqBody(updatePasswordOrPinSchema), 
 router.post("/create", verifyJwtRest(), validateReqBody(createAdminAccountSchema), AdminController.createAdminAccount as any);
 router.get("/:adminId([0-9a-fA-F]{24})", verifyJwtRest(), AdminController.getAdmin as any);
 router.get("/admins", verifyJwtRest(), AdminController.getAdmins as any);
+
+/* =============================
+   NOTIFICATIONS
+============================= */
+
+router.get("/notifications/recipients", verifyJwtRest(), AdminController.getNotificationRecipients as any);
+router.post("/notifications/broadcast", verifyJwtRest(), AdminController.sendBroadcast as any);
 router.post("/activate", verifyJwtRest(), validateReqBody(activateAdminReqBodySchema), AdminController.activateAndDeactivateAdmin as any);
 router.put("/:adminId([0-9a-fA-F]{24})/permissions", verifyJwtRest(), validateReqBody(updateAdminPermissionsSchema), AdminController.updateAdminPermissions as any);
 
