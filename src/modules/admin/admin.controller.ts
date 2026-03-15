@@ -19,6 +19,10 @@ import { SettingsService } from './settings.service';
 import { Settings } from './settings.model';
 import BillPaymentService from '../bill-payments/bill.payment.service';
 import { WorkerControlService } from '../workers/worker-control.service';
+import User from '../users/user.model';
+import Loan from '../loans/loan.model';
+import { SavingsPlan } from '../savings/savings.plan.model';
+import { EscrowTransaction as Escrow } from '../escrow/escrow.model';
 
 const adminService = new AdminService();
 
@@ -1121,19 +1125,16 @@ export class AdminController {
       checkPermission(req.admin!, 'manage_users', { throwOnFail: true });
       const { category } = req.query;
       let users: any[] = [];
-      const User = mongoose.model('User');
 
       if (category === 'all') {
         users = await User.find({ role: 'user', status: 'active' })
           .select('email user_metadata.first_name user_metadata.surname user_metadata.phone')
           .lean();
       } else if (category === 'active_loans') {
-        const Loan = mongoose.model('loans');
         const loans = await Loan.find({ status: 'accepted', loan_payment_status: { $in: ['not-started', 'in-progress'] } }).distinct('userId');
         users = await User.find({ _id: { $in: loans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
       } else if (category === 'overdue_loans') {
         const now = new Date();
-        const Loan = mongoose.model('loans');
         const loans = await Loan.find({
           status: 'accepted',
           loan_payment_status: { $in: ['not-started', 'in-progress'] },
@@ -1144,7 +1145,6 @@ export class AdminController {
         const today = new Date();
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
-        const Loan = mongoose.model('loans');
         const loans = await Loan.find({
           status: 'accepted',
           loan_payment_status: { $in: ['not-started', 'in-progress'] },
@@ -1157,12 +1157,10 @@ export class AdminController {
         }).distinct('userId');
         users = await User.find({ _id: { $in: loans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
       } else if (category === 'active_savings') {
-        const SavingsPlan = mongoose.model('SavingsPlan');
         const plans = await SavingsPlan.find({ status: 'ACTIVE' }).distinct('userId');
         users = await User.find({ _id: { $in: plans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
       } else if (category === 'active_escrow') {
         try {
-          const Escrow = mongoose.model('EscrowTransaction');
           const escrows = await Escrow.find({ status: { $in: ['pending', 'funded', 'in_progress', 'disputed'] } });
           const userIds = [...new Set(escrows.flatMap((e: any) => [e.buyerId, e.sellerId]).filter(Boolean))];
           users = await User.find({ _id: { $in: userIds } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
@@ -1195,7 +1193,6 @@ export class AdminController {
         throw new Error('Invalid payload');
       }
 
-      const User = mongoose.model('User');
       const users = await User.find({ _id: { $in: userIds } }).lean();
       const emails = users.map((u: any) => u.email).filter(Boolean);
       const phones = users.map((u: any) => u.user_metadata?.phone).filter(Boolean);
