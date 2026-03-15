@@ -1117,57 +1117,91 @@ export class AdminController {
     }
   }
 
+  private static async buildNotificationQueryMatch(category: any, search: any): Promise<any> {
+    const userMatch: any = { status: 'active', role: 'user' };
+
+    // Apply Search Filtering via native regex
+    if (search && typeof search === 'string') {
+      const regex = new RegExp(search, 'i');
+      userMatch.$or = [
+        { 'user_metadata.first_name': regex },
+        { 'user_metadata.surname': regex },
+        { email: regex },
+        { 'user_metadata.phone': regex }
+      ];
+    }
+
+    // Filter by category
+    if (category === 'active_loans') {
+      const loans = await Loan.find({ status: 'accepted', loan_payment_status: { $in: ['not-started', 'in-progress'] } }).distinct('userId');
+      userMatch._id = { $in: loans };
+    } else if (category === 'overdue_loans') {
+      const now = new Date();
+      const loans = await Loan.find({
+        status: 'accepted',
+        loan_payment_status: { $in: ['not-started', 'in-progress'] },
+        $expr: { $lt: [{ $toDate: "$repayment_date" }, now] }
+      }).distinct('userId');
+      userMatch._id = { $in: loans };
+    } else if (category === 'due_loans') {
+      const today = new Date();
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const loans = await Loan.find({
+        status: 'accepted',
+        loan_payment_status: { $in: ['not-started', 'in-progress'] },
+        $expr: {
+          $and: [
+            { $gte: [{ $toDate: "$repayment_date" }, today] },
+            { $lt: [{ $toDate: "$repayment_date" }, tomorrow] }
+          ]
+        }
+      }).distinct('userId');
+      userMatch._id = { $in: loans };
+    } else if (category === 'active_savings') {
+      const plans = await SavingsPlan.find({ status: 'ACTIVE' }).distinct('userId');
+      userMatch._id = { $in: plans };
+    } else if (category === 'active_escrow') {
+      try {
+        const escrows = await Escrow.find({ status: { $in: ['pending', 'funded', 'in_progress', 'disputed'] } });
+        const userIds = [...new Set(escrows.flatMap((e: any) => [e.buyerId, e.sellerId]).filter(Boolean))];
+        userMatch._id = { $in: userIds };
+      } catch (e) {
+        // Ignore
+      }
+    } else if (category !== 'all') {
+      return null; // Signals unknown category
+    }
+
+    return userMatch;
+  }
+
   /**
    * Fetch users for push notifications
    */
   static async getNotificationRecipients(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       checkPermission(req.admin!, 'manage_users', { throwOnFail: true });
-      const { category } = req.query;
-      let users: any[] = [];
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const skip = (page - 1) * limit;
+      const { category, search } = req.query;
 
-      if (category === 'all') {
-        users = await User.find({ role: 'user', status: 'active' })
-          .select('email user_metadata.first_name user_metadata.surname user_metadata.phone')
-          .lean();
-      } else if (category === 'active_loans') {
-        const loans = await Loan.find({ status: 'accepted', loan_payment_status: { $in: ['not-started', 'in-progress'] } }).distinct('userId');
-        users = await User.find({ _id: { $in: loans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
-      } else if (category === 'overdue_loans') {
-        const now = new Date();
-        const loans = await Loan.find({
-          status: 'accepted',
-          loan_payment_status: { $in: ['not-started', 'in-progress'] },
-          $expr: { $lt: [{ $toDate: "$repayment_date" }, now] }
-        }).distinct('userId');
-        users = await User.find({ _id: { $in: loans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
-      } else if (category === 'due_loans') {
-        const today = new Date();
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const loans = await Loan.find({
-          status: 'accepted',
-          loan_payment_status: { $in: ['not-started', 'in-progress'] },
-          $expr: {
-            $and: [
-              { $gte: [{ $toDate: "$repayment_date" }, today] },
-              { $lt: [{ $toDate: "$repayment_date" }, tomorrow] }
-            ]
-          }
-        }).distinct('userId');
-        users = await User.find({ _id: { $in: loans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
-      } else if (category === 'active_savings') {
-        const plans = await SavingsPlan.find({ status: 'ACTIVE' }).distinct('userId');
-        users = await User.find({ _id: { $in: plans } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
-      } else if (category === 'active_escrow') {
-        try {
-          const escrows = await Escrow.find({ status: { $in: ['pending', 'funded', 'in_progress', 'disputed'] } });
-          const userIds = [...new Set(escrows.flatMap((e: any) => [e.buyerId, e.sellerId]).filter(Boolean))];
-          users = await User.find({ _id: { $in: userIds } }).select('email user_metadata.first_name user_metadata.surname user_metadata.phone').lean();
-        } catch (e) {
-          // Ignore if Escrow is not loaded
-        }
+      const userMatch = await AdminController.buildNotificationQueryMatch(category, search);
+      
+      if (!userMatch) {
+        // Fallback for unknown categories, return empty
+        return res.json({ status: 'success', data: { data: [], total: 0, page, pages: 0 } });
       }
+
+      const [users, total] = await Promise.all([
+        User.find(userMatch)
+          .select('email user_metadata.first_name user_metadata.surname user_metadata.phone')
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        User.countDocuments(userMatch)
+      ]);
 
       const formatted = users.map(u => ({
         id: u._id,
@@ -1176,7 +1210,15 @@ export class AdminController {
         phone: u.user_metadata?.phone
       }));
 
-      res.json({ status: 'success', data: formatted });
+      res.json({
+        status: 'success',
+        data: {
+          data: formatted,
+          total,
+          page,
+          pages: Math.ceil(total / limit)
+        }
+      });
     } catch (error) {
       next(error);
     }
@@ -1188,12 +1230,27 @@ export class AdminController {
   static async sendBroadcast(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       checkPermission(req.admin!, 'manage_users', { throwOnFail: true });
-      const { userIds, channels, subject, message } = req.body;
-      if (!userIds || !Array.isArray(userIds) || !channels || !message) {
-        throw new Error('Invalid payload');
+      const { userIds, channels, subject, message, targetType, category, search } = req.body;
+      
+      if (!channels || !message || !targetType) {
+        throw new Error('Invalid payload: channels, message, and targetType are required.');
       }
 
-      const users = await User.find({ _id: { $in: userIds } }).lean();
+      let users: any[] = [];
+
+      if (targetType === 'query') {
+        // Query-based targeting (ignore userIds array, pull dynamically on the server)
+        const userMatch = await AdminController.buildNotificationQueryMatch(category, search);
+        if (userMatch) {
+          users = await User.find(userMatch).select('email user_metadata.phone').lean();
+        }
+      } else if (targetType === 'selected') {
+        // Array-based targeting (use the provided userIds array)
+        if (!userIds || !Array.isArray(userIds)) throw new Error('userIds array required for selected targeting.');
+        users = await User.find({ _id: { $in: userIds } }).select('email user_metadata.phone').lean();
+      } else {
+        throw new Error('Invalid targetType. Use "query" or "selected"');
+      }
       const emails = users.map((u: any) => u.email).filter(Boolean);
       const phones = users.map((u: any) => u.user_metadata?.phone).filter(Boolean);
 
