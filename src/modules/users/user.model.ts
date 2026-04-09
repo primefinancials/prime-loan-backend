@@ -112,6 +112,27 @@ const userSchema = new Schema<User>(
         "send_notifications",
         "manage_notifications"
       ],
+    },
+
+    // --- V2 Integration Fields ---
+
+    // Influencer referral tracking
+    referredBy: { type: SchemaTypes.ObjectId, ref: 'Influencer' },
+    referralCode: { type: String },  // code used during signup
+
+    // Mono Direct Debit account
+    mono_account: {
+      accountId: { type: String },         // Mono account_id
+      institution: { type: String },        // Bank name
+      accountNumber: { type: String },      // User's bank account number
+      accountName: { type: String },        // Name on account
+      linkedAt: { type: Date },
+      mandateId: { type: String },          // Mono mandate ID for recurring debits
+      mandateStatus: {
+        type: String,
+        enum: ['active', 'revoked', 'pending'],
+        default: 'pending'
+      }
     }
   },
   { timestamps: true }

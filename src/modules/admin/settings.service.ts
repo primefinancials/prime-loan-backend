@@ -124,6 +124,46 @@ export class SettingsService {
       await settings.save();
     }
 
+    // --- V2 Integration Fields Migration ---
+    let v2Dirty = false;
+
+    if (!settings.billPaymentProvider) {
+      settings.billPaymentProvider = 'flutterwave';
+      v2Dirty = true;
+    }
+
+    if (!settings.influencer || !settings.influencer.commissionRates) {
+      settings.influencer = {
+        enabled: true,
+        commissionRates: {
+          loan: 2.5,
+          escrow: 1.5,
+          savings: 1.0,
+          'bill-payment': 1.0,
+          marketplace: 2.0,
+          signup_bonus: 100
+        },
+        minPayoutAmount: 1000
+      };
+      v2Dirty = true;
+    }
+
+    if (!settings.monoAutoDebit) {
+      settings.monoAutoDebit = {
+        enabled: true,
+        maxDebitAttempts: 3,
+        minDebitAmount: 100
+      };
+      v2Dirty = true;
+    }
+
+    if (!settings.voiceCallProvider) {
+      settings.voiceCallProvider = 'termii';
+      v2Dirty = true;
+    }
+
+    if (v2Dirty) await settings.save();
+
     return settings;
   }
 

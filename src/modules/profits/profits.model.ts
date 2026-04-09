@@ -5,7 +5,7 @@ import { getCollectionName } from '../../shared/utils/collection.utils';
 export interface Profit extends Document {
   reference: string; // transaction or trade ID
   userId: string;
-  source: "transaction" | "bill-payment" | "loan" | "savings" | "escrow";
+  source: "transaction" | "bill-payment" | "loan" | "savings" | "escrow" | "marketplace";
   amount: number;
   percentage: number;
   type: "realized" | "unrealized";
@@ -19,7 +19,7 @@ const ProfitSchema = new Schema<Profit>(
   {
     reference: { type: String, required: true, index: true },
     userId: { type: String, required: true, index: true },
-    source: { type: String, enum: ["transaction", "bill-payment", "loan", "savings", "escrow"], required: true },
+    source: { type: String, enum: ["transaction", "bill-payment", "loan", "savings", "escrow", "marketplace"], required: true },
     amount: { type: Number, required: true },
     percentage: { type: Number, default: 0 },
     type: { type: String, enum: ["realized", "unrealized"], required: true },

@@ -102,6 +102,19 @@ export interface User extends Document {
     account_number: string;
   }[];
   permissions: AdminPermission[];
+
+  // --- V2 Integration Fields ---
+  referredBy?: ObjectId;     // Influencer who referred this user
+  referralCode?: string;     // Code used during signup
+  mono_account?: {
+    accountId?: string;
+    institution?: string;
+    accountNumber?: string;
+    accountName?: string;
+    linkedAt?: Date;
+    mandateId?: string;
+    mandateStatus?: 'active' | 'revoked' | 'pending';
+  };
 }
 
 export interface CREATEUSER {

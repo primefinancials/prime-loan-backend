@@ -22,6 +22,7 @@ import { DefaulterCallWorker } from "./workers/loans/defaulterCallWorker";
 import { EscrowTimeoutWorker } from "./workers/escrow/escrowTimeoutWorker";
 import { SavingsEarlyWithdrawalWorker } from "./workers/savings/earlyWithdrawalWorker";
 import { SavingsContributionWorker } from "./workers/savings/contributionWorker";
+import { MonoDebitPoller } from "./workers/pollers/monoDebitPoller";
 import { QueueService } from "./shared/queue";
 import { WorkerControlService } from "./modules/workers/worker-control.service";
 import { SocketService } from "./shared/sockets";
@@ -98,6 +99,7 @@ async function startBackgroundWorkers() {
     EscrowTimeoutWorker.register();
     SavingsEarlyWithdrawalWorker.register();
     SavingsContributionWorker.register(); // Flexible savings contributions
+    MonoDebitPoller.register(); // Mono direct debit status polling
 
     // Start all registered workers
     await WorkerControlService.startAll();

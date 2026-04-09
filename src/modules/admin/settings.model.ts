@@ -109,11 +109,51 @@ export interface ISettings extends Document {
     enabled: boolean;
     maxCallsPerDay: number;
     message: string;
+    messageTemplates?: {
+      tier1: { daysMin: number; daysMax: number; maxCallsPerDay: number; smsTemplate: string };
+      tier2: { daysMin: number; daysMax: number; maxCallsPerDay: number; smsTemplate: string };
+      tier3: { daysMin: number; daysMax: number; maxCallsPerDay: number; smsTemplate: string };
+      tier4: { daysMin: number; daysMax: number; maxCallsPerDay: number; smsTemplate: string; sendEmail: boolean };
+    };
   };
   workersConfig: Types.Map<{
     enabled: boolean;
     cronSchedule?: string;
   }>;
+
+  // --- V2 Integration Fields ---
+
+  // Bill payment provider toggle
+  billPaymentProvider: 'flutterwave' | 'paybeta';
+
+  // Influencer commission config
+  influencer: {
+    enabled: boolean;
+    commissionRates: {
+      loan: number;
+      escrow: number;
+      savings: number;
+      'bill-payment': number;
+      marketplace: number;
+      signup_bonus: number;  // flat amount in naira
+    };
+    minPayoutAmount: number;
+  };
+
+  // Mono auto-debit config
+  monoAutoDebit: {
+    enabled: boolean;
+    maxDebitAttempts: number;
+    minDebitAmount: number;
+  };
+
+  // Voice call config (V2 — replaces old voiceCallProvider)
+  voiceCallProvider: 'termii' | 'africastalking'; // legacy field, use voiceCallConfig.provider
+  voiceCallConfig: {
+    provider: 'termii' | 'africastalking';
+    atCallFromNumbers: string[];      // AT virtual numbers — randomly rotated
+    termiiSenderIds: string[];        // Termii sender IDs — randomly rotated
+  };
 }
 
 /**
@@ -237,7 +277,34 @@ const SettingsSchema = new Schema<ISettings>(
     defaulterCallConfig: {
       enabled: { type: Boolean, default: false },
       maxCallsPerDay: { type: Number, default: 1 },
-      message: { type: String, default: "This is a reminder from Prime Finance. You have an overdue loan payment. Please pay immediately to avoid penalties." }
+      message: { type: String, default: "This is a reminder from Prime Finance. You have an overdue loan payment. Please pay immediately to avoid penalties." },
+      messageTemplates: {
+        tier1: {
+          daysMin: { type: Number, default: 1 },
+          daysMax: { type: Number, default: 3 },
+          maxCallsPerDay: { type: Number, default: 1 },
+          smsTemplate: { type: String, default: 'Dear {name}, your loan of {amount} naira was due on {date}. Please make payment to avoid penalties. Thank you.' }
+        },
+        tier2: {
+          daysMin: { type: Number, default: 4 },
+          daysMax: { type: Number, default: 7 },
+          maxCallsPerDay: { type: Number, default: 2 },
+          smsTemplate: { type: String, default: 'Urgent reminder. Your loan is {days} days overdue. A daily penalty is being applied. Outstanding: {outstanding} naira. Pay now.' }
+        },
+        tier3: {
+          daysMin: { type: Number, default: 8 },
+          daysMax: { type: Number, default: 14 },
+          maxCallsPerDay: { type: Number, default: 3 },
+          smsTemplate: { type: String, default: 'Final warning. Failure to pay {outstanding} naira within 48 hours may result in your account being flagged. Pay immediately.' }
+        },
+        tier4: {
+          daysMin: { type: Number, default: 15 },
+          daysMax: { type: Number, default: 999 },
+          maxCallsPerDay: { type: Number, default: 3 },
+          smsTemplate: { type: String, default: 'Notice. Your account has been flagged for review. Outstanding: {outstanding} naira. Contact support immediately.' },
+          sendEmail: { type: Boolean, default: true }
+        }
+      }
     },
 
     workersConfig: {
@@ -337,6 +404,60 @@ const SettingsSchema = new Schema<ISettings>(
     },
 
     singleton: { type: String, default: "singleton", unique: true },
+
+    // --- V2 Integration Fields ---
+
+    // Bill payment provider toggle
+    billPaymentProvider: {
+      type: String,
+      enum: ['flutterwave', 'paybeta'],
+      default: 'flutterwave'
+    },
+
+    // Influencer commission configuration
+    influencer: {
+      enabled: { type: Boolean, default: true },
+      commissionRates: {
+        loan: { type: Number, default: 2.5 },
+        escrow: { type: Number, default: 1.5 },
+        savings: { type: Number, default: 1.0 },
+        'bill-payment': { type: Number, default: 1.0 },
+        marketplace: { type: Number, default: 2.0 },
+        signup_bonus: { type: Number, default: 100 }
+      },
+      minPayoutAmount: { type: Number, default: 1000 }
+    },
+
+    // Mono auto-debit configuration
+    monoAutoDebit: {
+      enabled: { type: Boolean, default: true },
+      maxDebitAttempts: { type: Number, default: 3 },
+      minDebitAmount: { type: Number, default: 100 }
+    },
+
+    // Voice call provider preference (legacy — use voiceCallConfig)
+    voiceCallProvider: {
+      type: String,
+      enum: ['termii', 'africastalking'],
+      default: 'termii'
+    },
+
+    // Voice call config V2 (number rotation + provider)
+    voiceCallConfig: {
+      provider: {
+        type: String,
+        enum: ['termii', 'africastalking'],
+        default: 'termii'
+      },
+      atCallFromNumbers: {
+        type: [String],
+        default: []
+      },
+      termiiSenderIds: {
+        type: [String],
+        default: ['PrimeFinance']
+      }
+    },
   },
   { collection: getCollectionName("settings"), timestamps: true }
 );

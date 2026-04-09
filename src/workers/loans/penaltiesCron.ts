@@ -15,6 +15,8 @@ import pino from 'pino';
 import { LoanService } from '../../modules/loans/loan.service';
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 import { WorkerControlService } from '../../modules/workers/worker-control.service';
+import { MonoProvider } from '../../shared/providers/mono.provider';
+import { MonoDebitLog } from '../../modules/loans/mono-debit-log.model';
 
 const logger = pino({ name: 'loan-penalties-cron' });
 
@@ -52,7 +54,9 @@ export class LoanPenaltiesCron {
   }
 
   private static async processLoans() {
-    const penaltyRate = 0.1;
+    // Read penalty rate from admin settings (dailyRate is stored as 1 = 1%, convert to decimal)
+    const settings = await SettingsService.getSettings();
+    const penaltyRate = (settings.loan?.penalty?.dailyRate || 1) / 100; // 1 → 0.01 (1%)
 
     const today = new Date();
     const todayISO = today.toISOString().split('T')[0];
@@ -111,6 +115,87 @@ export class LoanPenaltiesCron {
               } catch (error: any) {
                 logger.error({ loanId: loan._id, error: error.message }, 'Error repaying loan');
                 await WorkerLogService.log('loan-penalties', 'error', `Error repaying loan: ${error.message}`, { loanId: loan._id });
+              }
+            }
+
+            // 3. Mono Direct Debit Fallback (NEW)
+            // If wallet was insufficient and user has a linked Mono account, try auto-debit
+            const refreshedUser = await UserService.getUser(loan.userId);
+            if (refreshedUser && !Array.isArray(refreshedUser)) {
+              const updatedWallet = Number(refreshedUser.user_metadata?.wallet || 0);
+              const remainingOutstanding = Number(loan.outstanding || 0);
+
+              if (updatedWallet < remainingOutstanding && refreshedUser.mono_account?.accountId && settings.monoAutoDebit?.enabled !== false) {
+                const debitAmount = remainingOutstanding - updatedWallet;
+                const minDebit = settings.monoAutoDebit?.minDebitAmount || 100;
+
+                if (debitAmount >= minDebit) {
+                  try {
+                    // Check max attempts per day
+                    const maxAttempts = settings.monoAutoDebit?.maxDebitAttempts || 3;
+                    const todayStart = new Date(todayISO);
+                    const todayEnd = new Date(todayISO + 'T23:59:59.999Z');
+                    const attemptsToday = await MonoDebitLog.countDocuments({
+                      loanId: loan._id,
+                      createdAt: { $gte: todayStart, $lte: todayEnd }
+                    });
+
+                    if (attemptsToday < maxAttempts) {
+                      const mono = new MonoProvider();
+                      const reference = `loan-debit-${loan._id}-${Date.now()}`;
+
+                      let debitResult;
+                      let debitType: 'onetime' | 'mandate' = 'onetime';
+
+                      if (refreshedUser.mono_account.mandateId && refreshedUser.mono_account.mandateStatus === 'active') {
+                        debitResult = await mono.debitMandate(
+                          refreshedUser.mono_account.mandateId,
+                          debitAmount * 100, // convert to kobo
+                          reference
+                        );
+                        debitType = 'mandate';
+                      } else {
+                        debitResult = await mono.initiateOneTimePayment({
+                          accountId: refreshedUser.mono_account.accountId,
+                          amount: debitAmount * 100,
+                          description: `Prime Finance Loan Repayment - Loan ${loan._id}`,
+                          reference
+                        });
+                      }
+
+                      await MonoDebitLog.create({
+                        loanId: loan._id,
+                        userId: refreshedUser._id,
+                        monoAccountId: refreshedUser.mono_account.accountId,
+                        amount: debitAmount,
+                        reference,
+                        paymentId: debitResult.id,
+                        mandateId: refreshedUser.mono_account.mandateId,
+                        debitType,
+                        status: debitResult.status === 'successful' ? 'successful' : 'pending'
+                      });
+
+                      if (debitResult.status === 'successful') {
+                        await LoanService.repayLoan({
+                          loanId: loan._id,
+                          userId: refreshedUser._id,
+                          amount: debitAmount
+                        });
+                      }
+
+                      await WorkerLogService.log('loan-penalties', 'info',
+                        `Mono direct debit initiated for ${refreshedUser.email}: ₦${debitAmount}`,
+                        { userId: refreshedUser._id, loanId: loan._id, reference, debitType }
+                      );
+                    }
+                  } catch (monoErr: any) {
+                    logger.error({ loanId: loan._id, error: monoErr.message }, 'Mono debit failed');
+                    await WorkerLogService.log('loan-penalties', 'error',
+                      `Mono direct debit failed: ${monoErr.message}`,
+                      { loanId: loan._id }
+                    );
+                  }
+                }
               }
             }
           }
@@ -180,7 +265,7 @@ export class LoanPenaltiesCron {
 
   private static async applyPenaltyToLoan(loan: any, penaltyRate: number): Promise<number> {
     const session = await DatabaseService.startSession();
-    let penaltyAmount = 0;
+    let appliedPenalty = 0;
 
     try {
       await DatabaseService.withTransaction(session, async () => {
@@ -195,7 +280,7 @@ export class LoanPenaltiesCron {
 
         if (daysSinceLastPenalty === 0) return 0; // same day, skip penalty
 
-        const penaltyAmount = Math.floor(loan.amount * penaltyRate) * daysSinceLastPenalty;
+        appliedPenalty = Math.floor(loan.amount * penaltyRate) * daysSinceLastPenalty;
         const traceId = UuidService.generateTraceId();
 
         // Ledger entry for penalty
@@ -203,7 +288,7 @@ export class LoanPenaltiesCron {
           traceId,
           `user_wallet:${loan.userId}`,
           'platform_revenue',
-          penaltyAmount,
+          appliedPenalty,
           'loan',
           {
             userId: loan.userId,
@@ -218,12 +303,12 @@ export class LoanPenaltiesCron {
         );
 
         // Update loan
-        loan.outstanding = Number(loan.outstanding) + penaltyAmount;
+        loan.outstanding = Number(loan.outstanding) + appliedPenalty;
         loan.lastInterestAdded = new Date().toISOString();
         loan.repayment_history = [
           ...(loan.repayment_history || []),
           {
-            amount: penaltyAmount,
+            amount: appliedPenalty,
             outstanding: loan.outstanding,
             action: 'penalty',
             date: new Date().toISOString()
@@ -235,13 +320,12 @@ export class LoanPenaltiesCron {
         logger.info({
           loanId: loan._id,
           userId: loan.userId,
-          penaltyAmount,
+          appliedPenalty,
           newOutstanding: loan.outstanding
         }, 'Penalty applied to overdue loan');
-        await WorkerLogService.log('loan-penalties', 'warn', 'Penalty applied to overdue loan', { loanId: loan._id, penaltyAmount, newOutstanding: loan.outstanding });
-        return penaltyAmount;
+        await WorkerLogService.log('loan-penalties', 'warn', 'Penalty applied to overdue loan', { loanId: loan._id, appliedPenalty, newOutstanding: loan.outstanding });
       });
-      return penaltyAmount;
+      return appliedPenalty;
     } finally {
       await session.endSession();
     }
