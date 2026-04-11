@@ -243,7 +243,7 @@ import { SettingsService } from "../modules/admin/settings.service";
 
 router.put("/settings/bill-payment-provider", verifyJwtRest(), async (req: any, res: any) => {
   try {
-    const adminId = req.user._id || req.user.id;
+    const adminId = req.admin._id || req.admin.id;
     const { provider } = req.body;
     if (!['flutterwave', 'paybeta'].includes(provider)) {
       return res.status(400).json({ status: 'error', message: 'Invalid provider. Use flutterwave or paybeta.' });
@@ -257,7 +257,7 @@ router.put("/settings/bill-payment-provider", verifyJwtRest(), async (req: any, 
 
 router.put("/settings/commissions", verifyJwtRest(), async (req: any, res: any) => {
   try {
-    const adminId = req.user._id || req.user.id;
+    const adminId = req.admin._id || req.admin.id;
     const { influencer } = req.body;
     const settings = await SettingsService.updateSettings(adminId, { influencer });
     res.json({ status: 'success', data: { influencer: settings.influencer } });
@@ -268,7 +268,7 @@ router.put("/settings/commissions", verifyJwtRest(), async (req: any, res: any) 
 
 router.put("/settings/mono-auto-debit", verifyJwtRest(), async (req: any, res: any) => {
   try {
-    const adminId = req.user._id || req.user.id;
+    const adminId = req.admin._id || req.admin.id;
     const { monoAutoDebit } = req.body;
     const settings = await SettingsService.updateSettings(adminId, { monoAutoDebit });
     res.json({ status: 'success', data: { monoAutoDebit: settings.monoAutoDebit } });
@@ -279,7 +279,7 @@ router.put("/settings/mono-auto-debit", verifyJwtRest(), async (req: any, res: a
 
 router.put("/settings/voice-call-provider", verifyJwtRest(), async (req: any, res: any) => {
   try {
-    const adminId = req.user._id || req.user.id;
+    const adminId = req.admin._id || req.admin.id;
     const { provider } = req.body;
     if (!['twilio', 'termii', 'plivo'].includes(provider)) {
       return res.status(400).json({ status: 'error', message: 'Invalid provider. Use twilio, termii, or plivo.' });

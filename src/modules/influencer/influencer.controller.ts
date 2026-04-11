@@ -115,7 +115,7 @@ export class InfluencerController {
    */
   static async approve(req: Request, res: Response, next: NextFunction) {
     try {
-      const adminId = (req as any).user._id || (req as any).user.id;
+      const adminId = (req as any).admin?._id || (req as any).admin?.id;
       const result = await InfluencerService.approve(req.params.id, adminId);
       return res.status(200).json({ status: 'success', data: result });
     } catch (err) { next(err); }
@@ -127,7 +127,7 @@ export class InfluencerController {
    */
   static async reject(req: Request, res: Response, next: NextFunction) {
     try {
-      const adminId = (req as any).user._id || (req as any).user.id;
+      const adminId = (req as any).admin?._id || (req as any).admin?.id;
       const { reason } = req.body;
       const result = await InfluencerService.reject(req.params.id, adminId, reason);
       return res.status(200).json({ status: 'success', data: result });
