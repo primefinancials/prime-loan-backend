@@ -6,7 +6,18 @@ import { InfluencerService } from './influencer.service';
 
 export class InfluencerController {
 
-  /* ---------- USER ENDPOINTS ---------- */
+  /**
+   * GET /api/influencer/me
+   * Get the current user's influencer profile (returns 404 if not applied)
+   */
+  static async getProfile(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user._id || (req as any).user.id;
+      const influencer = await InfluencerService.getByUserId(userId);
+      if (!influencer) return res.status(404).json({ status: 'failed', message: 'Not an influencer' });
+      return res.status(200).json({ status: 'success', data: influencer });
+    } catch (err) { next(err); }
+  }
 
   /**
    * POST /api/influencer/apply
@@ -15,8 +26,8 @@ export class InfluencerController {
   static async apply(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user._id || (req as any).user.id;
-      const { applicationVideo } = req.body;
-      const result = await InfluencerService.apply(userId, applicationVideo);
+      const { applicationVideo, socialLinks } = req.body;
+      const result = await InfluencerService.apply(userId, applicationVideo, socialLinks);
       return res.status(201).json({ status: 'success', data: result });
     } catch (err) { next(err); }
   }

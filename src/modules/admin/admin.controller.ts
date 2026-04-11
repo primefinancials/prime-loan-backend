@@ -443,6 +443,168 @@ export class AdminController {
   }
 
   /**
+   * Bill Payment aggregated stats (admin dashboard widgets)
+   * GET /admin/billpayment/stats
+   */
+  static async getBillPaymentStats(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, "manage_bill_payments", { throwOnFail: true });
+
+      // Aggregate bill payments
+      const [billAgg, profitAgg] = await Promise.all([
+        BillPayment.aggregate([
+          {
+            $facet: {
+              totals: [
+                {
+                  $group: {
+                    _id: null,
+                    totalCount: { $sum: 1 },
+                    totalAmount: { $sum: '$amount' },
+                    completedCount: {
+                      $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, 1, 0] }
+                    },
+                    completedAmount: {
+                      $sum: { $cond: [{ $eq: ['$status', 'COMPLETED'] }, '$amount', 0] }
+                    }
+                  }
+                }
+              ],
+              byServiceType: [
+                {
+                  $group: {
+                    _id: '$serviceType',
+                    count: { $sum: 1 },
+                    amount: { $sum: '$amount' }
+                  }
+                },
+                { $sort: { amount: -1 } }
+              ],
+              byStatus: [
+                {
+                  $group: {
+                    _id: '$status',
+                    count: { $sum: 1 },
+                    amount: { $sum: '$amount' }
+                  }
+                }
+              ]
+            }
+          }
+        ]),
+        // Profit from bill payments
+        (await import('../profits/profits.model')).default.aggregate([
+          { $match: { source: 'bill-payment' } },
+          { $group: { _id: null, totalProfit: { $sum: '$amount' } } }
+        ])
+      ]);
+
+      const totals = billAgg[0]?.totals?.[0] || { totalCount: 0, totalAmount: 0, completedCount: 0, completedAmount: 0 };
+      const totalProfit = profitAgg[0]?.totalProfit || 0;
+      const byServiceType: Record<string, { count: number; amount: number }> = {};
+      for (const entry of billAgg[0]?.byServiceType || []) {
+        byServiceType[entry._id || 'unknown'] = { count: entry.count, amount: entry.amount };
+      }
+      const byStatus: Record<string, { count: number; amount: number }> = {};
+      for (const entry of billAgg[0]?.byStatus || []) {
+        byStatus[entry._id || 'unknown'] = { count: entry.count, amount: entry.amount };
+      }
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          ...totals,
+          totalProfit,
+          byServiceType,
+          byStatus
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * Transaction aggregated stats (admin dashboard widgets)
+   * GET /admin/transactions/stats
+   */
+  static async getTransactionStats(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, "manage_transactions", { throwOnFail: true });
+
+      const [transferAgg, profitAgg] = await Promise.all([
+        Transfer.aggregate([
+          {
+            $facet: {
+              totals: [
+                {
+                  $group: {
+                    _id: null,
+                    totalCount: { $sum: 1 },
+                    totalAmount: { $sum: '$amount' }
+                  }
+                }
+              ],
+              byTransferType: [
+                {
+                  $group: {
+                    _id: '$transferType',
+                    count: { $sum: 1 },
+                    amount: { $sum: '$amount' }
+                  }
+                }
+              ],
+              byStatus: [
+                {
+                  $group: {
+                    _id: '$status',
+                    count: { $sum: 1 },
+                    amount: { $sum: '$amount' }
+                  }
+                }
+              ]
+            }
+          }
+        ]),
+        // Profit from transactions
+        (await import('../profits/profits.model')).default.aggregate([
+          { $match: { source: 'transaction' } },
+          { $group: { _id: null, totalProfit: { $sum: '$amount' } } }
+        ])
+      ]);
+
+      const totals = transferAgg[0]?.totals?.[0] || { totalCount: 0, totalAmount: 0 };
+      const totalProfit = profitAgg[0]?.totalProfit || 0;
+
+      const byTransferType: Record<string, { count: number; amount: number }> = {};
+      for (const entry of transferAgg[0]?.byTransferType || []) {
+        byTransferType[entry._id || 'unknown'] = { count: entry.count, amount: entry.amount };
+      }
+
+      const byStatus: Record<string, { count: number; amount: number }> = {};
+      for (const entry of transferAgg[0]?.byStatus || []) {
+        byStatus[entry._id || 'unknown'] = { count: entry.count, amount: entry.amount };
+      }
+
+      res.status(200).json({
+        status: 'success',
+        data: {
+          ...totals,
+          totalProfit,
+          inward: byTransferType['inter'] || { count: 0, amount: 0 },
+          outward: byTransferType['intra'] || { count: 0, amount: 0 },
+          byTransferType,
+          byStatus
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Update admin permissions
    */
   static async updateAdminPermissions(req: ProtectedRequest, res: Response, next: NextFunction) {

@@ -26,6 +26,7 @@ export interface BillProduct {
   billerId: string;
   amount: number;
   description?: string;
+  duration?: string; // e.g. "7 days", "30 days", "1 month"
 }
 
 export interface BillProviderResult {

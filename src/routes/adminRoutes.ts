@@ -122,9 +122,11 @@ router.get("/profits", verifyJwtRest(), validateReqQuery(profitReportQuerySchema
 ============================= */
 
 router.get("/transactions", verifyJwtRest(), validateReqQuery(transactionQuerySchema), AdminController.getTransactions as any);
+router.get("/transactions/stats", verifyJwtRest(), AdminController.getTransactionStats as any);
 router.get("/transactions/:traceId([0-9a-fA-F]{24})", verifyJwtRest(), AdminController.getTransactionDetails as any);
 router.get("/transactions/flagged", verifyJwtRest(), AdminController.getFlaggedTransactions as any);
 router.get("/billpayment/all", verifyJwtRest(), validateReqQuery(transactionQuerySchema), AdminController.getBillPayment as any);
+router.get("/billpayment/stats", verifyJwtRest(), AdminController.getBillPaymentStats as any);
 router.post("/transfers/:id([0-9a-fA-F]{24})/requery", verifyJwtRest(), AdminController.requeryTransfer as any);
 router.get("/reconciliation/inconsistencies", verifyJwtRest(), AdminController.getReconciliationInconsistencies as any);
 

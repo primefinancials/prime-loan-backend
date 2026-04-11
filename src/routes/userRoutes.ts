@@ -425,6 +425,7 @@ router.get("/settings/profit-config", verifyJwtRest(), AdminController.getProfit
 /* -------------------------------------------------------------------------- */
 import { InfluencerController } from "../modules/influencer/influencer.controller";
 
+router.get("/influencer/me", verifyJwtRest(), InfluencerController.getProfile as any);
 router.post("/influencer/apply", verifyJwtRest(), InfluencerController.apply as any);
 router.get("/influencer/dashboard", verifyJwtRest(), InfluencerController.getDashboard as any);
 router.get("/influencer/referred-users", verifyJwtRest(), InfluencerController.getReferredUsers as any);

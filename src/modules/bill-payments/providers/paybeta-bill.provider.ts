@@ -178,7 +178,8 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
           name: b.name || b.description || '',
           billerId,
           amount: Number(b.amount || b.price) || 0,
-          description: b.description || b.name || ''
+          description: b.description || b.name || '',
+          duration: this.parseDuration(b.name || b.description || '')
         }));
       }
 
@@ -190,7 +191,8 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
           name: b.name || b.description || '',
           billerId,
           amount: Number(b.amount || b.price) || 0,
-          description: b.description || b.name || ''
+          description: b.description || b.name || '',
+          duration: this.parseDuration(b.name || b.description || '')
         }));
       }
 
@@ -199,6 +201,34 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
       logger.error({ billerId, error: (err as Error).message }, 'Failed to fetch products');
       return [];
     }
+  }
+
+  /**
+   * Extract duration from product name/description strings.
+   * Common patterns: "1GB - 7 Days", "2GB Monthly", "Weekly Plan", "1 Month", "30days"
+   */
+  private parseDuration(text: string): string | undefined {
+    if (!text) return undefined;
+    const lower = text.toLowerCase();
+
+    // Match explicit patterns like "7 days", "30 days", "1 month", "1 week", etc.
+    const durationMatch = lower.match(/(\d+)\s*(day|days|week|weeks|month|months|hour|hours|hr|hrs)/i);
+    if (durationMatch) {
+      const num = durationMatch[1];
+      const unit = durationMatch[2].toLowerCase();
+      if (unit.startsWith('day')) return `${num} day${num === '1' ? '' : 's'}`;
+      if (unit.startsWith('week')) return `${num} week${num === '1' ? '' : 's'}`;
+      if (unit.startsWith('month')) return `${num} month${num === '1' ? '' : 's'}`;
+      if (unit.startsWith('hour') || unit.startsWith('hr')) return `${num} hour${num === '1' ? '' : 's'}`;
+    }
+
+    // Match keywords
+    if (lower.includes('daily')) return '1 day';
+    if (lower.includes('weekly')) return '7 days';
+    if (lower.includes('monthly')) return '30 days';
+    if (lower.includes('yearly') || lower.includes('annual')) return '1 year';
+
+    return undefined;
   }
 
   async getBalance(): Promise<{ balance: number }> {

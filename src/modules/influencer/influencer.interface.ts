@@ -15,6 +15,7 @@ export interface IInfluencer extends Document {
   status: InfluencerStatus;
   referralCode: string;
   applicationVideo?: string;
+  socialLinks?: Record<string, string>;
   applicationDate: Date;
   approvalDate?: Date;
   rejectionReason?: string;
@@ -51,6 +52,7 @@ export interface IInfluencerCommission extends Document {
 export interface ApplyInfluencerDto {
   userId: string;
   applicationVideo?: string;
+  socialLinks?: Record<string, string>;
 }
 
 export interface RecordCommissionDto {

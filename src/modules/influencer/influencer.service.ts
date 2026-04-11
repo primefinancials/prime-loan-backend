@@ -21,7 +21,7 @@ export class InfluencerService {
   /**
    * Apply to become an influencer
    */
-  static async apply(userId: string, applicationVideo?: string): Promise<IInfluencer> {
+  static async apply(userId: string, applicationVideo?: string, socialLinks?: Record<string, string>): Promise<IInfluencer> {
     const existing = await Influencer.findOne({ userId });
     if (existing) {
       if (existing.status === 'approved') throw new BadRequestError('Already an approved influencer');
@@ -30,6 +30,7 @@ export class InfluencerService {
         // Allow re-application after rejection
         existing.status = 'pending';
         existing.applicationVideo = applicationVideo;
+        if (socialLinks) existing.socialLinks = socialLinks;
         existing.applicationDate = new Date();
         existing.rejectionReason = undefined;
         return await existing.save();
@@ -39,6 +40,7 @@ export class InfluencerService {
     return await Influencer.create({
       userId,
       applicationVideo,
+      socialLinks,
       status: 'pending',
       applicationDate: new Date()
     });

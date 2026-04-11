@@ -15,6 +15,7 @@ const InfluencerSchema = new Schema<IInfluencer>({
   },
   referralCode: { type: String, unique: true, sparse: true },
   applicationVideo: { type: String },
+  socialLinks: { type: Schema.Types.Mixed },
   applicationDate: { type: Date, default: Date.now },
   approvalDate: { type: Date },
   rejectionReason: { type: String },

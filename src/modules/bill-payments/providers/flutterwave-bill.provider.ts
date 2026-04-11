@@ -134,8 +134,34 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
       name: p.name || p.biller_name || '',
       billerId,
       amount: Number(p.amount) || 0,
-      description: p.description || p.short_name || ''
+      description: p.description || p.short_name || '',
+      duration: this.parseDuration(p.name || p.description || p.short_name || '')
     }));
+  }
+
+  /**
+   * Extract duration from product name/description strings.
+   */
+  private parseDuration(text: string): string | undefined {
+    if (!text) return undefined;
+    const lower = text.toLowerCase();
+
+    const durationMatch = lower.match(/(\d+)\s*(day|days|week|weeks|month|months|hour|hours|hr|hrs)/i);
+    if (durationMatch) {
+      const num = durationMatch[1];
+      const unit = durationMatch[2].toLowerCase();
+      if (unit.startsWith('day')) return `${num} day${num === '1' ? '' : 's'}`;
+      if (unit.startsWith('week')) return `${num} week${num === '1' ? '' : 's'}`;
+      if (unit.startsWith('month')) return `${num} month${num === '1' ? '' : 's'}`;
+      if (unit.startsWith('hour') || unit.startsWith('hr')) return `${num} hour${num === '1' ? '' : 's'}`;
+    }
+
+    if (lower.includes('daily')) return '1 day';
+    if (lower.includes('weekly')) return '7 days';
+    if (lower.includes('monthly')) return '30 days';
+    if (lower.includes('yearly') || lower.includes('annual')) return '1 year';
+
+    return undefined;
   }
 
   async getBalance(): Promise<{ balance: number }> {
