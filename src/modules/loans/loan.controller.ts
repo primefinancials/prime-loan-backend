@@ -12,6 +12,7 @@ import { LoanService, CreateLoanParams, RepayParams } from "./loan.service";
 import { LoanEligibilityService } from "./loan-eligibility";
 import { LoanLadder } from "./loan-ladder.model";
 import { SettingsService } from "../admin/settings.service";
+import { InfluencerService } from "../influencer/influencer.service";
 import { checkPermission, getMailsByPermission } from "../../shared/utils/checkPermission";
 import { NotificationService } from "../notifications/notification.service";
 import { UserService } from "../users/user.service";
@@ -254,6 +255,13 @@ export class LoanController {
         reference: result.loan._id as any,
         type: "unrealized",
       });
+
+      // Influencer commission hook (fire-and-forget)
+      try {
+        await InfluencerService.recordCommissionForUser(result.loan.userId, 'loan', amount);
+      } catch (err) {
+        console.warn('Influencer commission recording failed (non-fatal):', (err as Error).message);
+      }
 
       res.status(200).json({ status: "success", data: result });
     } catch (error) {

@@ -421,6 +421,26 @@ router.get("/settings/calculate-profit", verifyJwtRest(), AdminController.calcul
 router.get("/settings/profit-config", verifyJwtRest(), AdminController.getProfitConfig as any);
 
 /* -------------------------------------------------------------------------- */
+/*                          INFLUENCER ROUTES                                 */
+/* -------------------------------------------------------------------------- */
+import { InfluencerController } from "../modules/influencer/influencer.controller";
+
+router.get("/influencer/me", verifyJwtRest(), InfluencerController.getProfile as any);
+router.post("/influencer/apply", verifyJwtRest(), InfluencerController.apply as any);
+router.get("/influencer/dashboard", verifyJwtRest(), InfluencerController.getDashboard as any);
+router.get("/influencer/referred-users", verifyJwtRest(), InfluencerController.getReferredUsers as any);
+router.get("/influencer/earnings", verifyJwtRest(), InfluencerController.getEarnings as any);
+
+/* -------------------------------------------------------------------------- */
+/*                      MONO ACCOUNT LINKING ROUTES                           */
+/* -------------------------------------------------------------------------- */
+import { MonoAccountController } from "../modules/loans/mono-account.controller";
+
+router.post("/loans/link-account", verifyJwtRest(), MonoAccountController.linkAccount as any);
+router.get("/loans/linked-account", verifyJwtRest(), MonoAccountController.getLinkedAccount as any);
+router.get("/loans/max-borrowable", verifyJwtRest(), MonoAccountController.getMaxBorrowable as any);
+
+/* -------------------------------------------------------------------------- */
 /*                               EXPORT ROUTER                                */
 /* -------------------------------------------------------------------------- */
 

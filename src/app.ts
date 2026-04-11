@@ -7,6 +7,7 @@ import cookieParser from "cookie-parser";
 import { specs, swaggerUi, swaggerUiOptions } from "./swagger.config";
 import userRoutes from "./routes/userRoutes";
 import adminRoutes from "./routes/adminRoutes";
+import webhookRoutes from "./routes/webhookRoutes";
 import { errHandler } from "./exceptions";
 import crossOrigin from "./shared/utils/cross-origin";
 
@@ -43,6 +44,7 @@ export default function configureApp(app: Application): void {
   // Routes
   app.use("/api", userRoutes);
   app.use("/backoffice", adminRoutes);
+  app.use("/webhooks", webhookRoutes);
 
   // Error handler (must be last)
   app.use(errHandler);

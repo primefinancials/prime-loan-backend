@@ -20,6 +20,7 @@
     "dependencies": {
         "@joi/date": "^2.1.1",
         "@mono.co/connect.js": "^2.1.0",
+        "africastalking": "^0.7.9",
         "aws-sdk": "^2.1692.0",
         "axios": "^1.7.9",
         "bullmq": "^5.58.4",

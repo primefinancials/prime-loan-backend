@@ -15,7 +15,7 @@ export class ProfitService {
   async recordRealizedProfit(params: {
     reference: string;
     userId: string;
-    source: "transaction" | "savings" | "loan" | "bill-payment" | "escrow";
+    source: "transaction" | "savings" | "loan" | "bill-payment" | "escrow" | "marketplace";
     amount: number;
     percentage?: number;
     description?: string;
@@ -126,7 +126,7 @@ export class ProfitService {
   async recordProfit(params: {
     reference: string;
     userId: string;
-    source: "transaction" | "savings" | "loan" | "bill-payment" | "escrow";
+    source: "transaction" | "savings" | "loan" | "bill-payment" | "escrow" | "marketplace";
     amount: number;
     percentage?: number;
     type: "realized" | "unrealized";

@@ -76,13 +76,22 @@ export class LoanEligibilityService {
       allowedAmountByLadder = 0; // Or some default
     }
 
+    // --- Savings-Based Loan Override ---
+    // If the user's savable-borrowing capacity exceeds their ladder position,
+    // the savings-based amount becomes their effective max
+    const borrowableFromSavings = userSavings * (collateralPercentage / 100);
+    const effectiveMax = Math.max(allowedAmountByLadder, borrowableFromSavings);
 
-    if (requestedAmount > allowedAmountByLadder && allowedAmountByLadder > 0) {
+    if (requestedAmount > effectiveMax && effectiveMax > 0) {
       return {
         eligible: false,
-        maxAmount: allowedAmountByLadder,
+        maxAmount: effectiveMax,
         notifyAdmin: false,
-        reason: `Requested amount exceeds your current loan limit of ${allowedAmountByLadder}. Repay successfully to increase limit.`
+        reason: `Requested amount exceeds your current loan limit of ₦${effectiveMax.toLocaleString()}. ${
+          borrowableFromSavings > allowedAmountByLadder
+            ? 'Increase your savings to raise your limit.'
+            : 'Repay successfully to increase limit.'
+        }`
       };
     }
 

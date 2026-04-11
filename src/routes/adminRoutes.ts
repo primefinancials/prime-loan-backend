@@ -122,9 +122,11 @@ router.get("/profits", verifyJwtRest(), validateReqQuery(profitReportQuerySchema
 ============================= */
 
 router.get("/transactions", verifyJwtRest(), validateReqQuery(transactionQuerySchema), AdminController.getTransactions as any);
+router.get("/transactions/stats", verifyJwtRest(), AdminController.getTransactionStats as any);
 router.get("/transactions/:traceId([0-9a-fA-F]{24})", verifyJwtRest(), AdminController.getTransactionDetails as any);
 router.get("/transactions/flagged", verifyJwtRest(), AdminController.getFlaggedTransactions as any);
 router.get("/billpayment/all", verifyJwtRest(), validateReqQuery(transactionQuerySchema), AdminController.getBillPayment as any);
+router.get("/billpayment/stats", verifyJwtRest(), AdminController.getBillPaymentStats as any);
 router.post("/transfers/:id([0-9a-fA-F]{24})/requery", verifyJwtRest(), AdminController.requeryTransfer as any);
 router.get("/reconciliation/inconsistencies", verifyJwtRest(), AdminController.getReconciliationInconsistencies as any);
 
@@ -197,5 +199,95 @@ router.get("/profits/type", verifyJwtRest(), profitController.getProfitByType.bi
 router.get("/profits/reference", verifyJwtRest(), profitController.getProfitByReference.bind(profitController) as any);
 router.get("/profits/total", verifyJwtRest(), profitController.getTotalProfit.bind(profitController) as any);
 router.patch("/profits/:reference/realize", verifyJwtRest(), profitController.markProfitAsRealized.bind(profitController) as any);
+
+/* =============================
+   INFLUENCER MANAGEMENT
+============================= */
+import { InfluencerController } from "../modules/influencer/influencer.controller";
+
+router.get("/influencers", verifyJwtRest(), InfluencerController.listAll as any);
+router.get("/influencers/:id", verifyJwtRest(), InfluencerController.getById as any);
+router.post("/influencers/:id/approve", verifyJwtRest(), InfluencerController.approve as any);
+router.post("/influencers/:id/reject", verifyJwtRest(), InfluencerController.reject as any);
+
+/* =============================
+   MONO DEBIT LOGS
+============================= */
+import { MonoDebitLog } from "../modules/loans/mono-debit-log.model";
+
+router.get("/mono-debit-logs", verifyJwtRest(), async (req: any, res: any) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const status = req.query.status;
+    const filter: any = {};
+    if (status) filter.status = status;
+
+    const skip = (page - 1) * limit;
+    const [logs, total] = await Promise.all([
+      MonoDebitLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      MonoDebitLog.countDocuments(filter)
+    ]);
+
+    res.json({ status: 'success', data: { logs, total, page, limit, pages: Math.ceil(total / limit) } });
+  } catch (err: any) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+/* =============================
+   V2 SETTINGS TOGGLES
+============================= */
+import { SettingsService } from "../modules/admin/settings.service";
+
+router.put("/settings/bill-payment-provider", verifyJwtRest(), async (req: any, res: any) => {
+  try {
+    const adminId = req.user._id || req.user.id;
+    const { provider } = req.body;
+    if (!['flutterwave', 'paybeta'].includes(provider)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid provider. Use flutterwave or paybeta.' });
+    }
+    const settings = await SettingsService.updateSettings(adminId, { billPaymentProvider: provider });
+    res.json({ status: 'success', data: { billPaymentProvider: settings.billPaymentProvider } });
+  } catch (err: any) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+router.put("/settings/commissions", verifyJwtRest(), async (req: any, res: any) => {
+  try {
+    const adminId = req.user._id || req.user.id;
+    const { influencer } = req.body;
+    const settings = await SettingsService.updateSettings(adminId, { influencer });
+    res.json({ status: 'success', data: { influencer: settings.influencer } });
+  } catch (err: any) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+router.put("/settings/mono-auto-debit", verifyJwtRest(), async (req: any, res: any) => {
+  try {
+    const adminId = req.user._id || req.user.id;
+    const { monoAutoDebit } = req.body;
+    const settings = await SettingsService.updateSettings(adminId, { monoAutoDebit });
+    res.json({ status: 'success', data: { monoAutoDebit: settings.monoAutoDebit } });
+  } catch (err: any) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+router.put("/settings/voice-call-provider", verifyJwtRest(), async (req: any, res: any) => {
+  try {
+    const adminId = req.user._id || req.user.id;
+    const { provider } = req.body;
+    if (!['twilio', 'termii', 'plivo'].includes(provider)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid provider. Use twilio, termii, or plivo.' });
+    }
+    const settings = await SettingsService.updateSettings(adminId, { voiceCallProvider: provider });
+    res.json({ status: 'success', data: { voiceCallProvider: settings.voiceCallProvider } });
+  } catch (err: any) {
+    res.status(500).json({ status: 'error', message: err.message });
+  }
+});
 
 export default router;

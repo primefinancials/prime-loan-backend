@@ -2,7 +2,7 @@ import { QueueService } from '../../shared/queue';
 import Loan from '../../modules/loans/loan.model';
 import { DatabaseService } from '../../shared/db';
 import { SettingsService } from '../../modules/admin/settings.service';
-import { TwilioProvider } from '../../shared/providers/twilio.provider';
+import { getVoiceProvider, getRecoveryMessage } from '../../shared/providers/voice-call.provider';
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 import { WorkerControlService } from '../../modules/workers/worker-control.service';
 import pino from 'pino';
@@ -73,7 +73,8 @@ export class DefaulterCallWorker {
                 return; // Nothing to process
             }
 
-            const twilio = new TwilioProvider();
+            const voiceProvider = await getVoiceProvider();
+            const providerName = voiceProvider.providerName;
             const today = new Date().toISOString().split('T')[0];
             const calledUsers: { phone: string, name?: string, amount?: number }[] = [];
 
@@ -87,7 +88,7 @@ export class DefaulterCallWorker {
                         continue;
                     }
 
-                    // Strict E.164 formatting for Twilio
+                    // Format phone for provider
                     if (phone.startsWith('0')) {
                         phone = '+234' + phone.substring(1);
                     } else if (phone.startsWith('234')) {
@@ -105,10 +106,40 @@ export class DefaulterCallWorker {
                         continue;
                     }
 
+                    // Calculate days overdue for escalation
+                    const dueDate = new Date(loan.repayment_date);
+                    const daysOverdue = Math.max(1, Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+                    // Build escalation-aware recovery message
+                    const customTemplates: Record<string, string> = {};
+                    const templates = (config as any).messageTemplates;
+                    if (templates) {
+                        if (templates.tier1?.smsTemplate) customTemplates['tier1'] = templates.tier1.smsTemplate;
+                        if (templates.tier2?.smsTemplate) customTemplates['tier2'] = templates.tier2.smsTemplate;
+                        if (templates.tier3?.smsTemplate) customTemplates['tier3'] = templates.tier3.smsTemplate;
+                        if (templates.tier4?.smsTemplate) customTemplates['tier4'] = templates.tier4.smsTemplate;
+                    }
+
+                    const recovery = getRecoveryMessage(daysOverdue, {
+                        name: user.user_metadata?.first_name || 'Customer',
+                        amount: String(loan.amount || 0),
+                        outstanding: String(loan.outstanding || 0),
+                        date: dueDate.toLocaleDateString('en-NG'),
+                        days: daysOverdue
+                    }, Object.keys(customTemplates).length > 0 ? customTemplates : undefined);
+
+                    const callMessage = recovery.message || message;
+                    const maxCallsForTier = recovery.maxCallsPerDay;
+
+                    // Use tier-specific max calls if available
+                    if (callsToday >= maxCallsForTier) {
+                        logger.info({ loanId: loan._id, tier: recovery.tier, callsToday, maxCallsForTier }, 'Max calls reached for today (tier-aware)');
+                        continue;
+                    }
+
                     // Make Call
-                    // Try-catch specific call to avoid stopping loop
                     try {
-                        await twilio.makeCall(phone, message);
+                        await voiceProvider.makeCall(phone, callMessage);
 
                         // Update Loan History
                         loan.call_history = [
@@ -116,7 +147,7 @@ export class DefaulterCallWorker {
                             {
                                 date: new Date(),
                                 status: 'initiated',
-                                provider: 'twilio'
+                                provider: providerName
                             }
                         ];
                         // Mark modified if mixed type doesn't auto-detect
@@ -129,8 +160,8 @@ export class DefaulterCallWorker {
                         calledUsers.push({ phone, name: user.user_metadata?.first_name, amount: loan.outstanding });
 
                     } catch (callErr: any) {
-                        logger.error({ loanId: loan._id, error: callErr.message }, 'Twilio call failed');
-                        await WorkerLogService.log('defaulter-call-worker', 'error', `Twilio call failed: ${callErr.message}`, { loanId: loan._id });
+                        logger.error({ loanId: loan._id, error: callErr.message }, `${providerName} call failed`);
+                        await WorkerLogService.log('defaulter-call-worker', 'error', `${providerName} call failed: ${callErr.message}`, { loanId: loan._id });
                     }
 
                 } catch (err: any) {

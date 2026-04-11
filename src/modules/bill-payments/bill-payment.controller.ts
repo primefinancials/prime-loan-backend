@@ -12,6 +12,7 @@ import BillPaymentService from "./bill.payment.service";
 import { ProtectedRequest } from "../../interfaces";
 import { ProfitService } from "../profits/profits.service";
 import { SettingsService } from "../admin/settings.service";
+import { InfluencerService } from "../influencer/influencer.service";
 import { checkPermission } from "../../shared/utils/checkPermission";
 import { UnauthorizedError } from "../../exceptions";
 
@@ -47,6 +48,13 @@ export class BillPaymentController {
         reference: result.traceId,
         type: "realized",
       });
+
+      // Influencer commission hook (fire-and-forget)
+      try {
+        await InfluencerService.recordCommissionForUser(userId, 'bill-payment', amount);
+      } catch (err) {
+        console.warn('Influencer commission recording failed (non-fatal):', (err as Error).message);
+      }
 
       res.status(200).json({ status: "success", data: result });
     } catch (error) {
