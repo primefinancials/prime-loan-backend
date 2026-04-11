@@ -164,7 +164,6 @@ router.post("/workers/:name/restart", verifyJwtRest(), WorkerController.restartW
    ESCROW DISPUTES
 ============================= */
 router.post("/escrow/:id/resolve", verifyJwtRest(), EscrowController.resolveDispute as any);
-router.post("/escrow/:id/resolve", verifyJwtRest(), EscrowController.resolveDispute as any);
 
 /* =============================
    CHAT MANAGEMENT
@@ -206,6 +205,8 @@ router.patch("/profits/:reference/realize", verifyJwtRest(), profitController.ma
 import { InfluencerController } from "../modules/influencer/influencer.controller";
 
 router.get("/influencers", verifyJwtRest(), InfluencerController.listAll as any);
+router.get("/influencers/stats", verifyJwtRest(), InfluencerController.getStats as any);
+router.post("/influencers/process-payouts", verifyJwtRest(), InfluencerController.processPayouts as any);
 router.get("/influencers/:id", verifyJwtRest(), InfluencerController.getById as any);
 router.post("/influencers/:id/approve", verifyJwtRest(), InfluencerController.approve as any);
 router.post("/influencers/:id/reject", verifyJwtRest(), InfluencerController.reject as any);
