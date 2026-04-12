@@ -258,6 +258,25 @@ export class InfluencerController {
 
       const agg = earningsAgg[0] || { totalEarnings: 0, pendingPayouts: 0 };
 
+      // Total paid out (commissions with status 'paid')
+      const paidAgg = await InfluencerCommission.aggregate([
+        { $match: { status: 'paid' } },
+        { $group: { _id: null, totalPaid: { $sum: '$commissionAmount' } } }
+      ]);
+
+      // Total referrals (users with referredBy set)
+      const UserModel = (await import('../users/user.model')).default;
+      const totalReferrals = await UserModel.countDocuments({ referredBy: { $exists: true, $ne: null } });
+
+      // Per-service commission breakdown
+      const commissionsByServiceAgg = await InfluencerCommission.aggregate([
+        { $group: { _id: '$transactionType', total: { $sum: '$commissionAmount' }, count: { $sum: 1 } } }
+      ]);
+      const commissionsByService: Record<string, { total: number; count: number }> = {};
+      for (const c of commissionsByServiceAgg) {
+        commissionsByService[c._id] = { total: c.total, count: c.count };
+      }
+
       return res.status(200).json({
         status: 'success',
         data: {
@@ -265,6 +284,9 @@ export class InfluencerController {
           activeInfluencers: approved,
           totalEarnings: agg.totalEarnings,
           pendingPayouts: agg.pendingPayouts,
+          totalPaid: paidAgg[0]?.totalPaid || 0,
+          totalReferrals,
+          commissionsByService,
         },
       });
     } catch (err) { next(err); }
@@ -394,6 +416,51 @@ export class InfluencerController {
       return res.status(200).json({
         status: 'success',
         data: { payoutDetails: influencer.payoutDetails },
+      });
+    } catch (err) { next(err); }
+  }
+
+  /**
+   * PUT /backoffice/influencers/:id/discount-config
+   * Admin: Update per-influencer discount/bonus configuration
+   */
+  static async updateDiscountConfig(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { enabled, discountPercent, bonusAmount } = req.body;
+      const result = await InfluencerService.updateDiscountConfig(req.params.id, {
+        enabled,
+        discountPercent,
+        bonusAmount,
+      });
+      return res.status(200).json({ status: 'success', data: result });
+    } catch (err) { next(err); }
+  }
+
+  /**
+   * GET /api/referral/check?code=XXXX
+   * Public/User: Validate a referral code and return discount info
+   */
+  static async checkReferralCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      const code = req.query.code as string;
+      if (!code) {
+        return res.status(400).json({ status: 'failed', message: 'Referral code is required' });
+      }
+
+      const result = await InfluencerService.resolveReferralCode(code);
+      if (!result) {
+        return res.status(404).json({ status: 'failed', message: 'Invalid or inactive referral code' });
+      }
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          valid: true,
+          referralCode: result.influencer.referralCode,
+          discountEnabled: result.discountConfig.enabled,
+          discountPercent: result.discountConfig.discountPercent,
+          bonusAmount: result.discountConfig.bonusAmount,
+        },
       });
     } catch (err) { next(err); }
   }

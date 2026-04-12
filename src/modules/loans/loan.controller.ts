@@ -62,6 +62,7 @@ export class LoanController {
         type,
         duration,
         percentage,
+        referralCode,
       } = req.body;
 
       const loan = await LoanService.createLoan({
@@ -96,6 +97,7 @@ export class LoanController {
         percentage,
         acknowledgment: true,
         idempotencyKey,
+        referralCode,
       } as CreateLoanParams);
 
       const settings = await SettingsService.getSettings();
@@ -258,7 +260,7 @@ export class LoanController {
 
       // Influencer commission hook (fire-and-forget)
       try {
-        await InfluencerService.recordCommissionForUser(result.loan.userId, 'loan', amount);
+        await InfluencerService.recordCommissionForUser(result.loan.userId, 'loan', amount, undefined, (result.loan as any).referralCode);
       } catch (err) {
         console.warn('Influencer commission recording failed (non-fatal):', (err as Error).message);
       }

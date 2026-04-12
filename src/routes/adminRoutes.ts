@@ -212,6 +212,7 @@ router.post("/influencers/:id/approve", verifyJwtRest(), InfluencerController.ap
 router.post("/influencers/:id/reject", verifyJwtRest(), InfluencerController.reject as any);
 router.post("/influencers/:id/suspend", verifyJwtRest(), InfluencerController.suspend as any);
 router.post("/influencers/:id/reactivate", verifyJwtRest(), InfluencerController.reactivate as any);
+router.put("/influencers/:id/discount-config", verifyJwtRest(), InfluencerController.updateDiscountConfig as any);
 
 /* =============================
    AUTO-DEBIT LOGS
@@ -285,8 +286,8 @@ router.put("/settings/voice-call-provider", verifyJwtRest(), async (req: any, re
   try {
     const adminId = req.admin._id || req.admin.id;
     const { provider } = req.body;
-    if (!['twilio', 'termii', 'plivo'].includes(provider)) {
-      return res.status(400).json({ status: 'error', message: 'Invalid provider. Use twilio, termii, or plivo.' });
+    if (!['termii', 'africastalking'].includes(provider)) {
+      return res.status(400).json({ status: 'error', message: 'Invalid provider. Use termii or africastalking.' });
     }
     const settings = await SettingsService.updateSettings(adminId, { voiceCallProvider: provider });
     res.json({ status: 'success', data: { voiceCallProvider: settings.voiceCallProvider } });

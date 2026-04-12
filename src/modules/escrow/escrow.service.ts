@@ -25,6 +25,7 @@ export class EscrowService {
         description: string;
         items?: any[];
         inspectionPeriodDays?: number; // Days allowed for inspection after delivery
+        referralCode?: string;
     }) {
         // Step 1: Prepare Data & Create Initial Record (OUTSIDE Transfer Transaction if possible, or inside but committed before transfer)
         // Since we can't pause a transaction to do external call and then resume, we must use TWO datbase operations.
@@ -76,7 +77,8 @@ export class EscrowService {
             status: 'INITIALIZING',
             inviteEmail,
             inspectionPeriod,
-            expiryDate: undefined
+            expiryDate: undefined,
+            referralCode: params.referralCode,
         });
 
         // Step 2: EXECUTE TRANSFER (External)
@@ -579,7 +581,7 @@ export class EscrowService {
                 // Influencer commission hook (fire-and-forget, outside session)
                 try {
                   const { InfluencerService } = await import('../influencer/influencer.service');
-                  await InfluencerService.recordCommissionForUser(escrow.buyerId, 'escrow', escrow.amount);
+                  await InfluencerService.recordCommissionForUser(escrow.buyerId, 'escrow', escrow.amount, undefined, escrow.referralCode);
                 } catch (err) {
                   console.warn('Escrow influencer commission failed (non-fatal):', (err as Error).message);
                 }

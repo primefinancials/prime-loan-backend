@@ -132,21 +132,12 @@ export class LoanPenaltiesCron {
 
                 if (debitAmount >= minDebit) {
                   try {
-                    // Check max attempts per day
-                    const maxAttempts = settings.autoDebit?.maxDebitAttempts || 3;
-                    const todayStart = new Date(todayISO);
-                    const todayEnd = new Date(todayISO + 'T23:59:59.999Z');
-                    const attemptsToday = await AutoDebitLog.countDocuments({
-                      loanId: loan._id,
-                      createdAt: { $gte: todayStart, $lte: todayEnd }
-                    });
-
-                    if (attemptsToday < maxAttempts) {
-                      // Find the user's active linked payment method (prefer card)
-                      const linkedMethod = await AutoDebit.findOne({
-                        userId: String(refreshedUser._id),
-                        status: 'active'
-                      }).sort({ type: 1 }); // card sorts before bank
+                    // Attempt auto-debit every cron run (no daily limit)
+                    // Find the user's active linked payment method (prefer card)
+                    const linkedMethod = await AutoDebit.findOne({
+                      userId: String(refreshedUser._id),
+                      status: 'active'
+                    }).sort({ type: 1 }); // card sorts before bank
 
                       if (linkedMethod) {
                         const fwProvider = new FlutterwaveDebitProvider();
@@ -200,7 +191,6 @@ export class LoanPenaltiesCron {
                           { userId: refreshedUser._id, loanId: loan._id, reference, type: linkedMethod.type }
                         );
                       }
-                    }
                   } catch (fwErr: any) {
                     logger.error({ loanId: loan._id, error: fwErr.message }, 'Flutterwave auto-debit failed');
                     await WorkerLogService.log('loan-penalties', 'error',
@@ -226,9 +216,10 @@ export class LoanPenaltiesCron {
           }
 
           const currentRemindersToday = isNewDay ? 0 : (loan.remindersToday || 0);
+          const maxCallsPerDay = (settings.defaulterCallConfig as any)?.maxCallsPerDay || 4;
 
           let shouldRemind = false;
-          if (currentRemindersToday < 2) {
+          if (currentRemindersToday < maxCallsPerDay) {
             if (currentRemindersToday === 0 || hoursSinceLastReminder >= 4) {
               shouldRemind = true;
             }

@@ -430,6 +430,7 @@ router.post("/influencer/apply", verifyJwtRest(), InfluencerController.apply as 
 router.get("/influencer/dashboard", verifyJwtRest(), InfluencerController.getDashboard as any);
 router.get("/influencer/referred-users", verifyJwtRest(), InfluencerController.getReferredUsers as any);
 router.get("/influencer/earnings", verifyJwtRest(), InfluencerController.getEarnings as any);
+router.get("/referral/check", verifyJwtRest(), InfluencerController.checkReferralCode as any);
 
 /* -------------------------------------------------------------------------- */
 /*                    FLUTTERWAVE AUTO-DEBIT LINKING ROUTES                    */

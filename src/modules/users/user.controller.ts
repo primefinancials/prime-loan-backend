@@ -45,6 +45,7 @@ export class UserController {
       const user = await UserService.createClientAccount({
         ...req.body,
         dob: formattedDob, // overwrite with formatted DOB
+        referralCode: req.body.referralCode || undefined,
       });
 
       res.status(201).json({

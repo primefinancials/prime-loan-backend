@@ -20,6 +20,7 @@ export const createClientAccountSchema = Joi.object({
     .messages({
       "string.pattern.base": "Date of Birth must be dd/mm/yyyy",
     }),
+  referralCode: Joi.string().optional().allow('').max(20),
 });
 
 export const loginSchema = Joi.object({

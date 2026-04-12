@@ -36,6 +36,7 @@ export interface IEscrowTransaction extends Document {
     inspectionPeriod?: number;
     deliveryDate?: Date;
     completedAt?: Date;
+    referralCode?: string;
     createdAt: Date;
     updatedAt: Date;
 }
@@ -83,7 +84,8 @@ const EscrowTransactionSchema = new Schema<IEscrowTransaction>({
     expiryDate: { type: Date },
     inspectionPeriod: { type: Number, default: 3 }, // Default 3 days inspection
     deliveryDate: { type: Date },
-    completedAt: { type: Date }
+    completedAt: { type: Date },
+    referralCode: { type: String }
 }, {
     timestamps: true,
     collection: getCollectionName('escrows')

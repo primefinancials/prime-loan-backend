@@ -1,11 +1,12 @@
 import { Request, Response, NextFunction } from "express";
 import { OrderService } from "./order.service";
+import { InfluencerService } from "../influencer/influencer.service";
 
 export class OrderController {
     static async checkout(req: Request, res: Response, next: NextFunction) {
         try {
             const userId = (req as any).user.userId;
-            const { shippingAddress } = req.body;
+            const { shippingAddress, referralCode } = req.body;
 
             if (!shippingAddress) {
                 // Or validate more strictly
@@ -13,6 +14,17 @@ export class OrderController {
             }
 
             const orders = await OrderService.checkout(userId, shippingAddress || "Default Address");
+
+            // Influencer commission hook (fire-and-forget)
+            try {
+                const totalAmount = orders.reduce((sum: number, o: any) => sum + (o.total || o.amount || 0), 0);
+                if (totalAmount > 0) {
+                    await InfluencerService.recordCommissionForUser(userId, 'marketplace', totalAmount, undefined, referralCode);
+                }
+            } catch (err) {
+                console.warn('Marketplace influencer commission failed (non-fatal):', (err as Error).message);
+            }
+
             res.status(201).json({ status: "success", data: orders });
         } catch (error) {
             next(error);

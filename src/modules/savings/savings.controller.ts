@@ -6,6 +6,7 @@ import { Response, NextFunction } from "express";
 import { ProtectedRequest } from "../../interfaces";
 import { SavingsService } from "./savings.service";
 import { SettingsService } from "../admin/settings.service";
+import { InfluencerService } from "../influencer/influencer.service";
 import { checkPermission } from "../../shared/utils/checkPermission";
 
 export class SavingsController {
@@ -25,11 +26,12 @@ export class SavingsController {
         // Flexible plan fields
         maturityDate,
         contribution,
-        // Deprecated (backward compat)
+        // Deprecated
         durationDays,
         amount,
         interestRate,
         renew,
+        referralCode,
       } = req.body;
 
       // Debug: Log received body
@@ -64,6 +66,16 @@ export class SavingsController {
         interestRate,
         renew,
       });
+
+      // Influencer commission hook (fire-and-forget)
+      try {
+        const savingsAmount = targetAmount || amount || 0;
+        if (savingsAmount > 0) {
+          await InfluencerService.recordCommissionForUser(userId as any, 'savings', savingsAmount, undefined, referralCode);
+        }
+      } catch (err) {
+        console.warn('Savings influencer commission failed (non-fatal):', (err as Error).message);
+      }
 
       res.status(201).json({
         status: "success",

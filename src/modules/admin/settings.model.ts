@@ -149,10 +149,10 @@ export interface ISettings extends Document {
     minDebitAmount: number;
   };
 
-  voiceCallProvider: 'termii' | 'twilio' | 'plivo'; // legacy field, use voiceCallConfig.provider
+  voiceCallProvider: 'termii' | 'africastalking'; // legacy field, use voiceCallConfig.provider
   voiceCallConfig: {
-    provider: 'termii' | 'twilio' | 'plivo';
-    atCallFromNumbers: string[];      // AT virtual numbers — randomly rotated
+    provider: 'termii' | 'africastalking';
+    atCallFromNumbers: string[];      // Africa's Talking virtual numbers — randomly rotated
     termiiSenderIds: string[];        // Termii sender IDs — randomly rotated
   };
 }
@@ -440,7 +440,7 @@ const SettingsSchema = new Schema<ISettings>(
 
     voiceCallProvider: {
       type: String,
-      enum: ['termii', 'twilio', 'plivo'],
+      enum: ['termii', 'africastalking'],
       default: 'termii'
     },
 
@@ -448,7 +448,7 @@ const SettingsSchema = new Schema<ISettings>(
     voiceCallConfig: {
       provider: {
         type: String,
-        enum: ['termii', 'twilio', 'plivo'],
+        enum: ['termii', 'africastalking'],
         default: 'termii'
       },
       atCallFromNumbers: {
