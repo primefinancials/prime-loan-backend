@@ -31,6 +31,11 @@ const InfluencerSchema = new Schema<IInfluencer>({
     bankName: { type: String },
     accountNumber: { type: String },
     accountName: { type: String }
+  },
+  discountConfig: {
+    enabled: { type: Boolean, default: false },
+    discountPercent: { type: Number, default: 0, min: 0, max: 100 },
+    bonusAmount: { type: Number, default: 0, min: 0 }
   }
 }, {
   timestamps: true,

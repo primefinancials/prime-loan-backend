@@ -9,6 +9,17 @@ export type CommissionStatus = 'pending' | 'paid' | 'cancelled';
 export type PayoutStatus = 'pending' | 'completed' | 'failed';
 export type CommissionTransactionType = 'loan' | 'escrow' | 'savings' | 'bill-payment' | 'marketplace' | 'signup';
 
+/**
+ * Per-influencer discount/bonus configuration.
+ * discountPercent: 0–100% discount off user's transaction fee.
+ * bonusAmount: flat Naira bonus credited to user's wallet after a successful transaction.
+ */
+export interface DiscountConfig {
+  enabled: boolean;
+  discountPercent: number;
+  bonusAmount: number;
+}
+
 export interface IInfluencer extends Document {
   _id: ObjectId;
   userId: string;
@@ -32,6 +43,7 @@ export interface IInfluencer extends Document {
     accountNumber: string;
     accountName: string;
   };
+  discountConfig?: DiscountConfig;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -60,6 +72,7 @@ export interface RecordCommissionDto {
   transactionRef: string;
   transactionType: CommissionTransactionType;
   transactionAmount: number;
+  referralCode?: string;
 }
 
 export interface InfluencerDashboard {

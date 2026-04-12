@@ -10,7 +10,8 @@ import {
   IInfluencer,
   RecordCommissionDto,
   InfluencerDashboard,
-  CommissionTransactionType
+  CommissionTransactionType,
+  DiscountConfig
 } from './influencer.interface';
 import pino from 'pino';
 
@@ -156,27 +157,41 @@ export class InfluencerService {
   /**
    * Convenience: Record commission for a transacting user.
    * Looks up if the user was referred by an influencer, and if so records the commission.
+   * If referralCode is provided, it overrides the signup referrer for this transaction only.
    * This is the method transaction hooks should call (fire-and-forget).
    */
   static async recordCommissionForUser(
     userId: string,
     transactionType: CommissionTransactionType,
     transactionAmount: number,
-    transactionRef?: string
+    transactionRef?: string,
+    referralCode?: string
   ): Promise<void> {
     try {
-      const UserModel = (await import('../users/user.model')).default;
-      const user = await UserModel.findById(userId).select('referredBy').lean();
-      if (!user || !user.referredBy) return; // User wasn't referred — nothing to do
+      let influencer: IInfluencer | null = null;
 
-      const influencer = await Influencer.findById(user.referredBy);
+      // Per-transaction referral code takes priority
+      if (referralCode) {
+        influencer = await Influencer.findOne({ referralCode, status: 'approved' });
+      }
+
+      // Fallback to signup referrer
+      if (!influencer) {
+        const UserModel = (await import('../users/user.model')).default;
+        const user = await UserModel.findById(userId).select('referredBy').lean();
+        if (!user || !user.referredBy) return;
+
+        influencer = await Influencer.findById(user.referredBy);
+      }
+
       if (!influencer || influencer.status !== 'approved') return;
 
       await this.recordCommission(influencer._id.toString(), {
         userId,
         transactionType,
         transactionAmount,
-        transactionRef: transactionRef || `auto_${Date.now()}`
+        transactionRef: transactionRef || `auto_${Date.now()}`,
+        referralCode
       });
     } catch (err: any) {
       // Completely non-fatal — never break the parent transaction
@@ -279,6 +294,79 @@ export class InfluencerService {
     const total = await Influencer.countDocuments(filter);
 
     return { influencers, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  /**
+   * Resolve a referral code — returns the influencer and discount config, or null.
+   * Used by transaction controllers to validate and apply referral-based discounts.
+   */
+  static async resolveReferralCode(code: string): Promise<{
+    influencer: IInfluencer;
+    discountConfig: DiscountConfig;
+  } | null> {
+    if (!code) return null;
+    const influencer = await Influencer.findOne({ referralCode: code.toUpperCase().trim(), status: 'approved' });
+    if (!influencer) return null;
+
+    const discountConfig: DiscountConfig = {
+      enabled: influencer.discountConfig?.enabled ?? false,
+      discountPercent: influencer.discountConfig?.discountPercent ?? 0,
+      bonusAmount: influencer.discountConfig?.bonusAmount ?? 0,
+    };
+
+    return { influencer, discountConfig };
+  }
+
+  /**
+   * Apply referral discount to a transaction amount.
+   * Returns { discountedAmount, discountValue, bonusAmount }.
+   */
+  static applyReferralDiscount(
+    originalAmount: number,
+    discountConfig: DiscountConfig
+  ): { discountedAmount: number; discountValue: number; bonusAmount: number } {
+    if (!discountConfig.enabled) {
+      return { discountedAmount: originalAmount, discountValue: 0, bonusAmount: 0 };
+    }
+
+    const discountValue = Number(((discountConfig.discountPercent / 100) * originalAmount).toFixed(2));
+    const discountedAmount = Number((originalAmount - discountValue).toFixed(2));
+    const bonusAmount = discountConfig.bonusAmount || 0;
+
+    return { discountedAmount, discountValue, bonusAmount };
+  }
+
+  /**
+   * Admin: Update discount config for an influencer
+   */
+  static async updateDiscountConfig(
+    influencerId: string,
+    config: Partial<DiscountConfig>
+  ): Promise<IInfluencer> {
+    const influencer = await Influencer.findById(influencerId);
+    if (!influencer) throw new NotFoundError('Influencer not found');
+
+    if (config.discountPercent !== undefined && (config.discountPercent < 0 || config.discountPercent > 100)) {
+      throw new BadRequestError('Discount percentage must be between 0 and 100');
+    }
+    if (config.bonusAmount !== undefined && config.bonusAmount < 0) {
+      throw new BadRequestError('Bonus amount cannot be negative');
+    }
+
+    // Warn if > 20% but allow
+    if (config.discountPercent !== undefined && config.discountPercent > 20) {
+      logger.warn({ influencerId, discountPercent: config.discountPercent }, 'High discount percentage set (>20%)');
+    }
+
+    influencer.discountConfig = {
+      enabled: config.enabled ?? influencer.discountConfig?.enabled ?? false,
+      discountPercent: config.discountPercent ?? influencer.discountConfig?.discountPercent ?? 0,
+      bonusAmount: config.bonusAmount ?? influencer.discountConfig?.bonusAmount ?? 0,
+    };
+
+    await influencer.save();
+    logger.info({ influencerId, discountConfig: influencer.discountConfig }, 'Discount config updated');
+    return influencer;
   }
 
   /**

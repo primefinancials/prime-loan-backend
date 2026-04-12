@@ -148,9 +148,11 @@ export class SettingsService {
       v2Dirty = true;
     }
 
-    if (!settings.monoAutoDebit) {
-      settings.monoAutoDebit = {
+    if (!(settings as any).autoDebit) {
+      (settings as any).autoDebit = {
         enabled: true,
+        cardEnabled: true,
+        bankEnabled: true,
         maxDebitAttempts: 3,
         minDebitAmount: 100
       };

@@ -11,7 +11,7 @@ export class EscrowController {
      */
     static async createP2P(req: ProtectedRequest, res: Response, next: NextFunction) {
         try {
-            const { sellerEmail, amount, description, expiryDays } = req.body;
+            const { sellerEmail, amount, description, expiryDays, referralCode } = req.body;
             const userId = req.user!._id.toString();
 
             const escrow = await EscrowService.createEscrow({
@@ -20,7 +20,8 @@ export class EscrowController {
                 type: 'p2p',
                 amount,
                 description,
-                inspectionPeriodDays: expiryDays
+                inspectionPeriodDays: expiryDays,
+                referralCode,
             });
 
             res.status(201).json({
@@ -38,7 +39,7 @@ export class EscrowController {
      */
     static async createMarketplace(req: ProtectedRequest, res: Response, next: NextFunction) {
         try {
-            const { sellerId, items, amount, description } = req.body;
+            const { sellerId, items, amount, description, referralCode } = req.body;
             const userId = req.user!._id.toString();
 
             // Enrich items with Product details if available
@@ -66,7 +67,8 @@ export class EscrowController {
                 type: 'marketplace',
                 amount,
                 description: description || "Marketplace Order",
-                items: enrichedItems
+                items: enrichedItems,
+                referralCode,
             });
 
             res.status(201).json({

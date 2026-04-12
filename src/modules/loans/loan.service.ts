@@ -58,6 +58,7 @@ export interface CreateLoanParams {
   acknowledgment: boolean;
   debit_account?: string;
   idempotencyKey?: string;
+  referralCode?: string;
 }
 
 export interface DisburseParams {

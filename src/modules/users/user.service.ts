@@ -61,9 +61,10 @@ export class UserService {
         password: string,
         nin: string,
         dob: string,
-        pin: string
+        pin: string,
+        referralCode?: string
     }) {
-        const { email, name, surname, phone, bvn, nin, password, dob, pin } = data;
+        const { email, name, surname, phone, bvn, nin, password, dob, pin, referralCode } = data;
 
         // Enhanced validation
         if (!email || !name || !surname || !phone || !bvn || !password || !nin || !dob || !pin) {
@@ -112,6 +113,20 @@ export class UserService {
 
         data.password = encryptPassword(data.password);
 
+        // Resolve referral code to influencer _id (if provided)
+        let referredByInfluencerId: string | undefined;
+        if (referralCode) {
+            try {
+                const { InfluencerService } = await import('../influencer/influencer.service');
+                const resolved = await InfluencerService.resolveReferralCode(referralCode);
+                if (resolved) {
+                    referredByInfluencerId = resolved.influencer._id.toString();
+                }
+            } catch (err) {
+                console.error('Referral code resolution failed (non-fatal):', (err as Error).message);
+            }
+        }
+
         // Create VFD account
         const response = await UserService.vfdProvider.createClient({ bvn: data.bvn, dob: data.dob });
 
@@ -142,6 +157,8 @@ export class UserService {
             duplicateEmail.status = "active";
             duplicateEmail.confirmation_sent_at = getCurrentTimestamp();
             duplicateEmail.phone = phone;
+            if (referredByInfluencerId) (duplicateEmail as any).referredBy = referredByInfluencerId;
+            if (referralCode) (duplicateEmail as any).referralCode = referralCode;
 
             await duplicateEmail.save();
             user = duplicateEmail;
@@ -173,7 +190,9 @@ export class UserService {
                 is_anonymous: false,
                 phone,
                 is_super_admin: false,
-                status: "active"
+                status: "active",
+                ...(referredByInfluencerId ? { referredBy: referredByInfluencerId } : {}),
+                ...(referralCode ? { referralCode } : {})
             });
         }
 

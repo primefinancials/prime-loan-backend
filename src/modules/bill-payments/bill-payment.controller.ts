@@ -25,7 +25,7 @@ export class BillPaymentController {
    */
   static async initiate(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { amount, serviceType, serviceId, customerReference, itemCode, extras } = req.body;
+      const { amount, serviceType, serviceId, customerReference, itemCode, extras, referralCode } = req.body;
       const userId = req.user!._id as any;
       const idempotencyKey = req.idempotencyKey!;
 
@@ -51,7 +51,7 @@ export class BillPaymentController {
 
       // Influencer commission hook (fire-and-forget)
       try {
-        await InfluencerService.recordCommissionForUser(userId, 'bill-payment', amount);
+        await InfluencerService.recordCommissionForUser(userId, 'bill-payment', amount, undefined, referralCode);
       } catch (err) {
         console.warn('Influencer commission recording failed (non-fatal):', (err as Error).message);
       }
