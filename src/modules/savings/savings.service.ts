@@ -13,6 +13,11 @@ import { TransferService } from '../transfers/transfer.service';
 import { TransferRequest } from '../../shared/providers/vfd.provider';
 import { sha512 } from 'js-sha512';
 import { SettingsService } from '../admin/settings.service';
+import Loan from '../loans/loan.model';
+import { LoanService } from '../loans/loan.service';
+import pino from 'pino';
+
+const logger = pino({ name: 'savings-service' });
 
 export interface CreatePlanParams {
   userId: string;
@@ -547,7 +552,8 @@ export class SavingsService {
               withdrawnAmount: amount,
               penalty,
               netAmount,
-              newPrincipal: plan.principal
+              newPrincipal: plan.principal,
+              ...(await SavingsService.autoDeductActiveLoan(params.userId, netAmount, session)),
             };
           } else {
             await TransferService.failTransfer(trxn.reference);
@@ -680,7 +686,15 @@ export class SavingsService {
 
           await plan.save({ session });
 
-          return { traceId, transactionId: trxn.reference, withdrawnAmount: amount, penalty, netAmount, newPrincipal: plan.principal };
+          return {
+            traceId,
+            transactionId: trxn.reference,
+            withdrawnAmount: amount,
+            penalty,
+            netAmount,
+            newPrincipal: plan.principal,
+            ...(await SavingsService.autoDeductActiveLoan(params.userId, netAmount, session)),
+          };
         }
 
         await TransferService.failTransfer(trxn.reference);
@@ -688,6 +702,64 @@ export class SavingsService {
       });
     } finally {
       await session.endSession();
+    }
+  }
+
+  /**
+   * Auto-deduct outstanding loan from savings withdrawal proceeds.
+   * Called after a successful savings withdrawal credits the user's wallet.
+   *
+   * Flow: withdrawal amount → user wallet → auto-deduct outstanding loan → remainder stays in wallet
+   *
+   * Returns { loanDeduction } object to be spread into the withdrawal response.
+   */
+  private static async autoDeductActiveLoan(
+    userId: string,
+    withdrawalAmount: number,
+    session: any
+  ): Promise<{ loanDeduction?: { loanId: string; deducted: number; remaining: number; loanOutstanding: number } }> {
+    try {
+      // Find the oldest active loan with outstanding > 0
+      const activeLoan = await Loan.findOne({
+        userId,
+        status: 'accepted',
+        outstanding: { $gt: 0 }
+      }).sort({ createdAt: 1 }).session(session);
+
+      if (!activeLoan) return {};
+
+      const outstanding = Number(activeLoan.outstanding || 0);
+      const deductAmount = Math.min(withdrawalAmount, outstanding);
+
+      if (deductAmount <= 0) return {};
+
+      // Repay the loan from the wallet (the withdrawal just credited the wallet)
+      await LoanService.repayLoan({
+        loanId: activeLoan._id,
+        userId,
+        amount: deductAmount
+      });
+
+      logger.info({
+        userId,
+        loanId: activeLoan._id,
+        deducted: deductAmount,
+        loanOutstanding: outstanding - deductAmount,
+        withdrawalAmount,
+      }, 'Auto-deducted outstanding loan from savings withdrawal');
+
+      return {
+        loanDeduction: {
+          loanId: String(activeLoan._id),
+          deducted: deductAmount,
+          remaining: withdrawalAmount - deductAmount,
+          loanOutstanding: outstanding - deductAmount,
+        }
+      };
+    } catch (err: any) {
+      // Don't fail the withdrawal if loan deduction fails — log and continue
+      logger.error({ userId, error: err.message }, 'Failed to auto-deduct loan from savings withdrawal');
+      return {};
     }
   }
 

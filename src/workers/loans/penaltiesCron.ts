@@ -15,8 +15,9 @@ import pino from 'pino';
 import { LoanService } from '../../modules/loans/loan.service';
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 import { WorkerControlService } from '../../modules/workers/worker-control.service';
-import { MonoProvider } from '../../shared/providers/mono.provider';
-import { MonoDebitLog } from '../../modules/loans/mono-debit-log.model';
+import { FlutterwaveDebitProvider } from '../../shared/providers/flutterwave-debit.provider';
+import { AutoDebit } from '../../modules/loans/auto-debit.model';
+import { AutoDebitLog } from '../../modules/loans/auto-debit-log.model';
 
 const logger = pino({ name: 'loan-penalties-cron' });
 
@@ -118,80 +119,92 @@ export class LoanPenaltiesCron {
               }
             }
 
-            // 3. Mono Direct Debit Fallback (NEW)
-            // If wallet was insufficient and user has a linked Mono account, try auto-debit
+            // 3. Flutterwave Auto-Debit Fallback
+            // If wallet was insufficient and user has a linked payment method, try auto-debit
             const refreshedUser = await UserService.getUser(loan.userId);
             if (refreshedUser && !Array.isArray(refreshedUser)) {
               const updatedWallet = Number(refreshedUser.user_metadata?.wallet || 0);
               const remainingOutstanding = Number(loan.outstanding || 0);
 
-              if (updatedWallet < remainingOutstanding && refreshedUser.mono_account?.accountId && settings.monoAutoDebit?.enabled !== false) {
+              if (updatedWallet < remainingOutstanding && settings.autoDebit?.enabled !== false) {
                 const debitAmount = remainingOutstanding - updatedWallet;
-                const minDebit = settings.monoAutoDebit?.minDebitAmount || 100;
+                const minDebit = settings.autoDebit?.minDebitAmount || 100;
 
                 if (debitAmount >= minDebit) {
                   try {
                     // Check max attempts per day
-                    const maxAttempts = settings.monoAutoDebit?.maxDebitAttempts || 3;
+                    const maxAttempts = settings.autoDebit?.maxDebitAttempts || 3;
                     const todayStart = new Date(todayISO);
                     const todayEnd = new Date(todayISO + 'T23:59:59.999Z');
-                    const attemptsToday = await MonoDebitLog.countDocuments({
+                    const attemptsToday = await AutoDebitLog.countDocuments({
                       loanId: loan._id,
                       createdAt: { $gte: todayStart, $lte: todayEnd }
                     });
 
                     if (attemptsToday < maxAttempts) {
-                      const mono = new MonoProvider();
-                      const reference = `loan-debit-${loan._id}-${Date.now()}`;
+                      // Find the user's active linked payment method (prefer card)
+                      const linkedMethod = await AutoDebit.findOne({
+                        userId: String(refreshedUser._id),
+                        status: 'active'
+                      }).sort({ type: 1 }); // card sorts before bank
 
-                      let debitResult;
-                      let debitType: 'onetime' | 'mandate' = 'onetime';
+                      if (linkedMethod) {
+                        const fwProvider = new FlutterwaveDebitProvider();
+                        const reference = `loan-debit-${loan._id}-${Date.now()}`;
 
-                      if (refreshedUser.mono_account.mandateId && refreshedUser.mono_account.mandateStatus === 'active') {
-                        debitResult = await mono.debitMandate(
-                          refreshedUser.mono_account.mandateId,
-                          debitAmount * 100, // convert to kobo
-                          reference
-                        );
-                        debitType = 'mandate';
-                      } else {
-                        debitResult = await mono.initiateOneTimePayment({
-                          accountId: refreshedUser.mono_account.accountId,
-                          amount: debitAmount * 100,
-                          description: `Prime Finance Loan Repayment - Loan ${loan._id}`,
-                          reference
-                        });
-                      }
+                        let debitResult: any;
 
-                      await MonoDebitLog.create({
-                        loanId: loan._id,
-                        userId: refreshedUser._id,
-                        monoAccountId: refreshedUser.mono_account.accountId,
-                        amount: debitAmount,
-                        reference,
-                        paymentId: debitResult.id,
-                        mandateId: refreshedUser.mono_account.mandateId,
-                        debitType,
-                        status: debitResult.status === 'successful' ? 'successful' : 'pending'
-                      });
+                        if (linkedMethod.type === 'card') {
+                          debitResult = await fwProvider.chargeToken({
+                            token: linkedMethod.token,
+                            email: linkedMethod.email,
+                            amount: debitAmount,
+                            txRef: reference,
+                          });
+                        } else {
+                          // Bank direct debit
+                          debitResult = await fwProvider.initiateDirectDebit({
+                            accountNumber: linkedMethod.accountNumber || '',
+                            bankCode: linkedMethod.bankName || '',
+                            email: linkedMethod.email,
+                            amount: debitAmount,
+                            txRef: reference,
+                            narration: `Prime Finance Loan Repayment - Loan ${loan._id}`,
+                          });
+                        }
 
-                      if (debitResult.status === 'successful') {
-                        await LoanService.repayLoan({
+                        const wasSuccessful = debitResult?.status === 'success' || debitResult?.data?.status === 'successful';
+
+                        await AutoDebitLog.create({
                           loanId: loan._id,
-                          userId: refreshedUser._id,
-                          amount: debitAmount
+                          userId: String(refreshedUser._id),
+                          type: linkedMethod.type,
+                          amount: debitAmount,
+                          reference,
+                          token: linkedMethod.token,
+                          status: wasSuccessful ? 'successful' : 'pending',
+                          provider: 'flutterwave',
+                          providerResponse: debitResult,
                         });
-                      }
 
-                      await WorkerLogService.log('loan-penalties', 'info',
-                        `Mono direct debit initiated for ${refreshedUser.email}: ₦${debitAmount}`,
-                        { userId: refreshedUser._id, loanId: loan._id, reference, debitType }
-                      );
+                        if (wasSuccessful) {
+                          await LoanService.repayLoan({
+                            loanId: loan._id,
+                            userId: refreshedUser._id,
+                            amount: debitAmount
+                          });
+                        }
+
+                        await WorkerLogService.log('loan-penalties', 'info',
+                          `Flutterwave auto-debit (${linkedMethod.type}) initiated for ${refreshedUser.email}: ₦${debitAmount}`,
+                          { userId: refreshedUser._id, loanId: loan._id, reference, type: linkedMethod.type }
+                        );
+                      }
                     }
-                  } catch (monoErr: any) {
-                    logger.error({ loanId: loan._id, error: monoErr.message }, 'Mono debit failed');
+                  } catch (fwErr: any) {
+                    logger.error({ loanId: loan._id, error: fwErr.message }, 'Flutterwave auto-debit failed');
                     await WorkerLogService.log('loan-penalties', 'error',
-                      `Mono direct debit failed: ${monoErr.message}`,
+                      `Flutterwave auto-debit failed: ${fwErr.message}`,
                       { loanId: loan._id }
                     );
                   }

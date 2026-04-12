@@ -432,13 +432,22 @@ router.get("/influencer/referred-users", verifyJwtRest(), InfluencerController.g
 router.get("/influencer/earnings", verifyJwtRest(), InfluencerController.getEarnings as any);
 
 /* -------------------------------------------------------------------------- */
-/*                      MONO ACCOUNT LINKING ROUTES                           */
+/*                    FLUTTERWAVE AUTO-DEBIT LINKING ROUTES                    */
 /* -------------------------------------------------------------------------- */
-import { MonoAccountController } from "../modules/loans/mono-account.controller";
+import { AutoDebitController } from "../modules/loans/auto-debit.controller";
 
-router.post("/loans/link-account", verifyJwtRest(), MonoAccountController.linkAccount as any);
-router.get("/loans/linked-account", verifyJwtRest(), MonoAccountController.getLinkedAccount as any);
-router.get("/loans/max-borrowable", verifyJwtRest(), MonoAccountController.getMaxBorrowable as any);
+router.post("/loans/link-card", verifyJwtRest(), AutoDebitController.linkCard as any);
+router.post("/loans/link-bank", verifyJwtRest(), AutoDebitController.linkBank as any);
+router.get("/loans/linked-methods", verifyJwtRest(), AutoDebitController.getLinkedMethods as any);
+router.delete("/loans/linked-methods/:id", verifyJwtRest(), AutoDebitController.unlinkMethod as any);
+router.get("/loans/max-borrowable", verifyJwtRest(), AutoDebitController.getMaxBorrowable as any);
+
+/* -------------------------------------------------------------------------- */
+/*                       INFLUENCER WITHDRAWAL ROUTES                         */
+/* -------------------------------------------------------------------------- */
+router.post("/influencer/withdraw", verifyJwtRest(), InfluencerController.requestWithdrawal as any);
+router.get("/influencer/payouts", verifyJwtRest(), InfluencerController.getPayoutHistory as any);
+router.put("/influencer/payout-details", verifyJwtRest(), InfluencerController.updatePayoutDetails as any);
 
 /* -------------------------------------------------------------------------- */
 /*                               EXPORT ROUTER                                */

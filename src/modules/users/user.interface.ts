@@ -106,15 +106,8 @@ export interface User extends Document {
   // --- V2 Integration Fields ---
   referredBy?: ObjectId;     // Influencer who referred this user
   referralCode?: string;     // Code used during signup
-  mono_account?: {
-    accountId?: string;
-    institution?: string;
-    accountNumber?: string;
-    accountName?: string;
-    linkedAt?: Date;
-    mandateId?: string;
-    mandateStatus?: 'active' | 'revoked' | 'pending';
-  };
+  /** @deprecated Use AutoDebit model for linked payment methods */
+  mono_account?: Record<string, any>; // kept for backward compat with existing docs
 }
 
 export interface CREATEUSER {

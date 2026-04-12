@@ -210,24 +210,28 @@ router.post("/influencers/process-payouts", verifyJwtRest(), InfluencerControlle
 router.get("/influencers/:id", verifyJwtRest(), InfluencerController.getById as any);
 router.post("/influencers/:id/approve", verifyJwtRest(), InfluencerController.approve as any);
 router.post("/influencers/:id/reject", verifyJwtRest(), InfluencerController.reject as any);
+router.post("/influencers/:id/suspend", verifyJwtRest(), InfluencerController.suspend as any);
+router.post("/influencers/:id/reactivate", verifyJwtRest(), InfluencerController.reactivate as any);
 
 /* =============================
-   MONO DEBIT LOGS
+   AUTO-DEBIT LOGS
 ============================= */
-import { MonoDebitLog } from "../modules/loans/mono-debit-log.model";
+import { AutoDebitLog } from "../modules/loans/auto-debit-log.model";
 
-router.get("/mono-debit-logs", verifyJwtRest(), async (req: any, res: any) => {
+router.get("/auto-debit-logs", verifyJwtRest(), async (req: any, res: any) => {
   try {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const status = req.query.status;
+    const type = req.query.type; // 'card' | 'bank'
     const filter: any = {};
     if (status) filter.status = status;
+    if (type) filter.type = type;
 
     const skip = (page - 1) * limit;
     const [logs, total] = await Promise.all([
-      MonoDebitLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-      MonoDebitLog.countDocuments(filter)
+      AutoDebitLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      AutoDebitLog.countDocuments(filter)
     ]);
 
     res.json({ status: 'success', data: { logs, total, page, limit, pages: Math.ceil(total / limit) } });
@@ -266,12 +270,12 @@ router.put("/settings/commissions", verifyJwtRest(), async (req: any, res: any) 
   }
 });
 
-router.put("/settings/mono-auto-debit", verifyJwtRest(), async (req: any, res: any) => {
+router.put("/settings/auto-debit", verifyJwtRest(), async (req: any, res: any) => {
   try {
     const adminId = req.admin._id || req.admin.id;
-    const { monoAutoDebit } = req.body;
-    const settings = await SettingsService.updateSettings(adminId, { monoAutoDebit });
-    res.json({ status: 'success', data: { monoAutoDebit: settings.monoAutoDebit } });
+    const { autoDebit } = req.body;
+    const settings = await SettingsService.updateSettings(adminId, { autoDebit });
+    res.json({ status: 'success', data: { autoDebit: settings.autoDebit } });
   } catch (err: any) {
     res.status(500).json({ status: 'error', message: err.message });
   }

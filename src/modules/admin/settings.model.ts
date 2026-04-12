@@ -140,17 +140,18 @@ export interface ISettings extends Document {
     minPayoutAmount: number;
   };
 
-  // Mono auto-debit config
-  monoAutoDebit: {
+  // Flutterwave auto-debit config (replaces monoAutoDebit)
+  autoDebit: {
     enabled: boolean;
+    cardEnabled: boolean;
+    bankEnabled: boolean;
     maxDebitAttempts: number;
     minDebitAmount: number;
   };
 
-  // Voice call config (V2 — replaces old voiceCallProvider)
-  voiceCallProvider: 'termii' | 'africastalking'; // legacy field, use voiceCallConfig.provider
+  voiceCallProvider: 'termii' | 'twilio' | 'plivo'; // legacy field, use voiceCallConfig.provider
   voiceCallConfig: {
-    provider: 'termii' | 'africastalking';
+    provider: 'termii' | 'twilio' | 'plivo';
     atCallFromNumbers: string[];      // AT virtual numbers — randomly rotated
     termiiSenderIds: string[];        // Termii sender IDs — randomly rotated
   };
@@ -428,17 +429,18 @@ const SettingsSchema = new Schema<ISettings>(
       minPayoutAmount: { type: Number, default: 1000 }
     },
 
-    // Mono auto-debit configuration
-    monoAutoDebit: {
+    // Flutterwave auto-debit configuration (replaces monoAutoDebit)
+    autoDebit: {
       enabled: { type: Boolean, default: true },
+      cardEnabled: { type: Boolean, default: true },
+      bankEnabled: { type: Boolean, default: true },
       maxDebitAttempts: { type: Number, default: 3 },
       minDebitAmount: { type: Number, default: 100 }
     },
 
-    // Voice call provider preference (legacy — use voiceCallConfig)
     voiceCallProvider: {
       type: String,
-      enum: ['termii', 'africastalking'],
+      enum: ['termii', 'twilio', 'plivo'],
       default: 'termii'
     },
 
@@ -446,7 +448,7 @@ const SettingsSchema = new Schema<ISettings>(
     voiceCallConfig: {
       provider: {
         type: String,
-        enum: ['termii', 'africastalking'],
+        enum: ['termii', 'twilio', 'plivo'],
         default: 'termii'
       },
       atCallFromNumbers: {
