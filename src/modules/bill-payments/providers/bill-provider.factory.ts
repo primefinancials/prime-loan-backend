@@ -31,7 +31,7 @@ function getPayBeta(): PayBetaBillProvider {
 export async function getBillProvider(): Promise<NormalizedBillProvider> {
   try {
     const settings = await SettingsService.getSettings();
-    const providerName = (settings as any)?.billPaymentProvider || 'flutterwave';
+    const providerName = (settings as any)?.billPaymentProvider || 'paybeta';
     return providerName === 'paybeta' ? getPayBeta() : getFlutterwave();
   } catch (err) {
     logger.warn({ error: (err as Error).message }, 'Failed to read settings, defaulting to Flutterwave');
@@ -95,7 +95,7 @@ function isFailoverEligible(error: any): boolean {
 
   // Axios network errors
   if (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET' ||
-      error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
+    error.code === 'ETIMEDOUT' || error.code === 'ENOTFOUND') {
     return true;
   }
 
