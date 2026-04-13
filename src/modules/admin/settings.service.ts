@@ -180,9 +180,33 @@ export class SettingsService {
   ): Promise<ISettings> {
     if (!adminId) throw new BadRequestError("Missing adminId");
 
+    const flatUpdates: Record<string, any> = {};
+  
+    function flatten(obj: any, prefix = '') {
+      for (const [key, value] of Object.entries(obj)) {
+        const fullKey = prefix ? `${prefix}.${key}` : key;
+        if (
+          value !== null &&
+          value !== undefined &&
+          typeof value === 'object' &&
+          !Array.isArray(value) &&
+          !(value instanceof Date) &&
+          !(value instanceof Map)
+        ) {
+          flatten(value, fullKey);
+        } else {
+          flatUpdates[fullKey] = value;
+        }
+      }
+    }
+  
+    flatten(updates);
+    flatUpdates['updatedBy'] = adminId;
+    flatUpdates['updatedAt'] = new Date();
+
     const settings = await Settings.findOneAndUpdate(
       { singleton: "singleton" },
-      { ...updates, updatedBy: adminId, updatedAt: new Date() },
+      { $set: flatUpdates },
       { new: true, upsert: true }
     );
 

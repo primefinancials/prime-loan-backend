@@ -45,7 +45,7 @@ export class LoanEligibilityService {
 
     // Collateral Check (Optimization)
     // If user has enough savings, they are eligible regardless of credit score (within ladder limits)
-    const collateralPercentage = settings.loan.collateral.percentage || 0.5; // Default 50%
+    const collateralPercentage = settings.loan?.collateral?.percentage ?? 50; // Default 50%
     const userSavings = user.user_metadata?.stats?.totalSavings || 0;
 
     // Check Ladder Limit first

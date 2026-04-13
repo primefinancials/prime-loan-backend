@@ -176,7 +176,7 @@ export class AutoDebitController {
       const LoanModel = (await import('./loan.model')).default;
 
       const settings = await SettingsService.getSettings();
-      const collateralPercentage = settings.loan?.collateral?.percentage || 0.5;
+      const collateralPercentage = settings.loan?.collateral?.percentage ?? 50;
       const userSavings = user.user_metadata?.stats?.totalSavings || 0;
       const borrowableFromSavings = userSavings * (collateralPercentage / 100);
 
