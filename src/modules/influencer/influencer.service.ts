@@ -213,14 +213,15 @@ export class InfluencerService {
     // Earnings breakdown by service
     const earningsAgg = await InfluencerCommission.aggregate([
       { $match: { influencerId: influencer._id } },
-      { $group: { _id: '$transactionType', total: { $sum: '$commissionAmount' } } }
+      { $group: { _id: '$transactionType', total: { $sum: '$commissionAmount' }, count: { $sum: 1 } } }
     ]);
 
-    const earningsByService: Record<CommissionTransactionType, number> = {
-      loan: 0, escrow: 0, savings: 0, 'bill-payment': 0, marketplace: 0, signup: 0
+    const earningsByService: Record<CommissionTransactionType, { total: number; count: number }> = {
+      loan: { total: 0, count: 0 }, escrow: { total: 0, count: 0 }, savings: { total: 0, count: 0 },
+      'bill-payment': { total: 0, count: 0 }, marketplace: { total: 0, count: 0 }, signup: { total: 0, count: 0 }
     };
     for (const entry of earningsAgg) {
-      earningsByService[entry._id as CommissionTransactionType] = entry.total;
+      earningsByService[entry._id as CommissionTransactionType] = { total: entry.total, count: entry.count };
     }
 
     const baseUrl = process.env.FRONTEND_URL || 'https://primefinance.live';

@@ -68,18 +68,18 @@ export function getRecoveryMessage(
   let maxCallsPerDay: number;
   let sendEmail = false;
 
-  if (daysOverdue <= 3) {
+  if (daysOverdue <= 4) {
     tier = 'tier1';
-    maxCallsPerDay = 1;
-  } else if (daysOverdue <= 7) {
+    maxCallsPerDay = 4;
+  } else if (daysOverdue <= 8) {
     tier = 'tier2';
-    maxCallsPerDay = 2;
-  } else if (daysOverdue <= 14) {
+    maxCallsPerDay = 6;
+  } else if (daysOverdue <= 12) {
     tier = 'tier3';
-    maxCallsPerDay = 3;
+    maxCallsPerDay = 8;
   } else {
     tier = 'tier4';
-    maxCallsPerDay = 3;
+    maxCallsPerDay = 10;
     sendEmail = true;
   }
 

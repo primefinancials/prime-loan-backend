@@ -82,5 +82,5 @@ export interface InfluencerDashboard {
   totalReferred: number;
   totalEarnings: number;
   pendingPayout: number;
-  earningsByService: Record<CommissionTransactionType, number>;
+  earningsByService: Record<CommissionTransactionType, { total: number; count: number }>;
 }
