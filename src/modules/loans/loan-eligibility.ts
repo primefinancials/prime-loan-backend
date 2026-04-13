@@ -9,7 +9,7 @@ import { SettingsService } from "../admin/settings.service";
 
 export interface EligibilityResult {
   eligible: boolean;
-  maxAmount: number; // in kobo
+  maxAmount: number; // in Naira
   reason?: string;
   creditScore?: number;
   notifyAdmin: boolean;
@@ -18,12 +18,55 @@ export interface EligibilityResult {
 
 export class LoanEligibilityService {
   /**
+   * Calculate maximum borrowable amount for a user based on ladder and savings
+   */
+  static async getMaxBorrowableAmount(user: User): Promise<{
+    maxAmount: number;
+    savingsBasedMax: number;
+    ladderMax: number;
+    ladderIndex: number;
+  }> {
+    const settings = await SettingsService.getSettings();
+    const collateralPercentage = settings.loan?.collateral?.percentage ?? 50;
+
+    // Use only ACTIVE FLEXIBLE savings
+    const { SavingsPlan } = await import('../savings/savings.plan.model');
+    const flexibleSavingsAgg = await SavingsPlan.aggregate([
+      { $match: { userId: String(user._id), status: 'ACTIVE', planType: 'FLEXIBLE' } },
+      { $group: { _id: null, total: { $sum: '$principal' } } }
+    ]);
+    const flexibleSavingsTotal = flexibleSavingsAgg[0]?.total || 0; // The database value is in Naira
+    const borrowableFromSavings = flexibleSavingsTotal * (collateralPercentage / 100);
+
+    const ladderIndex = user.user_metadata?.ladderIndex && user.user_metadata.ladderIndex > 0 ? user.user_metadata.ladderIndex : 1;
+    const ladderSteps = await LoanLadder.find().sort({ step: 1 });
+    let allowedAmountByLadder = 0;
+    
+    if (ladderSteps.length > 0) {
+      if (ladderIndex > ladderSteps.length) {
+        allowedAmountByLadder = ladderSteps[ladderSteps.length - 1].amount;
+      } else {
+        allowedAmountByLadder = ladderSteps.find(ls => ls.step === ladderIndex)?.amount || 0;
+      }
+    }
+
+    return {
+      maxAmount: Math.max(allowedAmountByLadder, borrowableFromSavings),
+      savingsBasedMax: borrowableFromSavings,
+      ladderMax: allowedAmountByLadder,
+      ladderIndex
+    };
+  }
+
+  /**
    * Calculate loan eligibility for a user
    */
   static async calculateEligibility(
     user: User,
     requestedAmount: number,
   ): Promise<EligibilityResult> {
+    const settings = await SettingsService.getSettings();
+
     // Check for active loans
     // Note: This would need to query the loan service in real implementation
     const hasActiveLoan = await Loan.find({
@@ -41,37 +84,11 @@ export class LoanEligibilityService {
       };
     }
 
-    const settings = await SettingsService.getSettings();
-
-    // Collateral Check (Optimization)
-    // If user has enough savings, they are eligible regardless of credit score (within ladder limits)
-    const collateralPercentage = settings.loan?.collateral?.percentage ?? 50; // Default 50%
-    const userSavings = user.user_metadata?.stats?.totalSavings || 0;
-
-    // Check Ladder Limit first
-    // Get user's ladder index (default to 0 for new users)
-    const ladderIndex = user.user_metadata?.ladderIndex && user.user_metadata.ladderIndex > 0 ? user.user_metadata.ladderIndex : 1;
-    let ladderSteps = await LoanLadder.find().sort({ step: 1 });
-    // Fallback if no ladder steps defined
-
-    let allowedAmountByLadder = 0;
-    if (ladderSteps.length > 0) {
-      if (ladderIndex > ladderSteps.length) {
-        // Exceeds defined steps -> Manual Approval / Max of last step
-        allowedAmountByLadder = ladderSteps[ladderSteps.length - 1].amount;
-        // Or maybe we flag for manual review? Existing logic says "notifyAdmin: true"
-      } else {
-        allowedAmountByLadder = ladderSteps.find(ls => ls.step === ladderIndex)?.amount || 0;
-      }
-    } else {
-      allowedAmountByLadder = 0; // Or some default
-    }
-
-    // --- Savings-Based Loan Override ---
-    // If the user's savable-borrowing capacity exceeds their ladder position,
-    // the savings-based amount becomes their effective max
-    const borrowableFromSavings = userSavings * (collateralPercentage / 100);
-    const effectiveMax = Math.max(allowedAmountByLadder, borrowableFromSavings);
+    const capacities = await this.getMaxBorrowableAmount(user);
+    const borrowableFromSavings = capacities.savingsBasedMax;
+    const allowedAmountByLadder = capacities.ladderMax;
+    const effectiveMax = capacities.maxAmount;
+    const ladderIndex = capacities.ladderIndex;
 
     if (requestedAmount > effectiveMax && effectiveMax > 0) {
       return {
@@ -86,8 +103,9 @@ export class LoanEligibilityService {
     }
 
     // Collateral Check
-    const requiredCollateral = requestedAmount * collateralPercentage;
-    const hasSufficientCollateral = userSavings >= requiredCollateral;
+    // Since borrowableFromSavings already computes the max borrowable based on percentage, 
+    // we can check if the requestedAmount is less than or equal to borrowableFromSavings.
+    const hasSufficientCollateral = requestedAmount <= borrowableFromSavings;
 
     const creditScore = user.user_metadata.creditScore || 1;
 
@@ -95,7 +113,7 @@ export class LoanEligibilityService {
       // Collateral Override: Approved even if score is low (but not negative/blacklisted if that existed)
       return {
         eligible: true,
-        maxAmount: requestedAmount, // Or allowedAmountByLadder
+        maxAmount: effectiveMax, // Return effectiveMax instead of requestedAmount so UI knows full capacity
         notifyAdmin: false,
         creditScore,
         ladderIndex,
@@ -104,7 +122,7 @@ export class LoanEligibilityService {
     }
 
     // Default Credit Score Check
-    if (creditScore < (settings.loan.minCreditScore || 0.4)) {
+    if (creditScore < (settings.loan?.minCreditScore || 0.4)) {
       return {
         eligible: false,
         maxAmount: 0, // No valid offer if score low and no collateral
@@ -114,10 +132,10 @@ export class LoanEligibilityService {
     }
 
     // Manual Review Trigger for High Amounts (Optimization)
-    if (requestedAmount > (settings.loan.autoApprovalLimit || 50000)) {
+    if (requestedAmount > (settings.loan?.autoApprovalLimit || 50000)) {
       return {
         eligible: true,
-        maxAmount: requestedAmount,
+        maxAmount: effectiveMax,
         notifyAdmin: true,
         creditScore,
         ladderIndex,
@@ -127,7 +145,7 @@ export class LoanEligibilityService {
 
     return {
       eligible: true,
-      maxAmount: allowedAmountByLadder,
+      maxAmount: effectiveMax,
       notifyAdmin: false,
       creditScore,
       ladderIndex

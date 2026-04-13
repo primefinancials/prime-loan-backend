@@ -170,35 +170,20 @@ export class AutoDebitController {
         return res.status(404).json({ status: 'failed', message: 'User not found' });
       }
 
-      // Import dependencies
-      const { SettingsService } = await import('../admin/settings.service');
-      const { LoanLadder } = await import('./loan-ladder.model');
-      const LoanModel = (await import('./loan.model')).default;
-
-      const settings = await SettingsService.getSettings();
-      const collateralPercentage = settings.loan?.collateral?.percentage ?? 50;
-      const userSavings = user.user_metadata?.stats?.totalSavings || 0;
-      const borrowableFromSavings = userSavings * (collateralPercentage / 100);
-
-      // Ladder amount
-      const ladderIndex = user.user_metadata?.ladderIndex && user.user_metadata.ladderIndex > 0
-        ? user.user_metadata.ladderIndex : 1;
-      const ladderSteps = await LoanLadder.find().sort({ step: 1 });
-      let ladderAmount = 0;
-      if (ladderSteps.length > 0) {
-        if (ladderIndex > ladderSteps.length) {
-          ladderAmount = ladderSteps[ladderSteps.length - 1].amount;
-        } else {
-          ladderAmount = ladderSteps.find(ls => ls.step === ladderIndex)?.amount || 0;
-        }
-      }
-
-      const maxAmount = Math.max(ladderAmount, borrowableFromSavings);
+      // Important: Use the centralized LoanEligibilityService
+      const LoanEligibilityService = (await import('./loan-eligibility')).LoanEligibilityService;
+      const capacities = await LoanEligibilityService.getMaxBorrowableAmount(user as any);
+      
+      const maxAmount = capacities.maxAmount;
+      const borrowableFromSavings = capacities.savingsBasedMax;
+      const ladderAmount = capacities.ladderMax;
+      const ladderIndex = capacities.ladderIndex;
 
       // Check linked payment methods
       const linkedMethods = await AutoDebit.countDocuments({ userId: String(userId), status: 'active' });
 
       // Check active loans
+      const LoanModel = (await import('./loan.model')).default;
       const hasActiveLoan = await LoanModel.exists({
         userId: user._id,
         loan_payment_status: { $in: ['in-progress', 'not-started'] },
