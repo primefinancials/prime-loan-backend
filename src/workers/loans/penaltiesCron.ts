@@ -274,15 +274,15 @@ export class LoanPenaltiesCron {
     try {
       await DatabaseService.withTransaction(session, async () => {
         const today = new Date();
-        const lastPenaltyDate = loan.lastInterestAdded ? new Date(loan.lastInterestAdded) : null;
+        // Fall back to repayment_date when lastInterestAdded is null (first-time penalty)
+        const lastPenaltyDate = loan.lastInterestAdded
+          ? new Date(loan.lastInterestAdded)
+          : new Date(loan.repayment_date);
 
-        let daysSinceLastPenalty = 0;
-        if (lastPenaltyDate) {
-          const diffTime = today.getTime() - lastPenaltyDate.getTime();
-          daysSinceLastPenalty = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-        }
+        const diffTime = today.getTime() - lastPenaltyDate.getTime();
+        const daysSinceLastPenalty = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
-        if (daysSinceLastPenalty === 0) return 0; // same day, skip penalty
+        if (daysSinceLastPenalty <= 0) return 0; // same day or future, skip penalty
 
         appliedPenalty = Math.floor(loan.amount * penaltyRate) * daysSinceLastPenalty;
         const traceId = UuidService.generateTraceId();

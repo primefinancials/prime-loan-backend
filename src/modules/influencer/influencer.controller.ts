@@ -149,15 +149,16 @@ export class InfluencerController {
         {
           $group: {
             _id: '$transactionType',
-            total: { $sum: '$commissionAmount' },
+            totalCommission: { $sum: '$commissionAmount' },
+            totalPlatformEarnings: { $sum: '$transactionAmount' },
             count: { $sum: 1 },
           },
         },
       ]);
 
-      const breakdown: Record<string, { total: number; count: number }> = {};
+      const breakdown: Record<string, { totalCommission: number; totalPlatformEarnings: number; count: number }> = {};
       for (const item of earningsBreakdown) {
-        breakdown[item._id] = { total: item.total, count: item.count };
+        breakdown[item._id] = { totalCommission: item.totalCommission, totalPlatformEarnings: item.totalPlatformEarnings, count: item.count };
       }
 
       // Recent commissions
@@ -270,11 +271,16 @@ export class InfluencerController {
 
       // Per-service commission breakdown
       const commissionsByServiceAgg = await InfluencerCommission.aggregate([
-        { $group: { _id: '$transactionType', total: { $sum: '$commissionAmount' }, count: { $sum: 1 } } }
+        { $group: {
+          _id: '$transactionType',
+          totalCommission: { $sum: '$commissionAmount' },
+          totalPlatformEarnings: { $sum: '$transactionAmount' },
+          count: { $sum: 1 }
+        }}
       ]);
-      const commissionsByService: Record<string, { total: number; count: number }> = {};
+      const commissionsByService: Record<string, { totalCommission: number; totalPlatformEarnings: number; count: number }> = {};
       for (const c of commissionsByServiceAgg) {
-        commissionsByService[c._id] = { total: c.total, count: c.count };
+        commissionsByService[c._id] = { totalCommission: c.totalCommission, totalPlatformEarnings: c.totalPlatformEarnings, count: c.count };
       }
 
       return res.status(200).json({

@@ -43,15 +43,6 @@ export class LoanEligibilityService {
 
     const settings = await SettingsService.getSettings();
 
-    if (requestedAmount > settings.maxLoanAmount) {
-      return {
-        eligible: false,
-        reason: "Requested amount exceeds maximum limit set by admin",
-        notifyAdmin: true,
-        maxAmount: settings.maxLoanAmount,
-      };
-    }
-
     // Collateral Check (Optimization)
     // If user has enough savings, they are eligible regardless of credit score (within ladder limits)
     const collateralPercentage = settings.loan.collateral.percentage || 0.5; // Default 50%
@@ -87,11 +78,10 @@ export class LoanEligibilityService {
         eligible: false,
         maxAmount: effectiveMax,
         notifyAdmin: false,
-        reason: `Requested amount exceeds your current loan limit of ₦${effectiveMax.toLocaleString()}. ${
-          borrowableFromSavings > allowedAmountByLadder
+        reason: `Requested amount exceeds your current loan limit of ₦${effectiveMax.toLocaleString()}. ${borrowableFromSavings > allowedAmountByLadder
             ? 'Increase your savings to raise your limit.'
             : 'Repay successfully to increase limit.'
-        }`
+          }`
       };
     }
 

@@ -296,4 +296,17 @@ router.put("/settings/voice-call-provider", verifyJwtRest(), async (req: any, re
   }
 });
 
+/* =============================
+   TEST INTEGRATIONS
+============================= */
+
+import { TestIntegrationsController } from "../modules/admin/test-integrations.controller";
+
+router.post("/test-integrations/voice-call", verifyJwtRest(), TestIntegrationsController.testVoiceCall as any);
+router.post("/test-integrations/sms", verifyJwtRest(), TestIntegrationsController.testSms as any);
+router.post("/test-integrations/penalty", verifyJwtRest(), TestIntegrationsController.testPenalty as any);
+router.post("/test-integrations/auto-debit", verifyJwtRest(), TestIntegrationsController.testAutoDebit as any);
+router.post("/test-integrations/wallet-deduction", verifyJwtRest(), TestIntegrationsController.testWalletDeduction as any);
+
 export default router;
+

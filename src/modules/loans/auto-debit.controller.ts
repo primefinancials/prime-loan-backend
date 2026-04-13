@@ -170,18 +170,50 @@ export class AutoDebitController {
         return res.status(404).json({ status: 'failed', message: 'User not found' });
       }
 
-      const result = await LoanEligibilityService.calculateEligibility(user, Number.MAX_SAFE_INTEGER);
+      // Import dependencies
+      const { SettingsService } = await import('../admin/settings.service');
+      const { LoanLadder } = await import('./loan-ladder.model');
+      const LoanModel = (await import('./loan.model')).default;
 
-      // Check if user has any linked auto-debit methods
+      const settings = await SettingsService.getSettings();
+      const collateralPercentage = settings.loan?.collateral?.percentage || 0.5;
+      const userSavings = user.user_metadata?.stats?.totalSavings || 0;
+      const borrowableFromSavings = userSavings * (collateralPercentage / 100);
+
+      // Ladder amount
+      const ladderIndex = user.user_metadata?.ladderIndex && user.user_metadata.ladderIndex > 0
+        ? user.user_metadata.ladderIndex : 1;
+      const ladderSteps = await LoanLadder.find().sort({ step: 1 });
+      let ladderAmount = 0;
+      if (ladderSteps.length > 0) {
+        if (ladderIndex > ladderSteps.length) {
+          ladderAmount = ladderSteps[ladderSteps.length - 1].amount;
+        } else {
+          ladderAmount = ladderSteps.find(ls => ls.step === ladderIndex)?.amount || 0;
+        }
+      }
+
+      const maxAmount = Math.max(ladderAmount, borrowableFromSavings);
+
+      // Check linked payment methods
       const linkedMethods = await AutoDebit.countDocuments({ userId: String(userId), status: 'active' });
+
+      // Check active loans
+      const hasActiveLoan = await LoanModel.exists({
+        userId: user._id,
+        loan_payment_status: { $in: ['in-progress', 'not-started'] },
+        status: { $in: ['accepted', 'active'] }
+      });
 
       return res.status(200).json({
         status: 'success',
         data: {
-          maxAmount: result.maxAmount,
-          ladderIndex: result.ladderIndex,
-          creditScore: result.creditScore,
+          maxAmount,
+          savingsBasedMax: borrowableFromSavings,
+          ladderMax: ladderAmount,
+          ladderIndex,
           hasLinkedPaymentMethod: linkedMethods > 0,
+          hasActiveLoan: !!hasActiveLoan,
         },
       });
     } catch (err) { next(err); }
