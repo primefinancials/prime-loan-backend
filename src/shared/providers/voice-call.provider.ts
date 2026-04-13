@@ -165,17 +165,23 @@ export class TermiiVoiceProvider implements IVoiceCallProvider {
     const phone = this.formatPhone(to);
     const senderId = this.getRandomSenderId();
 
-    await axios.post(`${this.baseUrl}/api/sms/send`, {
-      api_key: this.apiKey,
-      to: phone,
-      from: senderId,
-      sms: message,
-      type: 'plain',
-      channel: 'generic'
-    }, {
-      headers: { 'Content-Type': 'application/json' }
-    });
-    logger.info({ to: phone, senderId }, 'Termii recovery SMS sent');
+    try {
+      await axios.post(`${this.baseUrl}/api/sms/send`, {
+        api_key: this.apiKey,
+        to: phone,
+        from: senderId,
+        sms: message,
+        type: 'plain',
+        channel: 'dnd'
+      }, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      logger.info({ to: phone, senderId }, 'Termii recovery SMS sent');
+    } catch (error) {
+      const axErr = error as AxiosError;
+      logger.error({ phone, senderId, status: axErr.response?.status, data: axErr.response?.data }, 'Termii SMS send failed');
+      throw new Error(`Termii SMS failed (${axErr.response?.status}): ${JSON.stringify(axErr.response?.data || axErr.message)}`);
+    }
   }
 
   private formatPhone(phone: string): string {
