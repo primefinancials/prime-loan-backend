@@ -412,7 +412,7 @@ const SettingsSchema = new Schema<ISettings>(
     billPaymentProvider: {
       type: String,
       enum: ['flutterwave', 'paybeta'],
-      default: 'flutterwave'
+      default: 'paybeta'
     },
 
     // Influencer commission configuration
