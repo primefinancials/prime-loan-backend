@@ -128,7 +128,7 @@ export class SettingsService {
     let v2Dirty = false;
 
     if (!settings.billPaymentProvider) {
-      settings.billPaymentProvider = 'flutterwave';
+      settings.billPaymentProvider = 'paybeta';
       v2Dirty = true;
     }
 
@@ -181,7 +181,7 @@ export class SettingsService {
     if (!adminId) throw new BadRequestError("Missing adminId");
 
     const flatUpdates: Record<string, any> = {};
-  
+
     function flatten(obj: any, prefix = '') {
       for (const [key, value] of Object.entries(obj)) {
         const fullKey = prefix ? `${prefix}.${key}` : key;
@@ -199,7 +199,7 @@ export class SettingsService {
         }
       }
     }
-  
+
     flatten(updates);
     flatUpdates['updatedBy'] = adminId;
     flatUpdates['updatedAt'] = new Date();
