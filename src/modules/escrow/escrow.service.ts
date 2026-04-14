@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import pino from 'pino';
 import { EscrowTransaction, IEscrowTransaction, EscrowType } from './escrow.model';
 import { DatabaseService } from '../../shared/db';
 import { LedgerService } from '../ledger/LedgerService';
@@ -10,6 +11,8 @@ import User from '../users/user.model';
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../../exceptions';
 import { sha512 } from 'js-sha512';
 import { TransferRequest } from '../../shared/providers/vfd.provider';
+
+const logger = pino({ name: 'escrow-service' });
 
 export class EscrowService {
 
