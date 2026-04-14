@@ -51,8 +51,9 @@ export class SavingsMaturitiesWorker {
   private static async processMaturedPlans() {
     try {
       const settings = await SettingsService.getSettings();
+      // Find ACTIVE plans that have matured. Skip those already PROCESSING.
       const maturedPlans = await SavingsPlan.find({
-        status: { $in: ['ACTIVE', 'PROCESSING'] },
+        status: 'ACTIVE',
         maturityDate: { $lte: new Date() }
       });
 
@@ -60,16 +61,29 @@ export class SavingsMaturitiesWorker {
 
       logger.info(`Processing ${maturedPlans.length} matured savings plans`);
       await WorkerControlService.reportActivity('savings-maturities', `Processing ${maturedPlans.length} plans`);
-      await WorkerLogService.log('savings-maturities', 'info', `Processing ${maturedPlans.length} matured savings plans`);
 
       for (const plan of maturedPlans) {
         try {
-          await this.processMaturedPlan(plan, settings);
+          // Atomically claim the plan for processing
+          const claimedPlan = await SavingsPlan.findOneAndUpdate(
+            { _id: plan._id, status: 'ACTIVE' },
+            { $set: { status: 'PROCESSING' } },
+            { new: true }
+          );
+
+          if (!claimedPlan) {
+            logger.info({ planId: plan._id }, 'Plan already being processed by another worker instance');
+            continue;
+          }
+
+          await this.processMaturedPlan(claimedPlan, settings);
         } catch (error: any) {
           logger.error({
             planId: plan._id,
             error: error.message
           }, 'Error processing matured plan');
+          // Revert status to ACTIVE so it can be retried, unless it was a permanent failure
+          await SavingsPlan.findByIdAndUpdate(plan._id, { status: 'ACTIVE' });
           await WorkerLogService.log('savings-maturities', 'error', `Error processing matured plan: ${error.message}`, { planId: plan._id });
         }
       }
@@ -99,11 +113,12 @@ export class SavingsMaturitiesWorker {
         const maturityWithDelay = new Date(plan.maturityDate).getTime() + delayMs;
 
         if (new Date().getTime() < maturityWithDelay) {
-          if (plan.status !== 'PROCESSING') {
-            plan.status = 'PROCESSING';
-            await plan.save({ session });
-            logger.info({ planId: plan._id }, 'Plan matured but in delay period, set to PROCESSING');
-          }
+          // Keep as PROCESSING, but it stayed as processing because of the lock above.
+          // We just exit and it will be picked up again only if we revert to ACTIVE or if we change the worker to pick up PROCESSING (not recommended without timeout).
+          // Actually, if it's in the delay period, it SHOULD be ACTIVE or a different state like 'MATURED_WAITING'.
+          // For now, let's revert to ACTIVE so it can be checked again later.
+          await SavingsPlan.findByIdAndUpdate(plan._id, { status: 'ACTIVE' }, { session });
+          logger.info({ planId: plan._id }, 'Plan matured but in delay period, reverted to ACTIVE');
           return;
         }
 

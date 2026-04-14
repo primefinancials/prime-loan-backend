@@ -448,117 +448,123 @@ export class SavingsService {
           // Apply Instant Penalty
           const penaltyRate = isEarlyWithdrawal ? ((setting.savings.flexible.instant.penaltyRate || 0) / 100) : 0;
           const penalty = Math.floor(amount * penaltyRate);
-          const netAmount = amount - penalty;
+          const initialNetAmount = amount - penalty;
 
-          // Execute Transfer immediately
-          const user = await User.findById(plan.userId);
-          const to = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
-          const from = (await vfdProvider.getPrimeAccountInfo()).data;
+          // Deduct from Principal immediately to reserve funds
+          plan.principal -= amount;
 
-          const trxn = await TransferService.initiateTransfer({
-            fromAccount: from.accountNo,
-            userId: plan.userId,
-            toAccount: to.accountNo,
-            beneficiaryName: to.client,
-            amount: netAmount,
-            transferType: "intra",
-            bankCode: "999999",
-            remark: `Flexible Instant withdrawal for ${plan.planName}`,
-            idempotencyKey: params.idempotencyKey,
-            walletBalance: String(to.accountBalance),
-            meta: {
-              earlyWithdrawal: !!isEarlyWithdrawal,
-              penalty,
-              principal: amount,
-              subType: 'INSTANT'
-            }
-          }, "savings-withdrawal");
+          // 1. Auto-deduct loan internally BEFORE VFD transfer
+          const { deductAmount, loanDeduction } = await SavingsService.autoDeductActiveLoan(params.userId, initialNetAmount, session);
+          const amountToDisburse = initialNetAmount - deductAmount;
 
-          const transferReq: TransferRequest = {
-            uniqueSenderAccountId: "",
-            fromAccount: from.accountNo,
-            fromClientId: from.clientId,
-            fromClient: from.client,
-            fromSavingsId: from.accountId,
-            toAccount: to.accountNo,
-            toClient: to.client,
-            toSession: to.accountId,
-            toClientId: to.clientId,
-            toSavingsId: to.accountId,
-            toBank: "999999",
-            signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
-            amount: netAmount,
-            remark: `Flexible Instant withdrawal for ${plan.planName}`,
-            transferType: "intra",
-            reference: trxn.reference,
-          };
+          let trxn: any;
+          if (amountToDisburse > 0) {
+            // Execute Transfer for the remainder only
+            const user = await User.findById(plan.userId);
+            const to = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
+            const from = (await vfdProvider.getPrimeAccountInfo()).data;
 
-          const providerRes = await vfdProvider.transfer(transferReq);
+            trxn = await TransferService.initiateTransfer({
+              fromAccount: from.accountNo,
+              userId: plan.userId,
+              toAccount: to.accountNo,
+              beneficiaryName: to.client,
+              amount: amountToDisburse,
+              transferType: "intra",
+              bankCode: "999999",
+              remark: `Flexible Instant withdrawal for ${plan.planName}`,
+              idempotencyKey: params.idempotencyKey,
+              walletBalance: String(to.accountBalance),
+              meta: {
+                earlyWithdrawal: !!isEarlyWithdrawal,
+                penalty,
+                loanDeducted: deductAmount,
+                principal: amount,
+                subType: 'INSTANT'
+              }
+            }, "savings-withdrawal");
 
-          if (providerRes.status == "00") {
-            await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
-
-            // Ledger
-            await LedgerService.createDoubleEntry(
-              trxn.reference, // Use ref as trace? Or existing traceId?
-              'savings_pool',
-              `user_wallet:${params.userId}`,
-              netAmount,
-              'savings',
-              { userId: params.userId, subtype: 'withdrawal', idempotencyKey: params.idempotencyKey, session }
-            );
-
-            if (penalty > 0) {
-              await LedgerService.createEntry({
-                traceId,
-                userId: params.userId,
-                account: 'platform_revenue',
-                entryType: 'CREDIT',
-                category: 'savings',
-                subtype: 'penalty',
-                amount: penalty,
-                status: 'COMPLETED',
-                meta: { planId: plan._id, reason: 'Instant withdrawal penalty' }
-              }, session);
-            }
-
-            if (plan.principal <= 0) {
-              plan.status = 'COMPLETED';
-            } else {
-              plan.status = 'ACTIVE';
-            }
-
-            // Record to Withdrawal History
-            if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
-            // Deduct from Principal based on logic: Reserve Funds immediately
-            plan.principal -= amount;
-            plan.withdrawalHistory.push({
-              amount,
-              penalty,
-              netAmount,
-              initiated: new Date(),
-              completed: new Date(),
-              earlyWithdrawal: !!isEarlyWithdrawal,
-              processed: true,
-              traceId,
-              transactionId: trxn.reference
-            });
-
-            await plan.save({ session });
-
-            return {
-              status: 'processed',
-              transactionId: trxn.reference,
-              withdrawnAmount: amount,
-              penalty,
-              netAmount,
-              newPrincipal: plan.principal,
-              ...(await SavingsService.autoDeductActiveLoan(params.userId, netAmount, session)),
+            const transferRequest: TransferRequest = {
+              uniqueSenderAccountId: "",
+              fromAccount: from.accountNo,
+              fromClientId: from.clientId,
+              fromClient: from.client,
+              fromSavingsId: from.accountId,
+              toAccount: to.accountNo,
+              toClient: to.client,
+              toSession: to.accountId,
+              toClientId: to.clientId,
+              toSavingsId: to.accountId,
+              toBank: "999999",
+              signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
+              amount: amountToDisburse,
+              remark: `Flexible Instant withdrawal for ${plan.planName}`,
+              transferType: "intra",
+              reference: trxn.reference,
             };
-          } else {
-            await TransferService.failTransfer(trxn.reference);
-            throw new Error(`Transfer failed: ${providerRes.message}`);
+
+            const providerRes = await vfdProvider.transfer(transferRequest);
+
+            if (providerRes.status !== "00") {
+              await TransferService.failTransfer(trxn.reference);
+              throw new Error(`Transfer failed: ${providerRes.message}`);
+            }
+
+            await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
           }
+
+          // Ledger for the portion that went to user wallet (even if 0)
+          await LedgerService.createDoubleEntry(
+            trxn?.reference || traceId,
+            'savings_pool',
+            `user_wallet:${params.userId}`,
+            initialNetAmount,
+            'savings',
+            { userId: params.userId, subtype: 'withdrawal', idempotencyKey: params.idempotencyKey, session }
+          );
+
+          if (penalty > 0) {
+            await LedgerService.createEntry({
+              traceId,
+              userId: params.userId,
+              account: 'platform_revenue',
+              entryType: 'CREDIT',
+              category: 'savings',
+              subtype: 'penalty',
+              amount: penalty,
+              status: 'COMPLETED',
+              meta: { planId: plan._id, reason: 'Instant withdrawal penalty' }
+            }, session);
+          }
+
+          plan.status = plan.principal <= 0 ? 'COMPLETED' : 'ACTIVE';
+
+          // Record to Withdrawal History
+          if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
+          plan.withdrawalHistory.push({
+            amount,
+            penalty,
+            netAmount: initialNetAmount,
+            initiated: new Date(),
+            completed: new Date(),
+            earlyWithdrawal: !!isEarlyWithdrawal,
+            processed: true,
+            traceId,
+            transactionId: trxn?.reference
+          });
+
+          await plan.save({ session });
+
+          return {
+            status: 'processed',
+            transactionId: trxn?.reference,
+            withdrawnAmount: amount,
+            penalty,
+            initialNetAmount,
+            amountDisbursed: amountToDisburse,
+            loanDeduction,
+            newPrincipal: plan.principal
+          };
         }
 
         // --- FIXED (LOCKED) LOGIC (Existing) ---
@@ -589,116 +595,123 @@ export class SavingsService {
 
         // Fixed Immediate Withdrawal
         let penalty = 0;
-        let netAmount = amount;
+        let initialNetAmount = amount;
 
         if (isEarlyWithdrawal) {
           let penaltyRate = plan.meta?.penaltyRate ?? 5;
           if (penaltyRate > 1) penaltyRate = penaltyRate / 100;
           penalty = Math.floor(amount * penaltyRate);
-          netAmount = amount - penalty;
+          initialNetAmount = amount - penalty;
         }
 
         // Add Interest if Matured (Fixed)
         if (plan.maturityDate && now >= plan.maturityDate) {
-          const interest = Math.floor(plan.principal * plan.interestRate * ((plan.durationDays || 0) / 365));
-          netAmount = amount + interest;
+          const interest = Math.floor(plan.principal * (plan.interestRate || 0.1) * ((plan.durationDays || 21) / 365));
+          initialNetAmount = amount + interest;
         }
 
-        const user = await User.findById(plan.userId);
-        const to = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
-        const from = (await vfdProvider.getPrimeAccountInfo()).data;
+        // 1. Auto-deduct loan internally BEFORE VFD transfer
+        const { deductAmount, loanDeduction } = await SavingsService.autoDeductActiveLoan(params.userId, initialNetAmount, session);
+        const amountToDisburse = initialNetAmount - deductAmount;
 
-        const trxn = await TransferService.initiateTransfer({
-          fromAccount: from.accountNo,
-          userId: plan.userId,
-          toAccount: to.accountNo,
-          beneficiaryName: to.client,
-          amount: netAmount,
-          transferType: "intra",
-          bankCode: "999999",
-          remark: `Fixed plan withdrawal for ${plan.planName}`,
-          idempotencyKey: params.idempotencyKey,
-          walletBalance: String(to.accountBalance),
-          meta: { earlyWithdrawal: isEarlyWithdrawal, penalty, principal: amount }
-        }, "savings-withdrawal");
+        let trxn: any;
+        if (amountToDisburse > 0) {
+            const user = await User.findById(plan.userId);
+            const to = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
+            const from = (await vfdProvider.getPrimeAccountInfo()).data;
 
-        const transferReq: TransferRequest = {
-          uniqueSenderAccountId: "",
-          fromAccount: from.accountNo,
-          fromClientId: from.clientId,
-          fromClient: from.client,
-          fromSavingsId: from.accountId,
-          toAccount: to.accountNo,
-          toClient: to.client,
-          toSession: to.accountId,
-          toClientId: to.clientId,
-          toSavingsId: to.accountId,
-          toBank: "999999",
-          signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
-          amount: netAmount,
-          remark: `Fixed plan withdrawal for ${plan.planName}`,
-          transferType: "intra",
-          reference: trxn.reference,
-        };
+            trxn = await TransferService.initiateTransfer({
+            fromAccount: from.accountNo,
+            userId: plan.userId,
+            toAccount: to.accountNo,
+            beneficiaryName: to.client,
+            amount: amountToDisburse,
+            transferType: "intra",
+            bankCode: "999999",
+            remark: `Fixed plan withdrawal for ${plan.planName}`,
+            idempotencyKey: params.idempotencyKey,
+            walletBalance: String(to.accountBalance),
+            meta: { earlyWithdrawal: isEarlyWithdrawal, penalty, principal: amount, loanDeducted: deductAmount }
+            }, "savings-withdrawal");
 
-        const providerRes = await vfdProvider.transfer(transferReq);
+            const transferRequest: TransferRequest = {
+            uniqueSenderAccountId: "",
+            fromAccount: from.accountNo,
+            fromClientId: from.clientId,
+            fromClient: from.client,
+            fromSavingsId: from.accountId,
+            toAccount: to.accountNo,
+            toClient: to.client,
+            toSession: to.accountId,
+            toClientId: to.clientId,
+            toSavingsId: to.accountId,
+            toBank: "999999",
+            signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
+            amount: amountToDisburse,
+            remark: `Fixed plan withdrawal for ${plan.planName}`,
+            transferType: "intra",
+            reference: trxn.reference,
+            };
 
-        if (providerRes.status == "00") {
-          await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
+            const providerRes = await vfdProvider.transfer(transferRequest);
 
-          await LedgerService.createDoubleEntry(
-            trxn.reference,
+            if (providerRes.status !== "00") {
+                await TransferService.failTransfer(trxn.reference);
+                throw new Error(`Transfer failed: ${providerRes.message}`);
+            }
+            await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
+        }
+
+        await LedgerService.createDoubleEntry(
+            trxn?.reference || traceId,
             'savings_pool',
             `user_wallet:${params.userId}`,
-            netAmount,
+            initialNetAmount,
             'savings',
             { userId: params.userId, subtype: 'withdrawal', idempotencyKey: params.idempotencyKey, session }
-          );
+        );
 
-          if (penalty > 0) {
-            await LedgerService.createEntry({
-              traceId, userId: params.userId, account: 'platform_revenue', entryType: 'CREDIT', category: 'savings', subtype: 'penalty', amount: penalty, status: 'COMPLETED', meta: { planId: plan._id, reason: 'Early withdrawal penalty' }
-            }, session);
-          }
-
-          plan.principal -= amount;
-          if (isEarlyWithdrawal || plan.principal <= 0) {
-            plan.status = 'COMPLETED';
-            plan.completedAt = new Date();
-            plan.principal = 0;
-          } else {
-            plan.status = 'ACTIVE';
-          }
-
-          // Record to Withdrawal History
-          if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
-          plan.withdrawalHistory.push({
-            amount,
-            penalty,
-            netAmount,
-            initiated: new Date(),
-            completed: new Date(),
-            earlyWithdrawal: !!isEarlyWithdrawal,
-            processed: true,
-            traceId,
-            transactionId: trxn.reference
-          });
-
-          await plan.save({ session });
-
-          return {
-            traceId,
-            transactionId: trxn.reference,
-            withdrawnAmount: amount,
-            penalty,
-            netAmount,
-            newPrincipal: plan.principal,
-            ...(await SavingsService.autoDeductActiveLoan(params.userId, netAmount, session)),
-          };
+        if (penalty > 0) {
+        await LedgerService.createEntry({
+            traceId, userId: params.userId, account: 'platform_revenue', entryType: 'CREDIT', category: 'savings', subtype: 'penalty', amount: penalty, status: 'COMPLETED', meta: { planId: plan._id, reason: 'Early withdrawal penalty' }
+        }, session);
         }
 
-        await TransferService.failTransfer(trxn.reference);
-        return null;
+        plan.principal -= amount;
+        if (isEarlyWithdrawal || plan.principal <= 0) {
+        plan.status = 'COMPLETED';
+        plan.completedAt = new Date();
+        plan.principal = 0;
+        } else {
+        plan.status = 'ACTIVE';
+        }
+
+        // Record to Withdrawal History
+        if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
+        plan.withdrawalHistory.push({
+        amount,
+        penalty,
+        netAmount: initialNetAmount,
+        initiated: new Date(),
+        completed: new Date(),
+        earlyWithdrawal: !!isEarlyWithdrawal,
+        processed: true,
+        traceId,
+        transactionId: trxn?.reference
+        });
+
+        await plan.save({ session });
+
+        return {
+        traceId,
+        transactionId: trxn?.reference,
+        withdrawnAmount: amount,
+        penalty,
+        initialNetAmount,
+        amountDisbursed: amountToDisburse,
+        loanDeduction,
+        newPrincipal: plan.principal
+        };
       });
     } finally {
       await session.endSession();
@@ -717,7 +730,7 @@ export class SavingsService {
     userId: string,
     withdrawalAmount: number,
     session: any
-  ): Promise<{ loanDeduction?: { loanId: string; deducted: number; remaining: number; loanOutstanding: number } }> {
+  ): Promise<{ deductAmount: number, loanDeduction?: { loanId: string; deducted: number; remaining: number; loanOutstanding: number } }> {
     try {
       // Find the oldest active loan with outstanding > 0
       const activeLoan = await Loan.findOne({
@@ -726,18 +739,20 @@ export class SavingsService {
         outstanding: { $gt: 0 }
       }).sort({ createdAt: 1 }).session(session);
 
-      if (!activeLoan) return {};
+      if (!activeLoan) return { deductAmount: 0 };
 
       const outstanding = Number(activeLoan.outstanding || 0);
       const deductAmount = Math.min(withdrawalAmount, outstanding);
 
-      if (deductAmount <= 0) return {};
+      if (deductAmount <= 0) return { deductAmount: 0 };
 
       // Repay the loan from the wallet (the withdrawal just credited the wallet)
       await LoanService.repayLoan({
         loanId: activeLoan._id,
         userId,
-        amount: deductAmount
+        amount: deductAmount,
+        internalOnly: true,
+        session
       });
 
       logger.info({
@@ -749,6 +764,7 @@ export class SavingsService {
       }, 'Auto-deducted outstanding loan from savings withdrawal');
 
       return {
+        deductAmount,
         loanDeduction: {
           loanId: String(activeLoan._id),
           deducted: deductAmount,
@@ -759,7 +775,7 @@ export class SavingsService {
     } catch (err: any) {
       // Don't fail the withdrawal if loan deduction fails — log and continue
       logger.error({ userId, error: err.message }, 'Failed to auto-deduct loan from savings withdrawal');
-      return {};
+      return { deductAmount: 0 };
     }
   }
 
@@ -769,54 +785,60 @@ export class SavingsService {
    */
   static async processPendingWithdrawals() {
     const now = new Date();
-    // Find plans with pending withdrawals that are due from the new withdrawalHistory array
-    const plans = await SavingsPlan.find({
-      'withdrawalHistory.processed': false,
-      'withdrawalHistory.scheduledDate': { $lte: now }
-    });
+    
+    while (true) {
+      const plan = await SavingsPlan.findOneAndUpdate(
+        {
+          'withdrawalHistory': {
+            $elemMatch: {
+              processed: false,
+              claiming: { $ne: true },
+              scheduledDate: { $lte: now }
+            }
+          }
+        },
+        { $set: { 'withdrawalHistory.$.claiming': true } },
+        { new: true }
+      );
 
-    console.log(`Processing ${plans.length} plans with due withdrawals at ${now.toISOString()}`);
+      if (!plan) break;
 
-    for (const plan of plans) {
-      if (!plan.withdrawalHistory) continue;
+      const withdrawal = plan.withdrawalHistory.find(w => w.claiming === true && !w.processed);
+      if (!withdrawal) continue;
 
-      // Filter due items
-      const dueItems = plan.withdrawalHistory.filter(w => !w.processed && w.scheduledDate && w.scheduledDate <= now);
+      const session = await DatabaseService.startSession();
+      try {
+        await DatabaseService.withTransaction(session, async () => {
+          const vfdProvider = new VfdProvider();
+          const user = await User.findById(plan.userId);
+          if (!user) throw new Error(`User ${plan.userId} not found`);
 
-      if (dueItems.length === 0) continue;
+          const to = (await vfdProvider.getAccountInfo(user.user_metadata.accountNo)).data;
+          const from = (await vfdProvider.getPrimeAccountInfo()).data;
 
-      for (const withdrawal of dueItems) {
-        const session = await DatabaseService.startSession();
-        try {
-          await DatabaseService.withTransaction(session, async () => {
-            const vfdProvider = new VfdProvider();
-            const user = await User.findById(plan.userId);
-            if (!user) throw new Error(`User ${plan.userId} not found`);
+          const idempotencyKey = `pending-${withdrawal.traceId || UuidService.generateTraceId()}`;
+          const trxnAmount = withdrawal.netAmount;
 
-            const to = (await vfdProvider.getAccountInfo(user.user_metadata.accountNo)).data;
-            const from = (await vfdProvider.getPrimeAccountInfo()).data;
+          const { deductAmount } = await SavingsService.autoDeductActiveLoan(String(plan.userId), trxnAmount, session);
+          const amountToDisburse = trxnAmount - deductAmount;
 
-            const idempotencyKey = `pending-${withdrawal.traceId || UuidService.generateTraceId()}`;
-
-            const trxn = await TransferService.initiateTransfer({
+          let trxn: any;
+          if (amountToDisburse > 0) {
+            trxn = await TransferService.initiateTransfer({
               fromAccount: from.accountNo,
               userId: plan.userId,
               toAccount: to.accountNo,
               beneficiaryName: to.client,
-              amount: withdrawal.netAmount,
+              amount: amountToDisburse,
               transferType: "intra",
               bankCode: "999999",
               remark: `Processed Standard withdrawal for ${plan.planName}`,
               idempotencyKey,
               walletBalance: String(to.accountBalance),
-              meta: {
-                subType: 'STANDARD',
-                penalty: withdrawal.penalty,
-                principal: withdrawal.amount
-              }
+              meta: { subType: 'STANDARD', penalty: withdrawal.penalty, principal: withdrawal.amount, loanDeducted: deductAmount }
             }, "savings-withdrawal");
 
-            const transferReq: TransferRequest = {
+            const transferRequest: TransferRequest = {
               uniqueSenderAccountId: "",
               fromAccount: from.accountNo,
               fromClientId: from.clientId,
@@ -829,68 +851,73 @@ export class SavingsService {
               toSavingsId: to.accountId,
               toBank: "999999",
               signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
-              amount: withdrawal.netAmount,
+              amount: amountToDisburse,
               remark: `Processed Standard withdrawal for ${plan.planName}`,
               transferType: "intra",
               reference: trxn.reference,
             };
 
-            const providerRes = await vfdProvider.transfer(transferReq);
-
-            if (providerRes.status == "00") {
-              await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
-
-              // Ledger
-              await LedgerService.createDoubleEntry(
-                trxn.reference,
-                'savings_pool',
-                `user_wallet:${plan.userId}`,
-                withdrawal.netAmount,
-                'savings',
-                { userId: plan.userId, subtype: 'withdrawal', idempotencyKey, session }
-              );
-
-              if (withdrawal.penalty > 0) {
-                await LedgerService.createEntry({
-                  traceId: withdrawal.traceId || trxn.reference,
-                  userId: plan.userId,
-                  account: 'platform_revenue',
-                  entryType: 'CREDIT',
-                  category: 'savings',
-                  subtype: 'penalty',
-                  amount: withdrawal.penalty,
-                  status: 'COMPLETED',
-                  meta: { planId: plan._id, reason: 'Standard withdrawal penalty' }
-                }, session);
-              }
-
-              // Update status
-              withdrawal.processed = true;
-              withdrawal.completed = new Date();
-              withdrawal.transactionId = trxn.reference;
-
-              if (plan.principal <= 0) {
-                plan.status = 'COMPLETED';
-              } else {
-                plan.status = 'ACTIVE';
-              }
-
-              await plan.save({ session });
-              return plan;
-            } else {
+            const providerRes = await vfdProvider.transfer(transferRequest);
+            if (providerRes.status !== "00") {
               await TransferService.failTransfer(trxn.reference);
-              console.error(`Transfer failed for plan ${plan._id} pending withdrawal: ${providerRes.message}`);
-              // Keep status PENDING to retry? Or SET FAILED?
-              // For now, keep pending implies retry. But prevent infinite loop if error is permanent.
-              // Maybe add retry count.
+              throw new Error(`Transfer failed: ${providerRes.message}`);
             }
-          });
-        } catch (error) {
-          console.error(`Error processing pending withdrawal for plan ${plan._id}:`, error);
+            await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
+          }
+
+          await LedgerService.createDoubleEntry(
+            trxn?.reference || UuidService.generateTraceId(),
+            'savings_pool',
+            `user_wallet:${plan.userId}`,
+            trxnAmount,
+            'savings',
+            { userId: plan.userId, subtype: 'withdrawal', idempotencyKey, session }
+          );
+
+          if (withdrawal.penalty > 0) {
+            await LedgerService.createEntry({
+              traceId: withdrawal.traceId || trxn?.reference || UuidService.generateTraceId(),
+              userId: plan.userId,
+              account: 'platform_revenue',
+              entryType: 'CREDIT',
+              category: 'savings',
+              subtype: 'penalty',
+              amount: withdrawal.penalty,
+              status: 'COMPLETED',
+              meta: { planId: plan._id, reason: 'Standard withdrawal penalty' }
+            }, session);
+          }
+
+                // Finalize withdrawal in document
+                await SavingsPlan.updateOne(
+                    { _id: plan._id, "withdrawalHistory.traceId": withdrawal.traceId },
+                    { 
+                        $set: { 
+                            "withdrawalHistory.$.processed": true,
+                            "withdrawalHistory.$.completed": new Date(),
+                            "withdrawalHistory.$.transactionId": trxn?.reference || "internal"
+                        },
+                        $unset: { "withdrawalHistory.$.claiming": "" }
+                    },
+                    { session }
+                );
+
+                if (plan.principal <= 0) {
+                    await SavingsPlan.updateOne({ _id: plan._id }, { $set: { status: 'COMPLETED' } }, { session });
+                } else {
+                    await SavingsPlan.updateOne({ _id: plan._id }, { $set: { status: 'ACTIVE' } }, { session });
+                }
+            });
+        } catch (error: any) {
+            console.error(`Error processing pending withdrawal for plan ${plan._id}:`, error);
+            // Revert claiming status upon failure
+            await SavingsPlan.findOneAndUpdate(
+                { _id: plan._id, 'withdrawalHistory.traceId': withdrawal.traceId },
+                { $unset: { 'withdrawalHistory.$.claiming': "" } }
+            );
         } finally {
-          await session.endSession();
+            await session.endSession();
         }
-      }
     }
   }
 

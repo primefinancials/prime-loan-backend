@@ -58,13 +58,33 @@ export class SavingsEarlyWithdrawalWorker {
 
             for (const plan of scheduledPlans) {
                 try {
-                    await this.processWithdrawal(plan);
+                    // Atomically claim the plan for processing
+                    const claimedPlan = await SavingsPlan.findOneAndUpdate(
+                        { _id: plan._id, status: 'ACTIVE' },
+                        { $set: { status: 'PROCESSING' } },
+                        { new: true }
+                    );
+
+                    if (!claimedPlan) {
+                        logger.info({ planId: plan._id }, 'Plan already being processed by another worker instance');
+                        continue;
+                    }
+
+                    await SavingsService.completePlan({
+                        userId: String(claimedPlan.userId),
+                        planId: String(claimedPlan._id),
+                        amount: claimedPlan.principal,
+                        idempotencyKey: `early-withdrawal-${claimedPlan._id}-${now.getTime()}`,
+                        forceImmediate: true
+                    });
                 } catch (error: any) {
                     logger.error({
                         planId: plan._id,
                         error: error.message
-                    }, 'Error processing early withdrawal');
-                    await WorkerLogService.log('savings-early-withdrawal', 'error', `Error processing withdrawal: ${error.message}`, { planId: plan._id });
+                    }, 'Error processing scheduled early withdrawal');
+                    // Revert status to ACTIVE so it can be retried
+                    await SavingsPlan.findByIdAndUpdate(plan._id, { status: 'ACTIVE' });
+                    await WorkerLogService.log('savings-early-withdrawal', 'error', `Error processing scheduled early withdrawal: ${error.message}`, { planId: plan._id });
                 }
             }
         } catch (error: any) {

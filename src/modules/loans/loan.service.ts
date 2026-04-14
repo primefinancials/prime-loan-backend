@@ -74,6 +74,8 @@ export interface RepayParams {
   amount: number; // naira
   mandatory?: number;
   idempotencyKey?: string;
+  internalOnly?: boolean;
+  session?: any;
 }
 
 /* ---------- Constants / Helpers ---------- */
@@ -323,22 +325,28 @@ export class LoanService {
     requiredParam("loanId", params.loanId);
     requiredParam("amount", params.amount);
 
+    // 1️⃣ Try to atomically lock the loan for disbursement OUTSIDE transaction
+    const lockLoan = await Loan.findOneAndUpdate(
+      { _id: params.loanId, status: "pending" },
+      { $set: { status: "processing" } },
+      { new: true }
+    );
+
+    if (!lockLoan) {
+      // Check if it's already processing
+      const existing = await Loan.findById(params.loanId);
+      if (existing?.status === "processing") {
+          throw new BadRequestError("Loan is currently being processed for disbursement. Please wait.");
+      }
+      throw new BadRequestError("Loan must be in a pending state to be disbursed");
+    }
+
     const session = await DatabaseService.startSession();
 
     try {
       return await DatabaseService.withTransaction(session, async () => {
         const { loanId, adminId } = params;
-
-        // 1️⃣ Try to atomically lock the loan for disbursement
-        const loan = await Loan.findOneAndUpdate(
-          { _id: loanId, status: "pending" },
-          { $set: { status: "processing" } },
-          { new: true, session }
-        );
-
-        if (!loan) {
-          throw new BadRequestError("Loan must be in a pending state to be disbursed");
-        }
+        const loan = lockLoan;
 
         const user = await User.findById(loan.userId).session(session);
         if (!user) throw new NotFoundError("User not found");
@@ -400,7 +408,6 @@ export class LoanService {
           providerResponse = await this.vfd.transfer(transferRequest);
         } catch (err: any) {
           await TransferService.failTransfer(transferRecord.reference);
-          await Loan.findByIdAndUpdate(loanId, { status: "pending" }, { session });
           console.log({ err })
           throw new APIError(409, `Provider disbursement failed: ${err.message}`);
         }
@@ -415,7 +422,6 @@ export class LoanService {
 
         if (!ok) {
           await TransferService.failTransfer(transferRecord.reference);
-          await Loan.findByIdAndUpdate(loanId, { status: "pending" }, { session });
           throw new APIError(409, `Disbursement failed: ${JSON.stringify(providerResponse)}`);
         }
 
@@ -472,6 +478,10 @@ export class LoanService {
 
         return { loan, providerResponse, trxnRes };
       });
+    } catch (e: any) {
+      // Revert lock on failure
+      await Loan.findByIdAndUpdate(params.loanId, { status: "pending" });
+      throw e;
     } finally {
       await session.endSession();
     }
@@ -488,9 +498,8 @@ export class LoanService {
     requiredParam("loanId", params.loanId);
     requiredParam("amount", params.amount);
 
-    const session = await DatabaseService.startSession();
-    try {
-      return await DatabaseService.withTransaction(session, async () => {
+    const session = params.session || await DatabaseService.startSession();
+    const executeRepayment = async () => {
         const loan = await Loan.findById(params.loanId).session(session);
         if (!loan) throw new NotFoundError("Loan not found");
 
@@ -528,37 +537,39 @@ export class LoanService {
         }, "loan-repayment");
 
         // 2) provider transfer (user -> prime)
-        const transferRequest: TransferRequest = {
-          fromAccount: userAcc.accountNo,
-          uniqueSenderAccountId: userAcc.accountId,
-          fromClientId: userAcc.clientId,
-          fromClient: userAcc.client,
-          fromSavingsId: userAcc.accountId,
-          toClientId: primeInfo.clientId,
-          toClient: primeInfo.client,
-          toSavingsId: primeInfo.accountId,
-          toSession: primeInfo.accountId,
-          toAccount: primeInfo.accountNo,
-          toBank: "999999",
-          signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
-          amount: repayAmount,
-          remark: `${params.mandatory ? "Mandatory" : "Voluntary"} Loan Repayment`,
-          transferType: "intra",
-          reference: transferRecord.reference
-        } as any;
+        let providerResponse: any = { status: "00" }; // Default success for internal
+        if (!params.internalOnly) {
+            const transferRequest: TransferRequest = {
+            fromAccount: userAcc.accountNo,
+            uniqueSenderAccountId: userAcc.accountId,
+            fromClientId: userAcc.clientId,
+            fromClient: userAcc.client,
+            fromSavingsId: userAcc.accountId,
+            toClientId: primeInfo.clientId,
+            toClient: primeInfo.client,
+            toSavingsId: primeInfo.accountId,
+            toSession: primeInfo.accountId,
+            toAccount: primeInfo.accountNo,
+            toBank: "999999",
+            signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
+            amount: repayAmount,
+            remark: `${params.mandatory ? "Mandatory" : "Voluntary"} Loan Repayment`,
+            transferType: "intra",
+            reference: transferRecord.reference
+            } as any;
 
-        let providerResponse: any;
-        try {
-          providerResponse = await this.vfd.transfer(transferRequest);
-        } catch (err: any) {
-          await TransferService.failTransfer(transferRecord.reference);
-          throw new Error(`Repayment provider transfer failed: ${String(err.message)}`);
-        }
+            try {
+            providerResponse = await this.vfd.transfer(transferRequest);
+            } catch (err: any) {
+            await TransferService.failTransfer(transferRecord.reference);
+            throw new Error(`Repayment provider transfer failed: ${String(err.message)}`);
+            }
 
-        const ok = providerResponse && (providerResponse.status === "00");
-        if (!ok) {
-          await TransferService.failTransfer(transferRecord.reference);
-          throw new Error(`Repayment failed: ${JSON.stringify(providerResponse)}`);
+            const ok = providerResponse && (providerResponse.status === "00");
+            if (!ok) {
+            await TransferService.failTransfer(transferRecord.reference);
+            throw new Error(`Repayment failed: ${JSON.stringify(providerResponse)}`);
+            }
         }
 
         // 3) complete internal transfer
@@ -616,9 +627,16 @@ export class LoanService {
         }
 
         return { loan, providerResponse, trxnRes };
-      });
-    } finally {
-      await session.endSession();
+      };
+
+    if (params.session) {
+      return await executeRepayment();
+    } else {
+      try {
+        return await DatabaseService.withTransaction(session, executeRepayment);
+      } finally {
+        await session.endSession();
+      }
     }
   }
 
