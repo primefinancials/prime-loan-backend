@@ -24,6 +24,9 @@ import { getMailsByPermission } from "../../shared/utils/checkPermission";
 import { ILoanLadder } from "./loan-ladder.model";
 import { Transfer } from "../transfers/transfer.model";
 import { SettingsService } from "../admin/settings.service";
+import pino from "pino";
+
+const logger = pino({ name: "loan-service" });
 
 /* ---------- Types ---------- */
 
@@ -408,8 +411,12 @@ export class LoanService {
           providerResponse = await this.vfd.transfer(transferRequest);
         } catch (err: any) {
           await TransferService.failTransfer(transferRecord.reference);
-          console.log({ err })
-          throw new APIError(409, `Provider disbursement failed: ${err.message}`);
+          logger.error({ 
+            err: err.message, 
+            response: err.response?.data, 
+            payload: transferRequest 
+          }, "VFD Transfer failed");
+          throw new APIError(409, `Provider disbursement failed: ${err.response?.data?.message || err.message}`);
         }
 
         const ok =
