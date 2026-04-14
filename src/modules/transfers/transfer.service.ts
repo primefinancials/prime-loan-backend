@@ -96,6 +96,7 @@ export class TransferService {
           status: 'PENDING',
           beneficiaryName: request.beneficiaryName,
           reference,
+          idempotencyKey: request.idempotencyKey,
           remark: request.remark,
           bankCode: request.bankCode,
           meta: request.meta,

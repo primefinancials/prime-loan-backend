@@ -42,11 +42,13 @@ const TransferSchema = new Schema<ITransfer>({
   remark: { type: String },
   naration: { type: String },
   processedAt: { type: Date },
+  idempotencyKey: { type: String, unique: true, sparse: true },
   meta: { type: Schema.Types.Mixed }
 }, { timestamps: true, collection: getCollectionName('transfers_v2') });
 
 TransferSchema.index({ status: 1, createdAt: 1 });
 TransferSchema.index({ providerRef: 1 });
 TransferSchema.index({ reference: 1 });
+TransferSchema.index({ idempotencyKey: 1 });
 
 export const Transfer = mongoose.model<ITransfer>('Transfer', TransferSchema);
