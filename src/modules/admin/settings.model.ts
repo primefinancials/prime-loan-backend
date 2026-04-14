@@ -78,6 +78,7 @@ export interface ISettings extends Document {
     };
     serviceFee: number;
     interestPercentage: number;
+    signupBonus?: number;
   };
 
   // System Settings
@@ -232,6 +233,7 @@ const SettingsSchema = new Schema<ISettings>(
       collateral: {
         percentage: { type: Number, default: 50 }
       },
+      signupBonus: { type: Number, default: 100 },
       ladder: {
         levels: [{
           minScore: { type: Number },

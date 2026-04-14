@@ -109,8 +109,8 @@ export class InfluencerService {
       let commissionAmount = 0;
 
       if (data.transactionType === 'signup') {
-        // Flat bonus for signup
-        commissionAmount = rates.signup_bonus || 100;
+        // Flat bonus for signup - prioritize explicitly passed amount
+        commissionAmount = data.transactionAmount > 0 ? data.transactionAmount : (rates.signup_bonus || 100);
         commissionRate = 0;
       } else {
         // Percentage-based for transactions

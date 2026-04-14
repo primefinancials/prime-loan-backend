@@ -55,6 +55,7 @@ export interface ISavingsPlan extends Document {
     processed: boolean;
     traceId?: string;
     transactionId?: string;
+    claiming?: boolean;
   }[];
   // Legacy autoSave (deprecated for new plans, kept for migration)
   autoSaveConfig?: {
@@ -117,7 +118,8 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
     earlyWithdrawal: { type: Boolean, default: false },
     processed: { type: Boolean, default: false },
     traceId: { type: String },
-    transactionId: { type: String }
+    transactionId: { type: String },
+    claiming: { type: Boolean, default: false }
   }],
   // Legacy autoSave (deprecated)
   autoSaveConfig: {

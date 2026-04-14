@@ -196,6 +196,11 @@ export class UserService {
             });
         }
 
+        // Fetch platform settings for bonuses
+        const settings = await SettingsService.getSettings();
+        const signupBonus = settings.loan?.signupBonus || 100; // Updated to use dynamic setting
+        const influencerSignupBonus = settings.influencer?.commissionRates?.signup_bonus || 100;
+
         // Initialize user wallet in ledger
         await LedgerService.createEntry({
             traceId: `user_init_${user._id as any}`,
@@ -212,7 +217,7 @@ export class UserService {
         });
 
         // Credit signup bonus (async)
-        TransferService.createUserBonus(user._id as any, 50).catch(console.error); // ₦50 bonus
+        TransferService.createUserBonus(user._id as any, signupBonus).catch(console.error);
 
         const admins = await getMailsByPermission("manage_users");
 
@@ -239,7 +244,7 @@ export class UserService {
         // Influencer signup commission hook (fire-and-forget)
         try {
             const { InfluencerService } = await import('../influencer/influencer.service');
-            await InfluencerService.recordCommissionForUser(user._id as any, 'signup', 0);
+            await InfluencerService.recordCommissionForUser(user._id as any, 'signup', influencerSignupBonus);
         } catch (err) {
             console.error('Signup influencer commission failed (non-fatal):', (err as Error).message);
         }

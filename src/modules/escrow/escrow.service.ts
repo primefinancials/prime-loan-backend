@@ -435,12 +435,23 @@ export class EscrowService {
         });
 
         for (const escrow of expiredEscrows) {
-            // Treat as confirmed delivery
-            // We use a system user ID or specific flag for attribution
-            await this.confirmDelivery(escrow._id as any, escrow.buyerId);
-            // Note: confirmDelivery requires buyerId auth. 
-            // We might need to override validaton or overload confirmDelivery.
-            // Refactoring confirmDelivery to allow SYSTEM override:
+            try {
+                // Atomically claim the escrow for processing
+                const claimed = await EscrowTransaction.findOneAndUpdate(
+                    { _id: escrow._id, status: 'LOCKED' },
+                    { $set: { status: 'PROCESSING' } },
+                    { new: true }
+                );
+
+                if (!claimed) continue;
+
+                // Treat as confirmed delivery
+                await this._confirmDeliveryLogic(String(claimed._id), String(claimed.buyerId), true);
+            } catch (err) {
+                logger.error({ escrowId: escrow._id, err }, 'Failed to auto-resolve expired escrow');
+                // Revert to LOCKED on failure
+                await EscrowTransaction.findByIdAndUpdate(escrow._id, { status: 'LOCKED' });
+            }
         }
     }
 
