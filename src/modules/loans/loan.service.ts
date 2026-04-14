@@ -339,7 +339,7 @@ export class LoanService {
       // Check if it's already processing
       const existing = await Loan.findById(params.loanId);
       if (existing?.status === "processing") {
-          throw new BadRequestError("Loan is currently being processed for disbursement. Please wait.");
+        throw new BadRequestError("Loan is currently being processed for disbursement. Please wait.");
       }
       throw new BadRequestError("Loan must be in a pending state to be disbursed");
     }
@@ -349,16 +349,25 @@ export class LoanService {
     try {
       return await DatabaseService.withTransaction(session, async () => {
         const { loanId, adminId } = params;
-        const loan = lockLoan;
+        const loan = await Loan.findById(params.loanId);
+
+        if (!loan) throw new Error("Loan not found");
 
         const user = await User.findById(loan.userId).session(session);
         if (!user) throw new NotFoundError("User not found");
 
-        // 2️⃣ Ensure idempotency key
+        // 2️⃣ Ensure idempotency key (Now persistent in Transfer model)
         const transferIdempotency = params.idempotencyKey || `disburse-${loan._id}`;
         const existingTransfer = await Transfer.findOne({ idempotencyKey: transferIdempotency }).session(session);
         if (existingTransfer) {
-          // Return existing disbursement result if already processed
+          if (existingTransfer.status === "COMPLETED" && loan.status !== "accepted") {
+            // "Make it Complete" - Provider succeeded previously but DB didn't finish.
+            loan.status = "accepted";
+            loan.amount = params.amount;
+            loan.loan_payment_status = "not-started";
+            await loan.save({ session });
+            logger.info({ loanId: loan._id }, "Loan recovery: marked as accepted from previous success");
+          }
           return { loan, transfer: existingTransfer, reused: true };
         }
 
@@ -367,7 +376,7 @@ export class LoanService {
         const userAccTyped = (await this.vfd.getAccountInfo(user.user_metadata.accountNo))?.data;
 
         if (!primeInfo?.accountNo || !userAccTyped?.accountNo) {
-          throw new Error("Unable to get account info for disbursement");
+          throw new BadRequestError("Unable to get account info for disbursement");
         }
 
         const amountNaira = params.amount;
@@ -409,14 +418,17 @@ export class LoanService {
         let providerResponse: any;
         try {
           providerResponse = await this.vfd.transfer(transferRequest);
+          console.log({ providerResponse });
         } catch (err: any) {
+          // Provider call failed (network error etc.) - SAFE to revert only if we catch it here
           await TransferService.failTransfer(transferRecord.reference);
-          logger.error({ 
-            err: err.message, 
-            response: err.response?.data, 
-            payload: transferRequest 
-          }, "VFD Transfer failed");
-          throw new APIError(409, `Provider disbursement failed: ${err.response?.data?.message || err.message}`);
+          logger.error({
+            err: err.message,
+            response: err.response?.data,
+            payload: transferRequest
+          }, "VFD Transfer call failed (pre-response)");
+
+          throw new APIError(409, `Provider disbursement failed (reverting to pending): ${err.message}`);
         }
 
         const ok =
@@ -425,13 +437,12 @@ export class LoanService {
             providerResponse?.data?.txnId ||
             providerResponse.txnId);
 
-        console.log({ providerResponse })
-
         if (!ok) {
           await TransferService.failTransfer(transferRecord.reference);
-          throw new APIError(409, `Disbursement failed: ${JSON.stringify(providerResponse)}`);
+          throw new APIError(409, `Disbursement failed (reverting to pending): ${JSON.stringify(providerResponse)}`);
         }
 
+        // 6️⃣ SUCCESS - ATOMIC COMPLETION (Once provider says 00, we "make it complete")
         const trxnRes = await TransferService.completeTransfer(
           transferRecord.reference,
           "loan-disbursement"
@@ -486,8 +497,13 @@ export class LoanService {
         return { loan, providerResponse, trxnRes };
       });
     } catch (e: any) {
-      // Revert lock on failure
-      await Loan.findByIdAndUpdate(params.loanId, { status: "pending" });
+      // Revert lock on failure ONLY if it's a known non-provider success case
+      // If it's an APIError from our provider block, it's already logged and throws back to here.
+      // We check if the loan is still 'processing' before reverting to 'pending'
+      const checkLoan = await Loan.findById(params.loanId);
+      if (checkLoan && checkLoan.status === "processing") {
+        await Loan.findByIdAndUpdate(params.loanId, { status: "pending" });
+      }
       throw e;
     } finally {
       await session.endSession();
@@ -507,134 +523,134 @@ export class LoanService {
 
     const session = params.session || await DatabaseService.startSession();
     const executeRepayment = async () => {
-        const loan = await Loan.findById(params.loanId).session(session);
-        if (!loan) throw new NotFoundError("Loan not found");
+      const loan = await Loan.findById(params.loanId).session(session);
+      if (!loan) throw new NotFoundError("Loan not found");
 
-        const user = await User.findOne({ _id: params.userId });
-        if (!user || Array.isArray(user) || !user._id) throw new NotFoundError("User not found");
+      const user = await User.findOne({ _id: params.userId });
+      if (!user || Array.isArray(user) || !user._id) throw new NotFoundError("User not found");
 
-        const primeInfo = (await this.vfd.getPrimeAccountInfo()).data;
-        const userAcc = (await this.vfd.getAccountInfo(user.user_metadata.accountNo)).data;
+      const primeInfo = (await this.vfd.getPrimeAccountInfo()).data;
+      const userAcc = (await this.vfd.getAccountInfo(user.user_metadata.accountNo)).data;
 
-        if (!primeInfo?.accountNo || !userAcc?.accountNo) {
-          throw new Error("Could not fetch account info to perform repayment");
-        }
+      if (!primeInfo?.accountNo || !userAcc?.accountNo) {
+        throw new Error("Could not fetch account info to perform repayment");
+      }
 
-        // Ensure user has funds (provider source of truth)
-        const userBalance = parseFloat(userAcc.accountBalance || "0");
-        let repayAmount = Number(params.amount);
-        if (userBalance < repayAmount) {
-          if (userBalance <= 0) throw new BadRequestError("Insufficient funds to repay loan");
-          else repayAmount = userBalance;
-        }
+      // Ensure user has funds (provider source of truth)
+      const userBalance = parseFloat(userAcc.accountBalance || "0");
+      let repayAmount = Number(params.amount);
+      if (userBalance < repayAmount) {
+        if (userBalance <= 0) throw new BadRequestError("Insufficient funds to repay loan");
+        else repayAmount = userBalance;
+      }
 
-        // 1) internal transfer record
-        const transferIdempotency = params.idempotencyKey || `repay-${UuidService.generate()}`;
-        const transferRecord = await TransferService.initiateTransfer({
+      // 1) internal transfer record
+      const transferIdempotency = params.idempotencyKey || `repay-${UuidService.generate()}`;
+      const transferRecord = await TransferService.initiateTransfer({
+        fromAccount: userAcc.accountNo,
+        beneficiaryName: primeInfo.client,
+        userId: String(user._id),
+        toAccount: primeInfo.accountNo,
+        amount: params.amount,
+        transferType: "intra",
+        bankCode: "999999",
+        remark: "Loan repayment",
+        idempotencyKey: transferIdempotency,
+        walletBalance: String(userBalance)
+      }, "loan-repayment");
+
+      // 2) provider transfer (user -> prime)
+      let providerResponse: any = { status: "00" }; // Default success for internal
+      if (!params.internalOnly) {
+        const transferRequest: TransferRequest = {
           fromAccount: userAcc.accountNo,
-          beneficiaryName: primeInfo.client,
-          userId: String(user._id),
+          uniqueSenderAccountId: userAcc.accountId,
+          fromClientId: userAcc.clientId,
+          fromClient: userAcc.client,
+          fromSavingsId: userAcc.accountId,
+          toClientId: primeInfo.clientId,
+          toClient: primeInfo.client,
+          toSavingsId: primeInfo.accountId,
+          toSession: primeInfo.accountId,
           toAccount: primeInfo.accountNo,
-          amount: params.amount,
+          toBank: "999999",
+          signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
+          amount: repayAmount,
+          remark: `${params.mandatory ? "Mandatory" : "Voluntary"} Loan Repayment`,
           transferType: "intra",
-          bankCode: "999999",
-          remark: "Loan repayment",
-          idempotencyKey: transferIdempotency,
-          walletBalance: String(userBalance)
-        }, "loan-repayment");
+          reference: transferRecord.reference
+        } as any;
 
-        // 2) provider transfer (user -> prime)
-        let providerResponse: any = { status: "00" }; // Default success for internal
-        if (!params.internalOnly) {
-            const transferRequest: TransferRequest = {
-            fromAccount: userAcc.accountNo,
-            uniqueSenderAccountId: userAcc.accountId,
-            fromClientId: userAcc.clientId,
-            fromClient: userAcc.client,
-            fromSavingsId: userAcc.accountId,
-            toClientId: primeInfo.clientId,
-            toClient: primeInfo.client,
-            toSavingsId: primeInfo.accountId,
-            toSession: primeInfo.accountId,
-            toAccount: primeInfo.accountNo,
-            toBank: "999999",
-            signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
-            amount: repayAmount,
-            remark: `${params.mandatory ? "Mandatory" : "Voluntary"} Loan Repayment`,
-            transferType: "intra",
-            reference: transferRecord.reference
-            } as any;
-
-            try {
-            providerResponse = await this.vfd.transfer(transferRequest);
-            } catch (err: any) {
-            await TransferService.failTransfer(transferRecord.reference);
-            throw new Error(`Repayment provider transfer failed: ${String(err.message)}`);
-            }
-
-            const ok = providerResponse && (providerResponse.status === "00");
-            if (!ok) {
-            await TransferService.failTransfer(transferRecord.reference);
-            throw new Error(`Repayment failed: ${JSON.stringify(providerResponse)}`);
-            }
-        }
-
-        // 3) complete internal transfer
-        const trxnRes = await TransferService.completeTransfer(transferRecord.reference, "loan-repayment");
-
-        // 4) update loan outstanding & history
-        let newOutstanding = Number(loan.outstanding) - Number(params.amount);
-
-        const paidInFull = newOutstanding <= 0;
-
-        const now = new Date();
-        loan.repayment_history = [...loan.repayment_history, {
-          amount: params.amount,
-          outstanding: newOutstanding >= 0? newOutstanding : 0,
-          action: "repayment",
-          date: now.toISOString()
-        }];
-
-        loan.outstanding = newOutstanding;
-        loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-        loan.save();
-
-        console.log({ newOutstanding, paidInFull, loan })
-
-        // 5) ledger double entry: user_wallet -> platform_cash
-        await LedgerService.createDoubleEntry(
-          UuidService.generateTraceId(),
-          `user_wallet:${user._id}`,
-          "loan_repayment",
-          repayAmount,
-          "loan",
-          {
-            userId: user._id as any,
-            subtype: "repayment",
-            idempotencyKey: params.idempotencyKey,
-            session
-          }
-        );
-
-        // 8) compute and persist updated credit score based on timeliness
         try {
-          const dueDateISO = loan.repayment_date;
-          if (dueDateISO) {
-            const dueDate = new Date(dueDateISO);
-            const daysLate = daysBetween(now, dueDate); // positive -> late
-            const [newScore, ladderIndex, category, message] = LoanService.computeCreditScoreFromTimeliness(daysLate, user.user_metadata.ladderIndex || 1);
-            user.user_metadata.creditScore = newScore;
-            user.user_metadata.ladderIndex = ladderIndex;
-            user.save();
-
-            await NotificationService.sendLoanRepayment(user, repayAmount, message);
-          }
-        } catch (err) {
-          console.warn("Failed updating credit score (non-fatal):", err);
+          providerResponse = await this.vfd.transfer(transferRequest);
+        } catch (err: any) {
+          await TransferService.failTransfer(transferRecord.reference);
+          throw new Error(`Repayment provider transfer failed: ${String(err.message)}`);
         }
 
-        return { loan, providerResponse, trxnRes };
-      };
+        const ok = providerResponse && (providerResponse.status === "00");
+        if (!ok) {
+          await TransferService.failTransfer(transferRecord.reference);
+          throw new Error(`Repayment failed: ${JSON.stringify(providerResponse)}`);
+        }
+      }
+
+      // 3) complete internal transfer
+      const trxnRes = await TransferService.completeTransfer(transferRecord.reference, "loan-repayment");
+
+      // 4) update loan outstanding & history
+      let newOutstanding = Number(loan.outstanding) - Number(params.amount);
+
+      const paidInFull = newOutstanding <= 0;
+
+      const now = new Date();
+      loan.repayment_history = [...loan.repayment_history, {
+        amount: params.amount,
+        outstanding: newOutstanding >= 0 ? newOutstanding : 0,
+        action: "repayment",
+        date: now.toISOString()
+      }];
+
+      loan.outstanding = newOutstanding;
+      loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
+      loan.save();
+
+      console.log({ newOutstanding, paidInFull, loan })
+
+      // 5) ledger double entry: user_wallet -> platform_cash
+      await LedgerService.createDoubleEntry(
+        UuidService.generateTraceId(),
+        `user_wallet:${user._id}`,
+        "loan_repayment",
+        repayAmount,
+        "loan",
+        {
+          userId: user._id as any,
+          subtype: "repayment",
+          idempotencyKey: params.idempotencyKey,
+          session
+        }
+      );
+
+      // 8) compute and persist updated credit score based on timeliness
+      try {
+        const dueDateISO = loan.repayment_date;
+        if (dueDateISO) {
+          const dueDate = new Date(dueDateISO);
+          const daysLate = daysBetween(now, dueDate); // positive -> late
+          const [newScore, ladderIndex, category, message] = LoanService.computeCreditScoreFromTimeliness(daysLate, user.user_metadata.ladderIndex || 1);
+          user.user_metadata.creditScore = newScore;
+          user.user_metadata.ladderIndex = ladderIndex;
+          user.save();
+
+          await NotificationService.sendLoanRepayment(user, repayAmount, message);
+        }
+      } catch (err) {
+        console.warn("Failed updating credit score (non-fatal):", err);
+      }
+
+      return { loan, providerResponse, trxnRes };
+    };
 
     if (params.session) {
       return await executeRepayment();

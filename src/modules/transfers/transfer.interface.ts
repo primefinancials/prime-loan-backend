@@ -65,5 +65,6 @@ export interface Transfer extends Document {
   naration?: string;
   processedAt?: Date;
   meta?: Record<string, any>;
+  idempotencyKey?: string;
   createdAt: Date;
 }
