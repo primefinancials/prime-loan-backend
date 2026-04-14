@@ -803,7 +803,7 @@ export class SavingsService {
 
       if (!plan) break;
 
-      const withdrawal = plan.withdrawalHistory.find(w => w.claiming === true && !w.processed);
+      const withdrawal = plan.withdrawalHistory?.find(w => w.claiming === true && !w.processed);
       if (!withdrawal) continue;
 
       const session = await DatabaseService.startSession();

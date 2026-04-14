@@ -17,6 +17,7 @@ import { SavingsService } from "../savings/savings.service";
 import { LoanService } from "../loans/loan.service";
 import { ActivityEvent } from "./user.interface";
 import { getMailsByPermission } from "../../shared/utils/checkPermission";
+import { SettingsService } from "../admin/settings.service";
 
 export class UserService {
     private static vfdProvider = new VfdProvider();
