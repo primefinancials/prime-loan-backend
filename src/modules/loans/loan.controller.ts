@@ -106,8 +106,7 @@ export class LoanController {
         return res.status(201).json({ status: "success", data: loan });
       }
 
-      // Eligibility check
-      const eligibility = await LoanEligibilityService.calculateEligibility(req.user!, amount);
+      const eligibility = await LoanEligibilityService.calculateEligibility(req.user!, amount, loan._id);
       const admins = await getMailsByPermission("manage_loans");
 
       if (eligibility.eligible) {
