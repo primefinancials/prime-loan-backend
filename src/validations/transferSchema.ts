@@ -14,22 +14,22 @@ import mongoose from "mongoose";
  */
 export const transferInitiateSchema = Joi.object({
   fromAccount: Joi.string().required().description("Sender account number"),
-  fromClientId: Joi.string().optional(),
-  fromClient: Joi.string().optional(),
-  fromSavingsId: Joi.string().optional(),
-  fromBvn: Joi.string().optional(),
-  toClient: Joi.string().optional(),
-  toClientId: Joi.string().optional(),
-  toSession: Joi.string().optional(),
+  fromClientId: Joi.string().optional().allow(""),
+  fromClient: Joi.string().optional().allow(""),
+  fromSavingsId: Joi.string().optional().allow(""),
+  fromBvn: Joi.string().optional().allow(""),
+  toClient: Joi.string().optional().allow(""),
+  toClientId: Joi.string().optional().allow(""),
+  toSession: Joi.string().optional().allow(""),
   toAccount: Joi.string().required().description("Beneficiary account number"),
-  toSavingsId: Joi.string().optional(),
-  toBvn: Joi.string().optional(),
-  toBank: Joi.string().optional().description('Bank code; use "999999" for intra/provider internal transfers'),
+  toSavingsId: Joi.string().optional().allow(""),
+  toBvn: Joi.string().optional().allow(""),
+  toBank: Joi.string().optional().allow("").description('Bank code; use "999999" for intra/provider internal transfers'),
   toKyc: Joi.alternatives().try(Joi.string(), Joi.object(), Joi.boolean()).optional(),
   amount: Joi.number().positive().required().description("Amount in Naira"),
   transferType: Joi.string().valid("intra", "inter").required(),
   remark: Joi.string().optional().allow(""),
-  idempotencyKey: Joi.string().optional(),
+  idempotencyKey: Joi.string().optional().allow(""),
 });
 
 /**
