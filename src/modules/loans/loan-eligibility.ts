@@ -72,7 +72,7 @@ export class LoanEligibilityService {
     const hasActiveLoan = await Loan.find({
       userId: user._id,
       loan_payment_status: { $in: ["in-progress", "not-started"] },
-      status: { $in: ["pending", "processing", "accepted", "active"] }
+      status: { $in: ["pending", "processing", "accepted"] }
     });
 
     if (hasActiveLoan && hasActiveLoan.length > 0) {

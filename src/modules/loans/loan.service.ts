@@ -234,7 +234,7 @@ export class LoanService {
     const existingActive = await Loan.find({
       userId: params.userId,
       loan_payment_status: { $in: ["in-progress", "not-started"] },
-      status: { $in: ["pending", "accepted", "active"] }
+      status: { $in: ["pending", "processing", "accepted"] }
     });
 
     if (existingActive && existingActive.length > 0) {
@@ -249,7 +249,7 @@ export class LoanService {
         const gActive = await Loan.findOne({
           userId: gUser._id,
           loan_payment_status: { $in: ["in-progress", "not-started"] },
-          status: { $in: ["pending", "accepted", "active"] }
+          status: { $in: ["pending", "processing", "accepted"] }
         });
 
         if (gActive) {
@@ -882,7 +882,7 @@ export class LoanService {
 
       // ✅ Loan states
       if (
-        loan.status === "accepted" &&
+        ["accepted", "processing", "pending"].includes(loan.status) &&
         ["in-progress", "not-started"].includes(loan.loan_payment_status)
       ) {
         if (dueDate) {
@@ -957,7 +957,7 @@ export class LoanService {
 
     switch (category) {
       case "active":
-        filter.status = "accepted";
+        filter.status = { $in: ["accepted", "processing", "pending"] };
         filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
         break;
 

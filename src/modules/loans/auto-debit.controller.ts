@@ -187,7 +187,7 @@ export class AutoDebitController {
       const hasActiveLoan = await LoanModel.exists({
         userId: user._id,
         loan_payment_status: { $in: ['in-progress', 'not-started'] },
-        status: { $in: ['pending', 'processing', 'accepted', 'active'] }
+        status: { $in: ['pending', 'processing', 'accepted'] }
       });
 
       return res.status(200).json({
