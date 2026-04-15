@@ -64,16 +64,20 @@ export class LoanEligibilityService {
   static async calculateEligibility(
     user: User,
     requestedAmount: number,
+    excludeLoanId?: any
   ): Promise<EligibilityResult> {
     const settings = await SettingsService.getSettings();
 
     // Check for active loans
     // Note: This would need to query the loan service in real implementation
-    const hasActiveLoan = await Loan.find({
+    const query: any = {
       userId: user._id,
       loan_payment_status: { $in: ["in-progress", "not-started"] },
       status: { $in: ["pending", "processing", "accepted"] }
-    });
+    };
+    if (excludeLoanId) query._id = { $ne: excludeLoanId };
+
+    const hasActiveLoan = await Loan.find(query);
 
     if (hasActiveLoan && hasActiveLoan.length > 0) {
       return {
