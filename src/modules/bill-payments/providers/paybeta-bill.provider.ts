@@ -172,28 +172,32 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
       // For data bundles and TV bouquets, we can fetch products
       const dataBundles = await this.pb.getDataBundles(billerId).catch(() => null);
       if (dataBundles?.data) {
-        const items = Array.isArray(dataBundles.data) ? dataBundles.data : [];
-        return items.map((b: any) => ({
-          id: b.code || b.id || '',
-          name: b.name || b.description || '',
-          billerId,
-          amount: Number(b.amount || b.price) || 0,
-          description: b.description || b.name || '',
-          duration: this.parseDuration(b.name || b.description || '')
-        }));
+        const items = Array.isArray(dataBundles.data) ? dataBundles.data : (dataBundles.data.packages || []);
+        if (items.length > 0) {
+          return items.map((b: any) => ({
+            id: b.code || b.id || '',
+            name: b.name || b.description || '',
+            billerId,
+            amount: Number(b.amount || b.price) || 0,
+            description: b.description || b.name || '',
+            duration: this.parseDuration(b.name || b.description || '')
+          }));
+        }
       }
 
       const tvBouquets = await this.pb.getTvBouquets(billerId).catch(() => null);
       if (tvBouquets?.data) {
-        const items = Array.isArray(tvBouquets.data) ? tvBouquets.data : [];
-        return items.map((b: any) => ({
-          id: b.code || b.packageCode || b.id || '',
-          name: b.name || b.description || '',
-          billerId,
-          amount: Number(b.amount || b.price) || 0,
-          description: b.description || b.name || '',
-          duration: this.parseDuration(b.name || b.description || '')
-        }));
+        const items = Array.isArray(tvBouquets.data) ? tvBouquets.data : (tvBouquets.data.packages || []);
+        if (items.length > 0) {
+          return items.map((b: any) => ({
+            id: b.code || b.packageCode || b.id || '',
+            name: b.name || b.description || '',
+            billerId,
+            amount: Number(b.amount || b.price) || 0,
+            description: b.description || b.name || '',
+            duration: this.parseDuration(b.name || b.description || '')
+          }));
+        }
       }
 
       return [];

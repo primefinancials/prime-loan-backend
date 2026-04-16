@@ -45,8 +45,13 @@ export const generateBearerToken = async (consumerKey: string, consumerSecret: s
         throw new Error(`Service Unavailable, Try Again in a Few Minutes: ${response?.data?.message}`);
       }
 
-      cachedToken = response?.data?.data?.access_token || "";
+      cachedToken = response?.data?.data?.access_token || response?.data?.access_token || "";
       tokenPromise = null;
+      
+      if (!cachedToken) {
+        console.warn("VFD Token generation returned an empty token!", response.data);
+      }
+      
       return cachedToken as string;
     } catch (error: any) {
       tokenPromise = null;
