@@ -475,7 +475,7 @@ export class LoanService {
           date: new Date().toISOString(),
         };
 
-        loan.save();
+        await loan.save({ session });
 
         // 7️⃣ Ledger entry
         await LedgerService.createDoubleEntry(
@@ -613,7 +613,7 @@ export class LoanService {
 
       loan.outstanding = newOutstanding;
       loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-      loan.save();
+      await loan.save({ session });
 
       console.log({ newOutstanding, paidInFull, loan })
 
@@ -641,7 +641,7 @@ export class LoanService {
           const [newScore, ladderIndex, category, message] = LoanService.computeCreditScoreFromTimeliness(daysLate, user.user_metadata.ladderIndex || 1);
           user.user_metadata.creditScore = newScore;
           user.user_metadata.ladderIndex = ladderIndex;
-          user.save();
+          await user.save({ session });
 
           await NotificationService.sendLoanRepayment(user, repayAmount, message);
         }

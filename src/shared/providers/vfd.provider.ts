@@ -203,11 +203,27 @@ export class VfdProvider {
 
   /* ---------- ACCOUNT ---------- */
 
+  private static accountInfoCache: Map<string, { data: AccountInfoResponse, expires: number }> = new Map();
+
   async getAccountInfo(accountNumber?: string) {
+    const cacheKey = accountNumber || 'prime';
+    const cached = VfdProvider.accountInfoCache.get(cacheKey);
+    if (cached && cached.expires > Date.now()) {
+      return cached.data;
+    }
+
     const url = accountNumber
       ? `/account/enquiry?accountNumber=${accountNumber}`
       : "/account/enquiry";
-    return this.request<AccountInfoResponse>({ method: "GET", url });
+    
+    const response = await this.request<AccountInfoResponse>({ method: "GET", url });
+    
+    if (response?.status === "Success" || response?.data) {
+      // Cache for 10 minutes
+      VfdProvider.accountInfoCache.set(cacheKey, { data: response, expires: Date.now() + 10 * 60 * 1000 });
+    }
+    
+    return response;
   }
 
   async getPrimeAccountInfo() {

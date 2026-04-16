@@ -90,8 +90,10 @@ export class PayBetaProvider {
       return res.data as T;
     } catch (error) {
       const axErr = error as AxiosError;
-      logger.error({ path, status: axErr.response?.status, data: axErr.response?.data }, 'PayBeta request failed');
-      throw new Error(`PayBeta ${method} ${path} failed: ${axErr.message}`);
+      const respData = axErr.response?.data as any;
+      const actualMessage = respData?.message || respData?.error || axErr.message;
+      logger.error({ path, status: axErr.response?.status, data: respData }, 'PayBeta request failed');
+      throw new Error(actualMessage);
     }
   }
 
@@ -117,7 +119,7 @@ export class PayBetaProvider {
   }
 
   async getDataBundles(service: string): Promise<any> {
-    return this.request<any>('POST', '/data-bundle/bundles', { service });
+    return this.request<any>('POST', '/data-bundle/list', { service });
   }
 
   async buyData(params: {
@@ -137,7 +139,7 @@ export class PayBetaProvider {
   }
 
   async getTvBouquets(service: string): Promise<any> {
-    return this.request<any>('POST', '/cable/bouquets', { service });
+    return this.request<any>('POST', '/cable/bouquet', { service });
   }
 
   async validateTv(service: string, smartCardNumber: string): Promise<any> {
