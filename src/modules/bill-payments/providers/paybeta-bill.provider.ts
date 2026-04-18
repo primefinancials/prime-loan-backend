@@ -249,12 +249,21 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
     }
   }
 
-  private normalizeResult(resp: PayBetaResponse, reference: string): BillProviderResult {
-    const status = resp?.status?.toLowerCase?.() || '';
+  private normalizeResult(resp: any, reference: string): BillProviderResult {
+    // Handle both boolean status and string status
+    let rawStatus = resp?.status;
+    if (typeof rawStatus === 'boolean') {
+      rawStatus = rawStatus ? 'successful' : 'failed';
+    }
+    const status = (rawStatus || '').toLowerCase();
+
+    const isSuccess = status === 'successful' || status === 'success';
+    const isPending = status === 'pending' || status === 'processing';
+
     return {
-      success: status === 'successful',
+      success: isSuccess,
       reference: resp?.data?.reference || reference,
-      status: status === 'successful' ? 'success' : status === 'pending' ? 'pending' : 'failed',
+      status: isSuccess ? 'success' : isPending ? 'pending' : 'failed',
       message: resp?.message || '',
       meta: resp?.data || {}
     };

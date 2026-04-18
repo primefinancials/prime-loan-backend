@@ -95,9 +95,13 @@ export async function processTransaction({
         providerResponse = await providerFn();
         console.log("Provider Response:", providerResponse);
 
-        const providerStatus = providerResponse?.status?.toLowerCase?.() || "";
+        const providerStatusRaw = providerResponse?.status || "";
+        const providerStatus = providerStatusRaw.toString().toLowerCase();
 
-        if (providerStatus === "success") {
+        const isSuccess = providerStatus === "success" || providerStatus === "successful";
+        const isPending = providerStatus === "pending" || providerStatus === "processing";
+
+        if (isSuccess) {
           // 4️⃣ Complete transaction (mark completed)
           await TransferService.completeTransfer(
             txnResponse.reference,
@@ -139,7 +143,7 @@ export async function processTransaction({
             message: "Bill payment completed successfully",
           };
         } else {
-          if (providerStatus !== "success" && providerStatus !== "failed" && providerStatus !== "error") {
+          if (!isPending && !isSuccess && providerStatus !== "failed" && providerStatus !== "error") {
             // 4️⃣ Complete transaction (mark completed)
             await TransferService.completeTransfer(
               txnResponse.reference,
