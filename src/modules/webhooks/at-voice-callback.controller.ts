@@ -83,7 +83,7 @@ export class ATVoiceCallbackController {
       logger.warn({ sessionId }, 'No stored message found for session — using default');
       const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-  <Say voice="en-US-Standard-C">This is a reminder from Prime Finance. Please log in to your account for important updates. Thank you.</Say>
+  <Say voice="en-US-Standard-C">This is a reminder from Prime Loan. Please log in to your account for important updates. Thank you.</Say>
 </Response>`;
       res.set('Content-Type', 'application/xml');
       return res.send(xml);

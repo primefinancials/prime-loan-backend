@@ -29,5 +29,7 @@ const BillPaymentSchema = new Schema<IBillPayment>({
 
 BillPaymentSchema.index({ status: 1, createdAt: 1 });
 BillPaymentSchema.index({ providerRef: 1 });
+BillPaymentSchema.index({ serviceId: 1 });
+BillPaymentSchema.index({ customerReference: 1 });
 
 export const BillPayment = mongoose.model<IBillPayment>('BillPayment', BillPaymentSchema);

@@ -160,7 +160,7 @@ export class LoanPenaltiesCron {
                             email: linkedMethod.email,
                             amount: debitAmount,
                             txRef: reference,
-                            narration: `Prime Finance Loan Repayment - Loan ${loan._id}`,
+                            narration: `Prime Loan Loan Repayment - Loan ${loan._id}`,
                           });
                         }
 

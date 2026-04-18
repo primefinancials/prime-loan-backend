@@ -1,7 +1,7 @@
 /**
  * swagger.config.ts
  *
- * Centralized OpenAPI (Swagger) configuration for Prime Finance API
+ * Centralized OpenAPI (Swagger) configuration for Prime Loan API
  * - Centralized schemas for Users, Admin, Loans, Transfers, Bills, Savings
  * - Standardized Success / Error response wrappers
  * - Reusable parameter schemas (pagination / date range)
@@ -26,12 +26,12 @@ const options: any = {
   definition: {
     openapi: "3.0.0",
     info: {
-      title: "Prime Finance API",
+      title: "Prime Loan API",
       version: "2.0.0",
       description:
         "Comprehensive financial services API covering loans, transfers, bill payments, savings, and backoffice administration.",
       contact: {
-        name: "Prime Finance Support",
+        name: "Prime Loan Support",
         email: "support@primefinance.live",
       },
     },

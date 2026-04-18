@@ -220,12 +220,13 @@ export default class BillPaymentService {
     return data;
   }
 
-  static async validateServiceAccount(itemCode: string, customerReference: string | number) {
-    return await withFailover(async (provider) => {
-      return await provider.validateAccount({
-        serviceType: 'tv', // TODO: make dynamic based on context
+  static async validateServiceAccount(itemCode: string, customerReference: string | number, serviceType: string = 'tv', provider?: string) {
+    return await withFailover(async (P) => {
+      return await P.validateAccount({
+        serviceType: serviceType as any,
         customerRef: String(customerReference),
-        itemCode
+        itemCode,
+        provider
       });
     }, 'validate-account');
   }
@@ -255,7 +256,7 @@ export default class BillPaymentService {
    * ───────────────────────────────────────────── */
 
   static async checkServiceDowntime(billerCode: string): Promise<boolean> {
-    const bill = await BillPayment.findOne({ billerCode }).lean();
+    const bill = await BillPayment.findOne({ serviceId: billerCode }).lean();
     if (!bill) return false;
     return true;
   }

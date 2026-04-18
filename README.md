@@ -1,4 +1,4 @@
-# Prime Finance Backend V2
+# Prime Loan Backend V2
 
 A comprehensive financial services backend with clean architecture, ledger-first design, and robust reconciliation capabilities.
 

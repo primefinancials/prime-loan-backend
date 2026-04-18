@@ -201,6 +201,9 @@ export class SettingsService {
     }
 
     flatten(updates);
+    delete flatUpdates['_id'];
+    delete flatUpdates['__v'];
+    delete flatUpdates['singleton'];
     flatUpdates['updatedBy'] = adminId;
     flatUpdates['updatedAt'] = new Date();
 

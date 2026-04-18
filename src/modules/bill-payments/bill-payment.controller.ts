@@ -39,22 +39,20 @@ export class BillPaymentController {
         idempotencyKey,
       });
 
-      const profit = await SettingsService.calculateProfit("bill-payment", "send", amount);
+      // Background non-critical hooks to improve endpoint speed
+      SettingsService.calculateProfit("bill-payment", "send", amount)
+        .then(profit => 
+          BillPaymentController.profitService.recordProfit({
+            amount: profit,
+            source: "bill-payment",
+            userId,
+            reference: result.traceId,
+            type: "realized",
+          })
+        ).catch(err => console.error('Profit recording failed (non-fatal):', err.message));
 
-      await BillPaymentController.profitService.recordProfit({
-        amount: profit,
-        source: "bill-payment",
-        userId,
-        reference: result.traceId,
-        type: "realized",
-      });
-
-      // Influencer commission hook (fire-and-forget)
-      try {
-        await InfluencerService.recordCommissionForUser(userId, 'bill-payment', amount, undefined, referralCode);
-      } catch (err) {
-        console.warn('Influencer commission recording failed (non-fatal):', (err as Error).message);
-      }
+      InfluencerService.recordCommissionForUser(userId, 'bill-payment', amount, undefined, referralCode)
+        .catch(err => console.warn('Influencer commission recording failed (non-fatal):', err.message));
 
       res.status(200).json({ status: "success", data: result });
     } catch (error) {
@@ -101,8 +99,8 @@ export class BillPaymentController {
   /** Validate customer account (meter number, smartcard, etc.) */
   static async validateAccount(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { itemCode, customerReference } = req.body;
-      const data = await BillPaymentService.validateServiceAccount(itemCode, customerReference);
+      const { itemCode, customerReference, serviceType, provider } = req.body;
+      const data = await BillPaymentService.validateServiceAccount(itemCode, customerReference, serviceType, provider);
       res.status(200).json({ status: "success", data });
     } catch (error) {
       next(error);

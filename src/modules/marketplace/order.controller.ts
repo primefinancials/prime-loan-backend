@@ -15,14 +15,11 @@ export class OrderController {
 
             const orders = await OrderService.checkout(userId, shippingAddress || "Default Address");
 
-            // Influencer commission hook (fire-and-forget)
-            try {
-                const totalAmount = orders.reduce((sum: number, o: any) => sum + (o.total || o.amount || 0), 0);
-                if (totalAmount > 0) {
-                    await InfluencerService.recordCommissionForUser(userId, 'marketplace', totalAmount, undefined, referralCode);
-                }
-            } catch (err) {
-                console.warn('Marketplace influencer commission failed (non-fatal):', (err as Error).message);
+            // Influencer commission hook (backgrounded)
+            const totalAmount = orders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0);
+            if (totalAmount > 0) {
+                InfluencerService.recordCommissionForUser(userId, 'marketplace', totalAmount, undefined, referralCode)
+                    .catch(err => console.warn('Marketplace influencer commission failed (non-fatal):', err.message));
             }
 
             res.status(201).json({ status: "success", data: orders });

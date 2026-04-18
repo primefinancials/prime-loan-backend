@@ -56,7 +56,7 @@ export class FlutterwavePayoutProvider {
           amount: params.amount,
           currency: 'NGN',
           reference: params.reference,
-          narration: params.narration || 'Prime Finance Influencer Payout',
+          narration: params.narration || 'Prime Loan Influencer Payout',
           beneficiary_name: params.beneficiaryName || undefined,
           callback_url: process.env.FLUTTERWAVE_PAYOUT_CALLBACK_URL || undefined,
         },

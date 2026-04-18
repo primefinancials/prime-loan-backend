@@ -266,7 +266,7 @@ const SettingsSchema = new Schema<ISettings>(
     savingsPenalty: { type: Number, default: 15 },
     savingsInterestRate: { type: Number, default: 2.5 },
 
-    companyName: { type: String, default: "Prime Finance" },
+    companyName: { type: String, default: "Prime Loan" },
     companyPhone: { type: String, default: "+234-800-000-0000" },
     companyEmail: { type: String, default: "support@primefinance.live" },
     companyAddress: { type: String, default: "Lagos, Nigeria" },
@@ -280,7 +280,7 @@ const SettingsSchema = new Schema<ISettings>(
     defaulterCallConfig: {
       enabled: { type: Boolean, default: false },
       maxCallsPerDay: { type: Number, default: 1 },
-      message: { type: String, default: "This is a reminder from Prime Finance. You have an overdue loan payment. Please pay immediately to avoid penalties." },
+      message: { type: String, default: "This is a reminder from Prime Loan. You have an overdue loan payment. Please pay immediately to avoid penalties." },
       messageTemplates: {
         tier1: {
           daysMin: { type: Number, default: 1 },
@@ -459,7 +459,7 @@ const SettingsSchema = new Schema<ISettings>(
       },
       termiiSenderIds: {
         type: [String],
-        default: ['PrimeFinance']
+        default: ['Prime Loan']
       }
     },
   },
