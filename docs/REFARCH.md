@@ -1,8 +1,8 @@
-# Prime Finance V2 Reference Architecture
+# Prime Loan V2 Reference Architecture
 
 ## Overview
 
-Prime Finance V2 implements a clean architecture with ledger-first design, ensuring all financial operations are properly tracked and reconciled. The system maintains backward compatibility with V1 while introducing robust new features.
+Prime Loan V2 implements a clean architecture with ledger-first design, ensuring all financial operations are properly tracked and reconciled. The system maintains backward compatibility with V1 while introducing robust new features.
 
 ## Architecture Principles
 

@@ -52,7 +52,7 @@ export async function startApp() {
 
     server
       .listen(PORT, "0.0.0.0", (): void => {
-        logger.info("Prime Finance server initiated");
+        logger.info("Prime Loan server initiated");
       })
       .on("listening", () => {
         logger.info(`✅ Server listening on port ${PORT}`);

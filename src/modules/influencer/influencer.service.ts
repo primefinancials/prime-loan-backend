@@ -375,7 +375,7 @@ export class InfluencerService {
    */
   private static generateReferralCode(): string {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = 'PF-';
+    let code = 'PL-';
     for (let i = 0; i < 6; i++) {
       code += chars.charAt(Math.floor(Math.random() * chars.length));
     }

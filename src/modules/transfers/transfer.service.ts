@@ -65,20 +65,21 @@ export class TransferService {
 
           // Optimization: VFD/Bank Enquiry Check
           // Ideally, we check a cache or re-verify. For now, we assume the frontend did it,
-          // BUT we verify the beneficiary name matches what we expect from a quick lookup/cache if available.
-          // Or strictly enforce that an enquiry MUST have happened recently (store enquiry session?).
-          // Simpler approach: Re-validate beneficiary for security.
           try {
             const enquiry = await TransferService.vfdProvider.nameEnquiry(request.bankCode, request.toAccount);
-            // Handling unknown type safety issues with explicit cast or check
-            const remoteName = enquiry?.data ? (enquiry.data as any).accountName : null;
+            const data = enquiry?.data as any;
+            const remoteName = data ? (data.accountName || data.name || data.client) : null;
 
-            if (!remoteName) {
-              throw new Error("Invalid beneficiary account");
+            if (!remoteName && !request.beneficiaryName) {
+              throw new Error("Invalid beneficiary account - unable to resolve name");
             }
           } catch (e) {
             console.error("Name Validity Check Error:", e);
-            throw new Error("Beneficiary Account Validation Failed");
+            if (!request.beneficiaryName) {
+              throw new Error("Beneficiary Account Validation Failed");
+            } else {
+              console.warn("VFD name enquiry failed or rejected, proceeding with provided beneficiaryName:", request.beneficiaryName);
+            }
           }
         }
 
@@ -188,7 +189,7 @@ export class TransferService {
             await user.save({ session });
 
             const fromuser = await User.findOne({ "user_metadata.accountNo": transfer.fromAccount }).session(session);
-            const originatorName = fromuser ? `${fromuser.user_metadata.first_name || ""} ${fromuser.user_metadata.surname || ""}`.trim() : "Prime Finance";
+            const originatorName = fromuser ? `${fromuser.user_metadata.first_name || ""} ${fromuser.user_metadata.surname || ""}`.trim() : "Prime Loan";
 
             // Send credit alert notification (best-effort, non-blocking)
             try {

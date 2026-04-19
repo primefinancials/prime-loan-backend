@@ -2,6 +2,7 @@ import nodemailer from "nodemailer";
 import twilio from "twilio";
 import { User } from "../users/user.interface";
 import { SettingsService } from "../admin/settings.service";
+import { getVoiceProvider } from "../../shared/providers/voice-call.provider";
 
 /* ----------- Providers Initialization ----------- */
 const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
@@ -21,7 +22,7 @@ const transporter = nodemailer.createTransport({
 export class NotificationService {
   private static async sendEmail(to: string, subject: string, html: string) {
     await transporter.sendMail({
-      from: `Prime Finance <${`info@primefinance.live`}>`,
+      from: `Prime Loan <${`info@primefinance.live`}>`,
       to,
       subject,
       html,
@@ -31,16 +32,12 @@ export class NotificationService {
   /* ----------- Broadcasting Providers ----------- */
   static async sendActionSms(to: string, message: string) {
     try {
-      if (!twilioClient) {
-        console.log(`[SMS Simulation] To: ${to} | Body: ${message}`);
-        return;
+      const provider = await getVoiceProvider();
+      if (provider.sendRecoverySms) {
+        await provider.sendRecoverySms(to, message);
+      } else {
+        console.warn(`Provider ${provider.providerName} does not support SMS broadcasting directly in the abstraction`);
       }
-      const formatted = to.startsWith('+') ? to : `+234${to.replace(/^0/, '')}`;
-      await twilioClient.messages.create({
-        body: message,
-        from: process.env.TWILIO_PHONE_NUMBER || 'PrimeFin',
-        to: formatted,
-      });
     } catch (error) {
       console.error("SMS Broadcast Error:", error);
     }
@@ -48,17 +45,8 @@ export class NotificationService {
 
   static async sendVoiceCall(to: string, message: string) {
     try {
-      if (!twilioClient) {
-        console.log(`[Voice Simulation] To: ${to} | Say: ${message}`);
-        return;
-      }
-      const formatted = to.startsWith('+') ? to : `+234${to.replace(/^0/, '')}`;
-      const twiml = `<Response><Say voice="alice">${message}</Say></Response>`;
-      await twilioClient.calls.create({
-        twiml,
-        to: formatted,
-        from: process.env.TWILIO_PHONE_NUMBER as string,
-      });
+      const provider = await getVoiceProvider();
+      await provider.makeCall(to, message);
     } catch (error) {
       console.error("Voice Call Broadcast Error:", error);
     }
@@ -86,7 +74,7 @@ export class NotificationService {
         </div>
         <hr style="margin:20px 0; border:none; border-top:1px solid #eee;" />
         <p style="font-size:12px; text-align:center; color:#777;">
-          © ${new Date().getFullYear()} Prime Finance. All rights reserved.
+          © ${new Date().getFullYear()} Prime Loan. All rights reserved.
         </p>
       </div>
     </div>
@@ -156,7 +144,7 @@ export class NotificationService {
       <p>Hi <strong>${user.user_metadata.first_name}</strong>,</p>
       <p>Your loan application for <strong>₦${loan.amount}</strong> has been received.</p>
       <p>We will review it and notify you shortly.</p>
-      <p style="color:#0d6efd; font-weight:bold;">Thank you for choosing Prime Finance.</p>
+      <p style="color:#0d6efd; font-weight:bold;">Thank you for choosing Prime Loan.</p>
     `;
     return this.sendEmail(
       user.email,
@@ -168,13 +156,13 @@ export class NotificationService {
   static async sendWelcomeEmail(to: string, firstName: string) {
     const html = `
       <div style="font-family: Arial, sans-serif; padding:20px;">
-        <h2 style="color:#2563eb;">Welcome to Prime Finance 🎉</h2>
+        <h2 style="color:#2563eb;">Welcome to Prime Loan 🎉</h2>
         <p>Hi <b>${firstName}</b>,</p>
         <p>We’re excited to have you on board. Your financial journey starts here.</p>
-        <p style="margin-top:20px;">Best regards,<br/>Prime Finance Team</p>
+        <p style="margin-top:20px;">Best regards,<br/>Prime Loan Team</p>
       </div>
     `;
-    return this.sendEmail(to, "Welcome to Prime Finance", html);
+    return this.sendEmail(to, "Welcome to Prime Loan", html);
   }
 
   static async sendAdminNewUserAlert(to: string, firstName: string, lastName: string) {
@@ -182,7 +170,7 @@ export class NotificationService {
       <div style="font-family: Arial, sans-serif; padding:20px;">
         <h2 style="color:#2563eb;">New User SignUp 🎉</h2>
         <p>A new user has just signed up: <b>${firstName} ${lastName}</b></p>
-        <p style="margin-top:20px;">Best regards,<br/>Prime Finance System</p>
+        <p style="margin-top:20px;">Best regards,<br/>Prime Loan System</p>
       </div>
     `;
     return this.sendEmail(to, "New User SignUp", html);
@@ -194,10 +182,10 @@ export class NotificationService {
         <h2 style="color:#16a34a;">Login Alert ✅</h2>
         <p>Hi <b>${firstName}</b>,</p>
         <p>Your account was just accessed. If this wasn’t you, please reset your password immediately.</p>
-        <p style="margin-top:20px;">Stay safe,<br/>Prime Finance Security Team</p>
+        <p style="margin-top:20px;">Stay safe,<br/>Prime Loan Security Team</p>
       </div>
     `;
-    return this.sendEmail(to, "Login Alert – Prime Finance", html);
+    return this.sendEmail(to, "Login Alert – Prime Loan", html);
   }
 
   static async sendOtpEmail(to: string, firstName: string, pin: number) {
@@ -211,7 +199,7 @@ export class NotificationService {
         <p>This code is valid for the next 10 minutes. If you did not request a password reset, please ignore this email or contact our support team immediately.</p>
         <br /><br />
         <p>Stay secure,</p>
-        <p>Prime Finance Support Team</p>
+        <p>Prime Loan Support Team</p>
         <p>support@primefinance.live | primefinance.live</p>
       </div>
     `;
@@ -289,7 +277,7 @@ export class NotificationService {
       <p>Hi <strong>${user.user_metadata.first_name}</strong>,</p>
       <p>Your transfer of <strong>₦${amount}</strong> has been complete.</p>
       <p>Kindly visit your dashboard to view transaction details.</p>
-      <p style="color:#0d6efd; font-weight:bold;">Thank you for choosing Prime Finance.</p>
+      <p style="color:#0d6efd; font-weight:bold;">Thank you for choosing Prime Loan.</p>
     `;
     return this.sendEmail(
       user.email,
@@ -309,7 +297,7 @@ export class NotificationService {
       <p>Your wallet has been credited with ₦${amount} from ${originator_account_name}.</p>
       <p style="color:gray; font-weight:bold;">Reference: ${reference}</p>
       <p>Kindly visit your dashboard to view transaction details.</p>
-      <p style="color:#0d6efd; font-weight:bold;">Thank you for choosing Prime Finance.</p>
+      <p style="color:#0d6efd; font-weight:bold;">Thank you for choosing Prime Loan.</p>
     `;
     return this.sendEmail(
       user.email,
@@ -320,7 +308,7 @@ export class NotificationService {
   static async sendEscrowInvite(to: string, buyerName: string, amount: number, escrowLink: string) {
     const body = `
       <p>Hi there,</p>
-      <p><strong>${buyerName}</strong> has started a secured escrow transaction of <strong>₦${amount}</strong> with you on Prime Finance.</p>
+      <p><strong>${buyerName}</strong> has started a secured escrow transaction of <strong>₦${amount}</strong> with you on Prime Loan.</p>
       <p>To view the transaction and accept the funds, please sign up or log in using this email address.</p>
       <p><a href="${escrowLink}" style="background-color:#0d6efd; color:white; padding:10px 20px; text-decoration:none; border-radius:5px;">View Transaction</a></p>
       <p>Or copy this link: ${escrowLink}</p>

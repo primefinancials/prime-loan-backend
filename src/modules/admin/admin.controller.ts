@@ -200,7 +200,7 @@ export class AdminController {
         amount: transfer.amount,
         originator_account_name: `${user?.user_metadata?.first_name} ${user?.user_metadata?.surname}`,
         originator_account_number: transfer.fromAccount,
-        originator_bank: "VFD - Prime Finance",
+        originator_bank: "VFD - Prime Loan",
         originator_narration: transfer.naration || 'Transfer',
         reference: transfer.reference,
         session_id: transfer.traceId

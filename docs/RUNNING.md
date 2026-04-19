@@ -1,4 +1,4 @@
-# Prime Finance V2 - Running Guide
+# Prime Loan V2 - Running Guide
 
 ## Prerequisites
 

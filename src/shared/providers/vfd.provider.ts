@@ -244,18 +244,19 @@ export class VfdProvider {
   }
 
   async nameEnquiry(bankCode: string, accountNo: string) {
-    // Mapping to getBeneficiary for now as VFD structure implies recipient lookup
-    // Assuming 'inter' is the default context for name enquiry
     const response = await this.getBeneficiary(accountNo, bankCode, 'inter');
 
-    // Adapt response to expected format if needed
-    // The caller expects data.accountName
     if (response && response.data) {
+      const d = response.data as any;
+      // Try multiple field names known in VFD/Banking APIs
+      const resolvedName = d.accountName || d.name || d.client || d.account_name || 
+        (d.firstname && d.lastname ? `${d.firstname} ${d.lastname}` : null);
+      
       return {
         ...response,
         data: {
           ...response.data,
-          accountName: response.data.name
+          accountName: resolvedName
         }
       }
     }

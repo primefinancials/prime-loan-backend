@@ -63,7 +63,7 @@ export class DefaulterCallWorker {
                 repayment_date: { $lt: now.toISOString() } // assuming string ISO date in usage
             });
 
-            const message = config.message || "This is a reminder from Prime Finance about your overdue loan.";
+            const message = config.message || "This is a reminder from Prime Loan about your overdue loan.";
 
             logger.info(`Found ${overdueLoans.length} overdue loans`);
             await WorkerControlService.reportActivity('defaulter-call-worker', `Processing ${overdueLoans.length} overdue loans`);

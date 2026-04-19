@@ -63,7 +63,12 @@ export class PayBetaProvider {
   private apiKey: string;
 
   constructor() {
-    this.baseUrl = process.env.PAYBETA_API_URL || 'https://api.paybeta.ng/v2';
+    let envUrl = process.env.PAYBETA_API_URL || 'https://api.paybeta.ng';
+    if (!envUrl.endsWith('/v2') && !envUrl.endsWith('/v2/')) {
+      envUrl = envUrl.replace(/\/$/, '') + '/v2';
+    }
+    this.baseUrl = envUrl;
+    
     this.apiKey = process.env.PAYBETA_API_KEY || '';
     if (!this.apiKey) {
       logger.warn('PAYBETA_API_KEY not configured');
@@ -87,6 +92,9 @@ export class PayBetaProvider {
         ...(data ? { data } : {})
       };
       const res = await axios(config);
+      if (res.data && (res.data.status === 'failed' || res.data.status === 'false' || res.data.status === false)) {
+        throw new Error(res.data.message || res.data.error || 'Paybeta Error');
+      }
       return res.data as T;
     } catch (error) {
       const axErr = error as AxiosError;

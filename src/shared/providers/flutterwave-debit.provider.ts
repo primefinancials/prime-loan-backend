@@ -122,7 +122,7 @@ export class FlutterwaveDebitProvider {
           email: params.email,
           tx_ref: params.txRef,
           currency: 'NGN',
-          narration: params.narration || 'Prime Finance Auto-Debit',
+          narration: params.narration || 'Prime Loan Auto-Debit',
         },
         { headers: this.headers() }
       );

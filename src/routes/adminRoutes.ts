@@ -289,8 +289,11 @@ router.put("/settings/voice-call-provider", verifyJwtRest(), async (req: any, re
     if (!['termii', 'africastalking'].includes(provider)) {
       return res.status(400).json({ status: 'error', message: 'Invalid provider. Use termii or africastalking.' });
     }
-    const settings = await SettingsService.updateSettings(adminId, { voiceCallProvider: provider });
-    res.json({ status: 'success', data: { voiceCallProvider: settings.voiceCallProvider } });
+    const settings = await SettingsService.updateSettings(adminId, { 
+      voiceCallProvider: provider,
+      voiceCallConfig: { provider } as any
+    });
+    res.json({ status: 'success', data: { voiceCallProvider: settings.voiceCallProvider, voiceCallConfig: settings.voiceCallConfig } });
   } catch (err: any) {
     res.status(500).json({ status: 'error', message: err.message });
   }

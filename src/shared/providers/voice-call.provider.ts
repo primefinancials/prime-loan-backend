@@ -51,7 +51,7 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
   tier1: 'Dear {name}, your loan of {amount} naira was due on {date}. Please make payment to avoid penalties. Thank you.',
   tier2: 'Urgent reminder. Your loan is {days} days overdue. A daily penalty is being applied. Your current outstanding balance is {outstanding} naira. Please pay now to protect your credit standing.',
   tier3: 'Final warning. Failure to pay {outstanding} naira within 48 hours may result in your account being flagged. This will affect your future loan eligibility and credit score. Pay immediately.',
-  tier4: 'Notice. Your Prime Finance account has been flagged for review. Non-payment will lower your credit standing and limit future loan access. Outstanding balance: {outstanding} naira. Contact support immediately.',
+  tier4: 'Notice. Your Prime Loan account has been flagged for review. Non-payment will lower your credit standing and limit future loan access. Outstanding balance: {outstanding} naira. Contact support immediately.',
 };
 
 /**
@@ -109,7 +109,7 @@ export class TermiiVoiceProvider implements IVoiceCallProvider {
     this.apiKey = process.env.TERMII_API_KEY || '';
     this.senderIds = senderIds?.length
       ? senderIds
-      : [process.env.TERMII_SENDER_ID || 'PrimeFinance'];
+      : [process.env.TERMII_SENDER_ID || 'Prime Loan'];
 
     if (!this.apiKey) {
       logger.warn('TERMII_API_KEY not configured');

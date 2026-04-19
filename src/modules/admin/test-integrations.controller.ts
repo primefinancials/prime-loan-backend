@@ -22,7 +22,7 @@ export class TestIntegrationsController {
       const { phone, message, provider: providerName } = req.body;
       if (!phone) return res.status(400).json({ status: 'failed', message: 'Phone number is required' });
 
-      const testMessage = message || 'This is a test call from Prime Finance admin panel.';
+      const testMessage = message || 'This is a test call from Prime Loan admin panel.';
 
       let voiceProvider;
       if (providerName === 'termii') {
@@ -65,7 +65,7 @@ export class TestIntegrationsController {
       const { phone, message } = req.body;
       if (!phone) return res.status(400).json({ status: 'failed', message: 'Phone number is required' });
 
-      const testMessage = message || 'This is a test SMS from Prime Finance admin panel.';
+      const testMessage = message || 'This is a test SMS from Prime Loan admin panel.';
       const provider = new TermiiVoiceProvider();
 
       logger.info({ phone }, 'Admin test SMS initiated');
