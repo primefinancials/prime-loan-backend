@@ -92,6 +92,8 @@ export class PayBetaProvider {
         ...(data ? { data } : {})
       };
       const res = await axios(config);
+      
+      // PayBeta sometimes returns status false/failed in a 200 OK response
       if (res.data && (res.data.status === 'failed' || res.data.status === 'false' || res.data.status === false)) {
         throw new Error(res.data.message || res.data.error || 'Paybeta Error');
       }
@@ -99,9 +101,15 @@ export class PayBetaProvider {
     } catch (error) {
       const axErr = error as AxiosError;
       const respData = axErr.response?.data as any;
+      const statusCode = axErr.response?.status;
       const actualMessage = respData?.message || respData?.error || axErr.message;
-      logger.error({ path, status: axErr.response?.status, data: respData }, 'PayBeta request failed');
-      throw new Error(actualMessage);
+      
+      logger.error({ path, status: statusCode, data: respData }, 'PayBeta request failed');
+      
+      // Attach status code to error for easier handling in callers
+      const err = new Error(actualMessage) as any;
+      err.status = statusCode;
+      throw err;
     }
   }
 
@@ -127,7 +135,17 @@ export class PayBetaProvider {
   }
 
   async getDataBundles(service: string): Promise<any> {
-    return this.request<any>('POST', '/data-bundle/list', { service });
+    try {
+      // Primary endpoint
+      return await this.request<any>('POST', '/data-bundle/list', { service });
+    } catch (err: any) {
+      // Fallback if /data-bundle/list is 404
+      if (err.status === 404) {
+        logger.info({ service }, 'Primary data-bundle/list failed with 404, trying fallback /data/list');
+        return await this.request<any>('POST', '/data/list', { service });
+      }
+      throw err;
+    }
   }
 
   async buyData(params: {

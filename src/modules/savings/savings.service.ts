@@ -171,6 +171,7 @@ export class SavingsService {
           };
 
           const providerRes = await vfdProvider.transfer(transferReq);
+          logger.info({ reference: trxn.reference, vfdStatus: providerRes.status, vfdMessage: providerRes.message }, 'VFD Savings deposit transfer result');
 
           if (providerRes.status !== "00") {
             await TransferService.failTransfer(trxn.reference);
@@ -178,6 +179,7 @@ export class SavingsService {
           }
 
           trxnRes = await TransferService.completeTransfer(trxn.reference, "savings-deposit");
+          logger.info({ reference: trxn.reference, traceId: trxnRes?.traceId }, 'Savings deposit transfer completed locally');
         }
 
         // Create the plan
@@ -733,9 +735,10 @@ export class SavingsService {
   ): Promise<{ deductAmount: number, loanDeduction?: { loanId: string; deducted: number; remaining: number; loanOutstanding: number } }> {
     try {
       // Find the oldest active loan with outstanding > 0
+      // Include both 'accepted' and 'processing' to catch loans being disbursed
       const activeLoan = await Loan.findOne({
         userId,
-        status: 'accepted',
+        status: { $in: ['accepted', 'processing'] },
         outstanding: { $gt: 0 }
       }).sort({ createdAt: 1 }).session(session);
 

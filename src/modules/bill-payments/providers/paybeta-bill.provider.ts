@@ -22,9 +22,54 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
     this.pb = new PayBetaProvider();
   }
 
+  /* ---------- Compatibility Layer / Service Resolver ---------- */
+
+  /**
+   * Resolves a biller/service name from either a standard name or a Flutterwave ID.
+   */
+  private async resolveService(id: string, category: string): Promise<string> {
+    const fwMap: Record<string, string> = {
+      // Airtime/Data
+      'BIL108': 'mtn',
+      'BIL110': 'airtel',
+      'BIL109': 'glo',
+      'BIL111': '9mobile',
+      // TV
+      'BIL121': 'dstv',
+      'BIL122': 'gotv',
+      'BIL123': 'startimes',
+      // Power (common ones)
+      'BIL112': 'ikeja_electric',
+      'BIL113': 'eko_electric',
+      'BIL114': 'kano_electric',
+      'BIL115': 'portharcourt_electric',
+      'BIL116': 'jos_electric',
+      'BIL117': 'ibadan_electric',
+      'BIL118': 'kaduna_electric',
+      'BIL119': 'enugu_electric',
+      'BIL120': 'abuja_electric',
+    };
+
+    const mapped = fwMap[id.toUpperCase()];
+    if (mapped) return mapped;
+
+    // If not in map, try to detect dynamically from the providers list
+    try {
+      const billers = await this.getBillers(category);
+      // Try exact match on ID or partial match on name
+      const found = billers.find(b => b.id === id.toLowerCase() || b.name.toLowerCase().includes(id.toLowerCase()));
+      if (found) return found.id;
+    } catch (err) {
+      logger.warn({ id, category }, 'Dynamic service detection failed');
+    }
+
+    return id.toLowerCase();
+  }
+
   async purchaseAirtime(params: AirtimePurchaseParams): Promise<BillProviderResult> {
+    const service = await this.resolveService(params.network || 'MTN', 'airtime');
     const resp = await this.pb.buyAirtime({
-      service: (params.network || 'MTN').toLowerCase(),
+      service,
       phoneNumber: params.phone,
       amount: params.amount,
       reference: params.reference
@@ -33,8 +78,9 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
   }
 
   async purchaseData(params: DataPurchaseParams): Promise<BillProviderResult> {
+    const service = await this.resolveService(params.network || 'MTN', 'data');
     const resp = await this.pb.buyData({
-      service: (params.network || 'MTN').toLowerCase(),
+      service,
       phoneNumber: params.phone,
       amount: params.amount,
       code: params.bundleCode,
@@ -44,17 +90,19 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
   }
 
   async purchaseTV(params: TVPurchaseParams): Promise<BillProviderResult> {
+    const service = await this.resolveService(params.provider, 'tv');
+    
     // First validate to get customer name
     let customerName = 'Customer';
     try {
-      const validation = await this.pb.validateTv(params.provider, params.smartcardNo);
+      const validation = await this.pb.validateTv(service, params.smartcardNo);
       customerName = validation?.data?.customerName || validation?.data?.name || 'Customer';
     } catch (err) {
       logger.warn({ error: (err as Error).message }, 'TV validation failed, proceeding with default name');
     }
 
     const resp = await this.pb.buyTv({
-      service: params.provider,
+      service,
       smartCardNumber: params.smartcardNo,
       amount: params.amount,
       packageCode: params.bouquetCode,
@@ -65,11 +113,13 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
   }
 
   async purchasePower(params: PowerPurchaseParams): Promise<BillProviderResult> {
+    const service = await this.resolveService(params.provider, 'power');
+    
     // Validate meter first
     let customerName = 'Customer';
     let customerAddress = '';
     try {
-      const validation = await this.pb.validateMeter(params.provider, params.meterNo, params.meterType);
+      const validation = await this.pb.validateMeter(service, params.meterNo, params.meterType);
       customerName = validation?.data?.customerName || validation?.data?.name || 'Customer';
       customerAddress = validation?.data?.customerAddress || validation?.data?.address || '';
     } catch (err) {
@@ -77,7 +127,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
     }
 
     const resp = await this.pb.buyElectricity({
-      service: params.provider,
+      service,
       meterNumber: params.meterNo,
       meterType: params.meterType,
       amount: params.amount,
@@ -169,25 +219,36 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
 
   async getProducts(billerId: string): Promise<BillProduct[]> {
     try {
+      const service = billerId.toLowerCase();
+      
       // For data bundles and TV bouquets, we can fetch products
-      const dataBundles = await this.pb.getDataBundles(billerId).catch(() => null);
+      // Try Data first
+      const dataBundles = await this.pb.getDataBundles(service).catch(() => null);
       if (dataBundles?.data) {
-        const items = Array.isArray(dataBundles.data) ? dataBundles.data : (dataBundles.data.packages || []);
+        // PayBeta can return data: [...] OR data: { packages: [...] }
+        const items = Array.isArray(dataBundles.data) 
+          ? dataBundles.data 
+          : (dataBundles.data.packages || dataBundles.data.bundles || []);
+          
         if (items.length > 0) {
           return items.map((b: any) => ({
-            id: b.code || b.id || '',
-            name: b.name || b.description || '',
+            id: b.code || b.id || b.datacode || '',
+            name: b.name || b.description || b.plan || '',
             billerId,
-            amount: Number(b.amount || b.price) || 0,
+            amount: Number(b.amount || b.price || b.fee) || 0,
             description: b.description || b.name || '',
             duration: this.parseDuration(b.name || b.description || '')
           }));
         }
       }
 
-      const tvBouquets = await this.pb.getTvBouquets(billerId).catch(() => null);
+      // Try TV
+      const tvBouquets = await this.pb.getTvBouquets(service).catch(() => null);
       if (tvBouquets?.data) {
-        const items = Array.isArray(tvBouquets.data) ? tvBouquets.data : (tvBouquets.data.packages || []);
+        const items = Array.isArray(tvBouquets.data) 
+          ? tvBouquets.data 
+          : (tvBouquets.data.packages || tvBouquets.data.bouquets || []);
+          
         if (items.length > 0) {
           return items.map((b: any) => ({
             id: b.code || b.packageCode || b.id || '',
