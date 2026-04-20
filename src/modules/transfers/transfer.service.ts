@@ -86,6 +86,21 @@ export class TransferService {
         if (user && (Number(user.user_metadata?.wallet || 0) < request.amount)) {
           throw new Error("Insufficient wallet balance");
         }
+        // Enforce Idempotency
+        if (request.idempotencyKey) {
+          const fullKey = `${type}:${request.idempotencyKey}`;
+          const existing = await Transfer.findOne({ idempotencyKey: fullKey }).session(session);
+          if (existing) {
+            logger.info({ fullKey, reference: existing.reference }, 'Idempotent transfer collision handled');
+            return {
+              traceId: existing.traceId,
+              status: existing.status as any,
+              transferId: String(existing._id),
+              reference: existing.reference
+            };
+          }
+        }
+
         // Create transfer record
         const [transfer] = await Transfer.create([{
           userId: request.userId,
@@ -188,6 +203,9 @@ export class TransferService {
             }
             await user.save({ session });
 
+            // Clear VFD cache for receiver
+            await TransferService.vfdProvider.clearCache(transfer.toAccount);
+
             const fromuser = await User.findOne({ "user_metadata.accountNo": transfer.fromAccount }).session(session);
             const originatorName = fromuser ? `${fromuser.user_metadata.first_name || ""} ${fromuser.user_metadata.surname || ""}`.trim() : "Prime Loan";
 
@@ -215,6 +233,9 @@ export class TransferService {
         if (user) {
           // Sync sender wallet balance with VFD source of truth
           try {
+            // Clear VFD cache for sender
+            await TransferService.vfdProvider.clearCache(transfer.fromAccount);
+
             const accountInfo = await TransferService.vfdProvider.getAccountInfo(transfer.fromAccount);
             if (accountInfo?.data?.accountBalance) {
               user.user_metadata.wallet = String(accountInfo.data.accountBalance);

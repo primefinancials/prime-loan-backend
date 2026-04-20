@@ -219,8 +219,8 @@ export class VfdProvider {
     const response = await this.request<AccountInfoResponse>({ method: "GET", url });
     
     if (response?.status === "Success" || response?.data) {
-      // Cache for 10 minutes
-      VfdProvider.accountInfoCache.set(cacheKey, { data: response, expires: Date.now() + 10 * 60 * 1000 });
+      // Cache for 10 seconds (enough for concurrent requests, but fresh for UI)
+      VfdProvider.accountInfoCache.set(cacheKey, { data: response, expires: Date.now() + 10 * 1000 });
     }
     
     return response;
@@ -228,6 +228,14 @@ export class VfdProvider {
 
   async getPrimeAccountInfo() {
     return this.getAccountInfo();
+  }
+
+  /**
+   * Explicitly clear cache for an account (useful after transfers)
+   */
+  async clearCache(accountNumber?: string) {
+    const cacheKey = accountNumber || 'prime';
+    VfdProvider.accountInfoCache.delete(cacheKey);
   }
 
   /* ---------- BENEFICIARY ---------- */
