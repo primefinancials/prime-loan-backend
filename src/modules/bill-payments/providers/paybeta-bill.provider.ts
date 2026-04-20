@@ -303,6 +303,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
           if (items.length > 0) {
             return items.map((b: any) => ({
               id: b.code || b.id || b.datacode || '',
+              item_code: b.code || b.id || b.datacode || '', // Alias for frontend compatibility
               name: b.name || b.description || b.plan || '',
               billerId,
               amount: Number(b.amount || b.price || b.fee) || 0,
@@ -332,6 +333,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
           if (items.length > 0) {
             return items.map((b: any) => ({
               id: b.code || b.packageCode || b.id || '',
+              item_code: b.code || b.packageCode || b.id || '', // Alias for frontend compatibility
               name: b.name || b.description || '',
               billerId,
               amount: Number(b.amount || b.price) || 0,
@@ -345,15 +347,15 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
       // Try Power (Electricity) - Return Meter Types as products
       if (category === 'power') {
         return [
-          { id: 'prepaid', name: 'Prepaid Meter', billerId, amount: 0, description: 'Pay for prepaid meter' },
-          { id: 'postpaid', name: 'Postpaid Meter', billerId, amount: 0, description: 'Pay for postpaid meter' }
+          { id: 'prepaid', item_code: 'prepaid', name: 'Prepaid Meter', billerId, amount: 0, description: 'Pay for prepaid meter' },
+          { id: 'postpaid', item_code: 'postpaid', name: 'Postpaid Meter', billerId, amount: 0, description: 'Pay for postpaid meter' }
         ];
       }
 
       // Try Betting - Often just requires the provider slug and customer ID
       if (category === 'betting') {
         return [
-          { id: 'fund', name: 'Fund Wallet', billerId, amount: 0, description: 'Top up betting account' }
+          { id: 'fund', item_code: 'fund', name: 'Fund Wallet', billerId, amount: 0, description: 'Top up betting account' }
         ];
       }
 

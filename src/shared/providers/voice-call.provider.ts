@@ -172,8 +172,7 @@ export class TermiiVoiceProvider implements IVoiceCallProvider {
         from: senderId,
         sms: message,
         type: 'plain',
-        channel: 'dnd',
-        country_code: '234'
+        channel: 'dnd'
       }, {
         headers: { 'Content-Type': 'application/json' }
       });
