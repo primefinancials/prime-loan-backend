@@ -7,7 +7,7 @@ import {
   BillCategory, BillBiller, BillProduct,
   BillProviderResult, BillValidationResult,
   AirtimePurchaseParams, DataPurchaseParams,
-  TVPurchaseParams, PowerPurchaseParams, ValidationParams
+  TVPurchaseParams, PowerPurchaseParams, BettingPurchaseParams, ValidationParams
 } from './bill-provider.interface';
 import { PayBetaProvider, PayBetaResponse } from '../../../shared/providers/paybeta.provider';
 import pino from 'pino';
@@ -26,6 +26,11 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
 
   /**
    * Resolves a biller/service name from either a standard name or a Flutterwave ID.
+   * Maps to PayBeta's specific slug formats:
+   * - Airtime: provider_vtu (underscore)
+   * - Data: provider_data (underscore)
+   * - TV: provider (slug, like 'dstv')
+   * - Power/Gaming: hyphenated slugs (like 'ikeja-electric')
    */
   private async resolveService(id: string, category: string): Promise<string> {
     const fwMap: Record<string, string> = {
@@ -38,32 +43,45 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
       'BIL121': 'dstv',
       'BIL122': 'gotv',
       'BIL123': 'startimes',
-      // Power (common ones)
-      'BIL112': 'ikeja_electric',
-      'BIL113': 'eko_electric',
-      'BIL114': 'kano_electric',
-      'BIL115': 'portharcourt_electric',
-      'BIL116': 'jos_electric',
-      'BIL117': 'ibadan_electric',
-      'BIL118': 'kaduna_electric',
-      'BIL119': 'enugu_electric',
-      'BIL120': 'abuja_electric',
+      // Power
+      'BIL112': 'ikeja-electric',
+      'BIL113': 'eko-electric',
+      'BIL114': 'kano-electric',
+      'BIL115': 'port-harcourt-electric',
+      'BIL116': 'jos-electric',
+      'BIL117': 'ibadan-electric',
+      'BIL118': 'kaduna-electric',
+      'BIL119': 'enugu-electric',
+      'BIL120': 'abuja-electric',
+      'BIL124': 'benin-electric',
+      'BIL125': 'yola-electric',
     };
 
-    const mapped = fwMap[id.toUpperCase()];
-    if (mapped) return mapped;
-
-    // If not in map, try to detect dynamically from the providers list
-    try {
-      const billers = await this.getBillers(category);
-      // Try exact match on ID or partial match on name
-      const found = billers.find(b => b.id === id.toLowerCase() || b.name.toLowerCase().includes(id.toLowerCase()));
-      if (found) return found.id;
-    } catch (err) {
-      logger.warn({ id, category }, 'Dynamic service detection failed');
+    let mapped = fwMap[id.toUpperCase()];
+    if (!mapped) {
+      // If not in map, try to detect dynamically from the providers list
+      try {
+        const billers = await this.getBillers(category);
+        const found = billers.find(b => b.id === id.toLowerCase() || b.name.toLowerCase().includes(id.toLowerCase()));
+        if (found) mapped = found.id;
+      } catch (err) {
+        logger.warn({ id, category }, 'Dynamic service detection failed');
+      }
     }
 
-    return id.toLowerCase();
+    if (!mapped) mapped = id.toLowerCase();
+
+    // Final formatting according to PayBeta V2 spec
+    if (category === 'airtime') {
+      // Must be mtn_vtu, etc.
+      return mapped.replace(/-/g, '_').split('_')[0] + '_vtu';
+    }
+    if (category === 'data') {
+      // Must be mtn_data, etc.
+      return mapped.replace(/-/g, '_').split('_')[0] + '_data';
+    }
+
+    return mapped.replace(/_/g, '-'); // Electricity/Gaming use hyphens
   }
 
   async purchaseAirtime(params: AirtimePurchaseParams): Promise<BillProviderResult> {
@@ -138,6 +156,28 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
     return this.normalizeResult(resp, params.reference);
   }
 
+  async purchaseBetting(params: BettingPurchaseParams): Promise<BillProviderResult> {
+    const service = await this.resolveService(params.provider, 'betting');
+    
+    // Validate gaming account first
+    let customerName = 'Customer';
+    try {
+      const validation = await this.pb.validateGaming(service, params.customerId);
+      customerName = validation?.data?.customerName || validation?.data?.name || 'Customer';
+    } catch (err) {
+      logger.warn({ error: (err as Error).message }, 'Gaming validation failed, proceeding with default name');
+    }
+
+    const resp = await this.pb.buyGaming({
+      service,
+      customerId: params.customerId,
+      amount: params.amount,
+      customerName,
+      reference: params.reference
+    });
+    return this.normalizeResult(resp, params.reference);
+  }
+
   async validateAccount(params: ValidationParams): Promise<BillValidationResult> {
     try {
       let result: any;
@@ -206,7 +246,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
 
       const items = providers?.data || [];
       return items.map((p: any) => ({
-        id: p.name?.toLowerCase?.() || p.id || '',
+        id: p.slug || p.id || p.name?.toLowerCase?.() || '',
         name: p.name || '',
         categoryId,
         logo: p.logo || undefined
@@ -318,14 +358,20 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
     }
     const status = (rawStatus || '').toLowerCase();
 
+    // Map PayBeta statuses to internal statuses
     const isSuccess = status === 'successful' || status === 'success';
     const isPending = status === 'pending' || status === 'processing';
+    const isFailed = status === 'failed' || status === 'error' || status === 'false' || status === '0';
+
+    let normalizedStatus: 'success' | 'pending' | 'failed' = 'failed';
+    if (isSuccess) normalizedStatus = 'success';
+    else if (isPending) normalizedStatus = 'pending';
 
     return {
       success: isSuccess,
       reference: resp?.data?.reference || reference,
-      status: isSuccess ? 'success' : isPending ? 'pending' : 'failed',
-      message: resp?.message || '',
+      status: normalizedStatus,
+      message: resp?.message || resp?.error || '',
       meta: resp?.data || {}
     };
   }

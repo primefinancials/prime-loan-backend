@@ -142,51 +142,45 @@ export async function processTransaction({
             billPayment,
             message: "Bill payment completed successfully",
           };
+        } else if (isPending) {
+          // 5️⃣ Mark as pending
+          billPayment.status = "PENDING";
+          billPayment.meta = {
+            ...billPayment.meta,
+            txnResponse,
+            providerResponse,
+          };
+          await billPayment.save({ session });
+
+          // Ledger update for pending (some systems hold funds)
+          await LedgerService.createDoubleEntry(
+            traceId,
+            `user_wallet:${userId}`,
+            `bill-payment:${serviceType}`,
+            amount,
+            "bill-payment",
+            {
+              userId,
+              subtype: serviceType,
+              idempotencyKey,
+              session,
+              meta: {
+                billPaymentId: billPayment._id,
+                transactionId: txnResponse.reference,
+              },
+            }
+          );
+
+          return {
+            traceId,
+            status: "PENDING",
+            billPayment,
+            message: "Bill payment is pending",
+          };
         } else {
-          if (!isPending && !isSuccess && providerStatus !== "failed" && providerStatus !== "error") {
-            // 4️⃣ Complete transaction (mark completed)
-            await TransferService.completeTransfer(
-              txnResponse.reference,
-              "bill-payment"
-            );
-
-            billPayment.meta = {
-              ...billPayment.meta,
-              txnResponse,
-              providerResponse,
-            };
-            await billPayment.save({ session });
-
-            // Ledger update
-            await LedgerService.createDoubleEntry(
-              traceId,
-              `user_wallet:${userId}`,
-              `bill-payment:${serviceType}`,
-              amount,
-              "bill-payment",
-              {
-                userId,
-                subtype: serviceType,
-                idempotencyKey,
-                session,
-                meta: {
-                  billPaymentId: billPayment._id,
-                  transactionId: txnResponse.reference,
-                },
-              }
-            );
-
-            return {
-              traceId,
-              status: "PENDING",
-              billPayment,
-              message: "Bill payment is pending",
-            };
-          }
-
-          // ❌ Provider failed → trigger refund
+          // ❌ Provider explicitly failed or returned unknown status
           await TransferService.failTransfer(txnResponse?.reference || "");
-          throw new Error(providerResponse.message || "Provider transaction failed");
+          throw new Error(providerResponse.message || providerResponse.error || "Provider transaction failed");
         }
       } catch (err: any) {
         console.log("Provider Error:", err.message);
