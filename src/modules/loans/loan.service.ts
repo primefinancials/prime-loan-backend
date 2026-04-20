@@ -78,6 +78,7 @@ export interface RepayParams {
   mandatory?: number;
   idempotencyKey?: string;
   internalOnly?: boolean;
+  skipBalanceCheck?: boolean;
   session?: any;
 }
 
@@ -273,19 +274,25 @@ export class LoanService {
     const percentage = settings.loan?.interestPercentage || 0;
 
     // Build and persist loan record
+    // Destructure to exclude fields that should only be set during disbursement
+    const { repayment_amount: _ra, outstanding: _oa, ...safeParams } = params as any;
+
     const loanPayload: Partial<ILoan> = {
-      ...params,
+      ...safeParams,
       percentage,
       userId: params.userId,
       requested_amount: params.amount,
-      amount: params.amount, // store Naira
+      amount: params.amount, // store Naira (requested amount; updated to disbursed amount on disbursal)
       loan_date: loanDate.toISOString(),
       repayment_date: repaymentDate.toISOString(),
       loan_payment_status: "not-started",
       credit_message: mono?.error || "available",
       credit_score: creditScoreObj,
       status: params.status as LOANSTATUS || "pending",
-      repayment_history: []
+      repayment_history: [],
+      // These are explicitly NOT set at creation — they are calculated during disbursement
+      outstanding: 0,
+      repayment_amount: 0,
     };
 
     const created = await Loan.create(loanPayload);
@@ -362,11 +369,20 @@ export class LoanService {
         if (existingTransfer) {
           if (existingTransfer.status === "COMPLETED" && loan.status !== "accepted") {
             // "Make it Complete" - Provider succeeded previously but DB didn't finish.
+            // RE-CALCULATE outstanding even on recovery to ensure accuracy based on actual disbursement
+            const duration = loan.duration || 21;
+            const settings = await SettingsService.getSettings();
+            const fee = settings.loan?.serviceFee || 0;
+            const percentage = settings.loan?.interestPercentage || 0;
+            const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (percentage / 100));
+
             loan.status = "accepted";
             loan.amount = params.amount;
+            loan.outstanding = total;
+            loan.repayment_amount = total;
             loan.loan_payment_status = "not-started";
             await loan.save({ session });
-            logger.info({ loanId: loan._id }, "Loan recovery: marked as accepted from previous success");
+            logger.info({ loanId: loan._id, total }, "Loan recovery: marked as accepted and recalibrated outstanding");
           }
           return { loan, transfer: existingTransfer, reused: true };
         }
@@ -539,7 +555,8 @@ export class LoanService {
       // Ensure user has funds (provider source of truth)
       const userBalance = parseFloat(userAcc.accountBalance || "0");
       let repayAmount = Number(params.amount);
-      if (userBalance < repayAmount) {
+
+      if (userBalance < repayAmount && !params.skipBalanceCheck) {
         if (userBalance <= 0) throw new BadRequestError("Insufficient funds to repay loan");
         else repayAmount = userBalance;
       }

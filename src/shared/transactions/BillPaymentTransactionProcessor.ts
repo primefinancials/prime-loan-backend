@@ -98,7 +98,7 @@ export async function processTransaction({
         const providerStatusRaw = providerResponse?.status || "";
         const providerStatus = providerStatusRaw.toString().toLowerCase();
 
-        const isSuccess = providerStatus === "success" || providerStatus === "successful";
+        const isSuccess = providerStatus === "success" || providerStatus === "successful" || providerStatus === "completed" || providerResponse?.success === true;
         const isPending = providerStatus === "pending" || providerStatus === "processing";
 
         if (isSuccess) {

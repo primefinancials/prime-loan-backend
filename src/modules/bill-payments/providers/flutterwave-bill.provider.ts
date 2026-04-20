@@ -214,10 +214,12 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
 
   private normalizeResult(resp: any, reference: string): BillProviderResult {
     const status = resp?.status?.toLowerCase?.() || '';
+    const isSuccess = status === 'success' || status === 'successful';
+    const isPending = status === 'pending';
     return {
-      success: status === 'success',
+      success: isSuccess,
       reference,
-      status: status === 'success' ? 'COMPLETED' : status === 'pending' ? 'PENDING' : 'FAILED',
+      status: isSuccess ? 'success' : isPending ? 'pending' : 'failed',
       message: resp?.message || '',
       meta: resp?.data || resp
     };
