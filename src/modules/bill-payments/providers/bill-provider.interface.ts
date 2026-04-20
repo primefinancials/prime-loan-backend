@@ -27,6 +27,7 @@ export interface BillProduct {
   amount: number;
   description?: string;
   duration?: string; // e.g. "7 days", "30 days", "1 month"
+  item_code?: string; // Legacy field for frontend compatibility
 }
 
 export interface BillProviderResult {
