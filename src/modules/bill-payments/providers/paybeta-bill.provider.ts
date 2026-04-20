@@ -32,6 +32,30 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
    * - TV: provider (slug, like 'dstv')
    * - Power/Gaming: hyphenated slugs (like 'ikeja-electric')
    */
+  private detectCategory(id: string): string {
+    const uppercased = id.toUpperCase();
+    if (['BIL108', 'BIL109', 'BIL110', 'BIL111'].includes(uppercased)) {
+      return 'airtime'; // Note: Airtime and Data share these codes, but usually handled as category 'data' for products
+    }
+    if (['BIL121', 'BIL122', 'BIL123', 'BIL126'].includes(uppercased)) {
+      return 'tv';
+    }
+    if (uppercased.startsWith('BIL11') || uppercased.startsWith('BIL12')) {
+      // BIL112-BIL120 and BIL124-125 are Power
+      return 'power';
+    }
+    
+    // Simple heuristic for raw names/slugs
+    const lower = id.toLowerCase();
+    if (lower.includes('vtu') || lower.includes('airtime')) return 'airtime';
+    if (lower.includes('data')) return 'data';
+    if (lower.includes('dstv') || lower.includes('gotv') || lower.includes('startimes') || lower.includes('tv')) return 'tv';
+    if (lower.includes('electric') || lower.includes('meter') || lower.includes('diso')) return 'power';
+    if (lower.includes('bet') || lower.includes('king') || lower.includes('gaming')) return 'betting';
+    
+    return 'unknown';
+  }
+
   private async resolveService(id: string, category: string): Promise<string> {
     const fwMap: Record<string, string> = {
       // Airtime/Data
@@ -43,6 +67,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
       'BIL121': 'dstv',
       'BIL122': 'gotv',
       'BIL123': 'startimes',
+      'BIL126': 'showmax',
       // Power
       'BIL112': 'ikeja-electric',
       'BIL113': 'eko-electric',
@@ -262,44 +287,56 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
 
   async getProducts(billerId: string): Promise<BillProduct[]> {
     try {
+      const category = this.detectCategory(billerId);
+      
       // Try Data Bundles
-      const dataService = await this.resolveService(billerId, 'data');
-      const dataBundles = await this.pb.getDataBundles(dataService).catch(() => null);
-      if (dataBundles?.data) {
-        // PayBeta can return data: [...] OR data: { packages: [...] }
-        const items = Array.isArray(dataBundles.data) 
-          ? dataBundles.data 
-          : (dataBundles.data.packages || dataBundles.data.bundles || []);
-          
-        if (items.length > 0) {
-          return items.map((b: any) => ({
-            id: b.code || b.id || b.datacode || '',
-            name: b.name || b.description || b.plan || '',
-            billerId,
-            amount: Number(b.amount || b.price || b.fee) || 0,
-            description: b.description || b.name || '',
-            duration: this.parseDuration(b.name || b.description || '')
-          }));
+      if (category === 'data' || category === 'airtime' || category === 'unknown') {
+        const dataService = await this.resolveService(billerId, 'data');
+        const dataBundles = await this.pb.getDataBundles(dataService).catch(() => null);
+        if (dataBundles?.data) {
+          const items = Array.isArray(dataBundles.data) 
+            ? dataBundles.data 
+            : (dataBundles.data.packages || dataBundles.data.bundles || []);
+            
+          if (items.length > 0) {
+            return items.map((b: any) => ({
+              id: b.code || b.id || b.datacode || '',
+              name: b.name || b.description || b.plan || '',
+              billerId,
+              amount: Number(b.amount || b.price || b.fee) || 0,
+              description: b.description || b.name || '',
+              duration: this.parseDuration(b.name || b.description || '')
+            }));
+          }
         }
       }
 
       // Try TV
-      const tvService = await this.resolveService(billerId, 'tv');
-      const tvBouquets = await this.pb.getTvBouquets(tvService).catch(() => null);
-      if (tvBouquets?.data) {
-        const items = Array.isArray(tvBouquets.data) 
-          ? tvBouquets.data 
-          : (tvBouquets.data.packages || tvBouquets.data.bouquets || []);
-          
-        if (items.length > 0) {
-          return items.map((b: any) => ({
-            id: b.code || b.packageCode || b.id || '',
-            name: b.name || b.description || '',
-            billerId,
-            amount: Number(b.amount || b.price) || 0,
-            description: b.description || b.name || '',
-            duration: this.parseDuration(b.name || b.description || '')
-          }));
+      if (category === 'tv' || category === 'unknown') {
+        const tvService = await this.resolveService(billerId, 'tv');
+        
+        let tvBouquets: any;
+        if (tvService === 'showmax') {
+          tvBouquets = await this.pb.getShowmaxBouquets().catch(() => null);
+        } else {
+          tvBouquets = await this.pb.getTvBouquets(tvService).catch(() => null);
+        }
+
+        if (tvBouquets?.data) {
+          const items = Array.isArray(tvBouquets.data) 
+            ? tvBouquets.data 
+            : (tvBouquets.data.packages || tvBouquets.data.bouquets || []);
+            
+          if (items.length > 0) {
+            return items.map((b: any) => ({
+              id: b.code || b.packageCode || b.id || '',
+              name: b.name || b.description || '',
+              billerId,
+              amount: Number(b.amount || b.price) || 0,
+              description: b.description || b.name || '',
+              duration: this.parseDuration(b.name || b.description || '')
+            }));
+          }
         }
       }
 
