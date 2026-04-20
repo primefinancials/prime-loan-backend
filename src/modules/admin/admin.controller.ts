@@ -1418,17 +1418,62 @@ export class AdminController {
 
       const { NotificationService } = require('../notifications/notification.service');
 
+      const results: { channel: string; attempted: number; succeeded: number; failed: number; errors: string[] }[] = [];
+
+      // Email broadcast
       if (channels.includes('email') && emails.length > 0) {
-        NotificationService.sendBulkEmail(emails, subject || 'Notification', message).catch(console.error);
-      }
-      if (channels.includes('sms') && phones.length > 0) {
-        phones.forEach((phone: any) => NotificationService.sendActionSms(phone, message));
-      }
-      if (channels.includes('call') && phones.length > 0) {
-        phones.forEach((phone: any) => NotificationService.sendVoiceCall(phone, message));
+        try {
+          await NotificationService.sendBulkEmail(emails, subject || 'Notification', message);
+          results.push({ channel: 'email', attempted: emails.length, succeeded: emails.length, failed: 0, errors: [] });
+        } catch (err: any) {
+          console.error('Email broadcast failed:', err.message);
+          results.push({ channel: 'email', attempted: emails.length, succeeded: 0, failed: emails.length, errors: [err.message] });
+        }
       }
 
-      res.json({ status: 'success', message: 'Broadcast initiated successfully' });
+      // SMS broadcast — use Promise.allSettled to track each SMS
+      if (channels.includes('sms') && phones.length > 0) {
+        const smsResults = await Promise.allSettled(
+          phones.map((phone: string) => NotificationService.sendActionSms(phone, message))
+        );
+        const succeeded = smsResults.filter(r => r.status === 'fulfilled').length;
+        const failed = smsResults.filter(r => r.status === 'rejected').length;
+        const errors = smsResults
+          .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+          .map(r => r.reason?.message || 'Unknown SMS error')
+          .slice(0, 5); // Limit error samples
+        results.push({ channel: 'sms', attempted: phones.length, succeeded, failed, errors });
+      }
+
+      // Voice call broadcast — use Promise.allSettled to track each call
+      if (channels.includes('call') && phones.length > 0) {
+        const callResults = await Promise.allSettled(
+          phones.map((phone: string) => NotificationService.sendVoiceCall(phone, message))
+        );
+        const succeeded = callResults.filter(r => r.status === 'fulfilled').length;
+        const failed = callResults.filter(r => r.status === 'rejected').length;
+        const errors = callResults
+          .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+          .map(r => r.reason?.message || 'Unknown call error')
+          .slice(0, 5);
+        results.push({ channel: 'call', attempted: phones.length, succeeded, failed, errors });
+      }
+
+      const totalAttempted = results.reduce((sum, r) => sum + r.attempted, 0);
+      const totalSucceeded = results.reduce((sum, r) => sum + r.succeeded, 0);
+      const totalFailed = results.reduce((sum, r) => sum + r.failed, 0);
+
+      res.json({
+        status: 'success',
+        message: `Broadcast completed: ${totalSucceeded}/${totalAttempted} messages sent successfully`,
+        data: {
+          totalRecipients: users.length,
+          totalAttempted,
+          totalSucceeded,
+          totalFailed,
+          channels: results
+        }
+      });
     } catch (error) {
       next(error);
     }
