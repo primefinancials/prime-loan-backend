@@ -169,13 +169,14 @@ export class InfluencerService {
   ): Promise<void> {
     try {
       let influencer: IInfluencer | null = null;
+      const normalizedCode = referralCode?.toUpperCase().trim();
       
-      logger.info({ userId, transactionType, transactionAmount, referralCode }, 'Attempting to record commission for user');
+      logger.info({ userId, transactionType, transactionAmount, referralCode: normalizedCode }, 'Attempting to record commission for user');
 
       // Per-transaction referral code takes priority
-      if (referralCode) {
-        influencer = await Influencer.findOne({ referralCode, status: 'approved' });
-        logger.info({ referralCode, found: !!influencer }, 'Checked explicit referral code');
+      if (normalizedCode) {
+        influencer = await Influencer.findOne({ referralCode: normalizedCode, status: 'approved' });
+        logger.info({ referralCode: normalizedCode, found: !!influencer }, 'Checked explicit referral code');
       }
 
       // Fallback to signup referrer
@@ -197,9 +198,9 @@ export class InfluencerService {
       await this.recordCommission(influencer._id.toString(), {
         userId,
         transactionType,
-        transactionAmount,
+        transactionAmount: Number(transactionAmount),
         transactionRef: transactionRef || `auto_${Date.now()}`,
-        referralCode
+        referralCode: normalizedCode
       });
     } catch (err: any) {
       // Completely non-fatal — never break the parent transaction
