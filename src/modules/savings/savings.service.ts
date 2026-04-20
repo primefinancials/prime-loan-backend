@@ -755,53 +755,78 @@ export class SavingsService {
     userId: string,
     withdrawalAmount: number,
     session: any
-  ): Promise<{ deductAmount: number, loanDeduction?: { loanId: string; deducted: number; remaining: number; loanOutstanding: number } }> {
+  ): Promise<{ deductAmount: number, loanDeduction?: { loans: Array<{ loanId: string; deducted: number; loanOutstanding: number }>; totalDeducted: number; remaining: number } }> {
     try {
-      // Find the oldest active loan with outstanding > 0
-      // Include both 'accepted' and 'processing' to catch loans being disbursed
-      const activeLoan = await Loan.findOne({
+      // Find ALL active loans with outstanding > 0, oldest first
+      // Use $expr with $gt and $toDouble to handle outstanding stored as string or number
+      const activeLoans = await Loan.find({
         userId,
         status: { $in: ['accepted', 'processing'] },
         loan_payment_status: { $in: ['in-progress', 'not-started'] },
-        outstanding: { $gt: 0 }
       }).sort({ createdAt: 1 }).session(session);
 
-      if (!activeLoan) return { deductAmount: 0 };
-
-      const outstanding = Number(activeLoan.outstanding || 0);
-      const deductAmount = Math.min(withdrawalAmount, outstanding);
-
-      if (deductAmount <= 0) return { deductAmount: 0 };
-
-      // Repay the loan from the wallet (the withdrawal just credited the wallet)
-      await LoanService.repayLoan({
-        loanId: activeLoan._id,
-        userId,
-        amount: deductAmount,
-        internalOnly: true,
-        session
+      // Filter loans with outstanding > 0 (handle both string and number types)
+      const loansWithOutstanding = activeLoans.filter(loan => {
+        const outstanding = Number(loan.outstanding || 0);
+        return outstanding > 0;
       });
 
-      logger.info({
-        userId,
-        loanId: activeLoan._id,
-        deducted: deductAmount,
-        loanOutstanding: outstanding - deductAmount,
-        withdrawalAmount,
-      }, 'Auto-deducted outstanding loan from savings withdrawal');
+      if (!loansWithOutstanding.length) return { deductAmount: 0 };
+
+      let remainingWithdrawal = withdrawalAmount;
+      let totalDeducted = 0;
+      const deductionDetails: Array<{ loanId: string; deducted: number; loanOutstanding: number }> = [];
+
+      // Loop through all active loans and deduct from each
+      for (const loan of loansWithOutstanding) {
+        if (remainingWithdrawal <= 0) break;
+
+        const outstanding = Number(loan.outstanding || 0);
+        const deductFromThisLoan = Math.min(remainingWithdrawal, outstanding);
+
+        if (deductFromThisLoan <= 0) continue;
+
+        // Repay the loan internally (no VFD transfer — just book-keeping)
+        await LoanService.repayLoan({
+          loanId: loan._id,
+          userId,
+          amount: deductFromThisLoan,
+          internalOnly: true,
+          skipBalanceCheck: true,
+          session
+        });
+
+        totalDeducted += deductFromThisLoan;
+        remainingWithdrawal -= deductFromThisLoan;
+
+        deductionDetails.push({
+          loanId: String(loan._id),
+          deducted: deductFromThisLoan,
+          loanOutstanding: outstanding - deductFromThisLoan,
+        });
+
+        logger.info({
+          userId,
+          loanId: loan._id,
+          deducted: deductFromThisLoan,
+          loanOutstanding: outstanding - deductFromThisLoan,
+          remainingWithdrawal,
+        }, 'Auto-deducted loan from savings withdrawal');
+      }
+
+      if (totalDeducted <= 0) return { deductAmount: 0 };
 
       return {
-        deductAmount,
+        deductAmount: totalDeducted,
         loanDeduction: {
-          loanId: String(activeLoan._id),
-          deducted: deductAmount,
-          remaining: withdrawalAmount - deductAmount,
-          loanOutstanding: outstanding - deductAmount,
+          loans: deductionDetails,
+          totalDeducted,
+          remaining: withdrawalAmount - totalDeducted,
         }
       };
     } catch (err: any) {
       // Don't fail the withdrawal if loan deduction fails — log and continue
-      logger.error({ userId, error: err.message }, 'Failed to auto-deduct loan from savings withdrawal');
+      logger.error({ userId, error: err.message, stack: err.stack }, 'Failed to auto-deduct loan from savings withdrawal');
       return { deductAmount: 0 };
     }
   }

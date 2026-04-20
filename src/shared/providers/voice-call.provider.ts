@@ -104,12 +104,14 @@ export class TermiiVoiceProvider implements IVoiceCallProvider {
   private apiKey: string;
   private baseUrl = 'https://v3.api.termii.com';
   private senderIds: string[];
+  private channel: string;
 
-  constructor(senderIds?: string[]) {
+  constructor(senderIds?: string[], channel?: string) {
     this.apiKey = process.env.TERMII_API_KEY || '';
     this.senderIds = senderIds?.length
       ? senderIds
       : [process.env.TERMII_SENDER_ID || 'Prime Loan'];
+    this.channel = channel || process.env.TERMII_CHANNEL || 'generic';
 
     if (!this.apiKey) {
       logger.warn('TERMII_API_KEY not configured');
@@ -172,7 +174,7 @@ export class TermiiVoiceProvider implements IVoiceCallProvider {
         from: senderId,
         sms: message,
         type: 'plain',
-        channel: 'dnd'
+        channel: this.channel
       }, {
         headers: { 'Content-Type': 'application/json' }
       });
@@ -306,7 +308,8 @@ export async function getVoiceProvider(): Promise<IVoiceCallProvider> {
       case 'termii':
       default: {
         const senderIds = voiceConfig?.termiiSenderIds || [];
-        return new TermiiVoiceProvider(senderIds.length ? senderIds : undefined);
+        const channel = voiceConfig?.termiiChannel || undefined;
+        return new TermiiVoiceProvider(senderIds.length ? senderIds : undefined, channel);
       }
     }
   } catch (err) {

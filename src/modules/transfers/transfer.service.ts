@@ -30,6 +30,7 @@ export interface InitiateTransferRequest {
   meta?: object;
   naration?: string;
   idempotencyKey?: string;
+  skipBalanceCheck?: boolean;
 }
 
 export interface TransferResult {
@@ -86,7 +87,7 @@ export class TransferService {
           }
         }
 
-        if (user && (Number(user.user_metadata?.wallet || 0) < request.amount)) {
+        if (!request.skipBalanceCheck && user && (Number(user.user_metadata?.wallet || 0) < request.amount)) {
           throw new Error("Insufficient wallet balance");
         }
         // Enforce Idempotency

@@ -186,8 +186,14 @@ export class InfluencerService {
         logger.info({ userId, hasReferredBy: !!user?.referredBy }, 'Checked user signup referrer');
         if (!user || !user.referredBy) return;
 
+        // referredBy may store the Influencer document _id OR the user's userId
+        // Try both lookups to handle either case
         influencer = await Influencer.findById(user.referredBy);
-        logger.info({ referredBy: user.referredBy, found: !!influencer }, 'Checked influencer ID from user');
+        if (!influencer) {
+          // Fallback: referredBy might store the influencer's userId, not their Influencer doc _id
+          influencer = await Influencer.findOne({ userId: user.referredBy });
+        }
+        logger.info({ referredBy: user.referredBy, found: !!influencer, method: influencer ? 'found' : 'not_found' }, 'Checked influencer by referredBy');
       }
 
       if (!influencer || influencer.status !== 'approved') {
