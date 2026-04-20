@@ -732,6 +732,7 @@ export class SavingsService {
           transactionId: trxn?.reference,
           withdrawnAmount: amount,
           penalty,
+          deductAmount,
           initialNetAmount,
           amountDisbursed: amountToDisburse,
           loanDeduction,
@@ -763,7 +764,7 @@ export class SavingsService {
         userId,
         status: { $in: ['accepted', 'processing'] },
         loan_payment_status: { $in: ['in-progress', 'not-started'] },
-      }).sort({ createdAt: 1 }).session(session);
+      });
 
       // Filter loans with outstanding > 0 (handle both string and number types)
       const loansWithOutstanding = activeLoans.filter(loan => {
@@ -871,7 +872,7 @@ export class SavingsService {
           const idempotencyKey = `pending-${withdrawal.traceId || UuidService.generateTraceId()}`;
           const trxnAmount = withdrawal.netAmount;
 
-          const { deductAmount } = await SavingsService.autoDeductActiveLoan(String(plan.userId), trxnAmount, session);
+          const { deductAmount, loanDeduction } = await SavingsService.autoDeductActiveLoan(plan.userId as string, trxnAmount, session);
           const amountToDisburse = trxnAmount - deductAmount;
 
           let trxn: any;
