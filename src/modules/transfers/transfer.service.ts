@@ -13,6 +13,9 @@ import { sha512 } from 'js-sha512';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
 import counterModel from '../users/counter.model';
 import { NotificationService } from '../notifications/notification.service';
+import pino from 'pino';
+
+const logger = pino({ name: 'transfer-service' });
 
 export interface InitiateTransferRequest {
   fromAccount: string;
