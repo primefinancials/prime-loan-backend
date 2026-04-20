@@ -34,8 +34,8 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
    */
   private detectCategory(id: string): string {
     const uppercased = id.toUpperCase();
-    if (['BIL108', 'BIL109', 'BIL110', 'BIL111'].includes(uppercased)) {
-      return 'airtime'; // Note: Airtime and Data share these codes, but usually handled as category 'data' for products
+    if (['BIL108', 'BIL109', 'BIL110', 'BIL111', 'BIL136'].includes(uppercased)) {
+      return 'data';
     }
     if (['BIL121', 'BIL122', 'BIL123', 'BIL126'].includes(uppercased)) {
       return 'tv';
@@ -60,9 +60,10 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
     const fwMap: Record<string, string> = {
       // Airtime/Data
       'BIL108': 'mtn',
-      'BIL110': 'airtel',
       'BIL109': 'glo',
+      'BIL110': 'airtel',
       'BIL111': '9mobile',
+      'BIL136': 'mtn',
       // TV
       'BIL121': 'dstv',
       'BIL122': 'gotv',
