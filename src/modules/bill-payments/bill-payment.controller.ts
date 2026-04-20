@@ -25,7 +25,7 @@ export class BillPaymentController {
    */
   static async initiate(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const { amount, serviceType, serviceId, customerReference, itemCode, extras, referralCode } = req.body;
+      const { amount, serviceType, serviceId, customerReference, itemCode, extras, referralCode, meterType } = req.body;
       const userId = req.user!._id as any;
       const idempotencyKey = req.idempotencyKey!;
 
@@ -37,6 +37,7 @@ export class BillPaymentController {
         customerReference,
         itemCode,
         idempotencyKey,
+        meterType
       });
 
       // Background non-critical hooks to improve endpoint speed

@@ -462,23 +462,7 @@ export class EscrowService {
      * Internal Confirm Delivery (Shared by User and System)
      */
     private static async _confirmDeliveryLogic(escrowId: string, actorId: string, isSystem = false) {
-        const session = await DatabaseService.startSession();
-        try {
-            return await DatabaseService.withTransaction(session, async () => {
-                const escrow = await EscrowTransaction.findById(escrowId).session(session);
-                if (!escrow) throw new NotFoundError('Escrow not found');
-
-                if (!isSystem && escrow.buyerId !== actorId) throw new UnauthorizedError('Only buyer can confirm delivery');
-                if (escrow.status !== 'LOCKED') throw new BadRequestError(`Escrow is ${escrow.status}`);
-
-                const vfdProvider = new VfdProvider();
-                // ... (Rest of logic same as confirmDelivery) ...
-                // Reusing the logic requires copy-paste or refactor. 
-                // Let's call confirmDelivery but we need to bypass the buyerId check if system.
-                // Since I cannot change the public confirmDelivery signature easily without breaking callers (maybe?), 
-                // I will duplicate logic tailored for system auto-release or modify confirmDelivery to take an option.
-            });
-        } finally { session.endSession(); }
+        return await EscrowService.confirmDelivery(escrowId, actorId, isSystem);
     }
 
     // START REFACTOR of confirmDelivery to support System Action

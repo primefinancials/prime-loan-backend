@@ -144,6 +144,7 @@ export default class BillPaymentService {
         return { ...vfdResult, reference: result.reference };
       },
       refundProvider: async () => {
+        const refundKey = `refund_${idempotencyKey}`;
         const result = await TransferService.initiateTransfer({
           fromAccount: to.accountNo,
           userId,
@@ -154,7 +155,7 @@ export default class BillPaymentService {
           bankCode: '999999',
           remark: `${req.serviceType} purchase refund`,
           walletBalance: String(to.accountBalance),
-          idempotencyKey
+          idempotencyKey: refundKey
         }, 'bill-payment');
 
         const transferReq: TransferRequest = {
@@ -219,13 +220,24 @@ export default class BillPaymentService {
     return data;
   }
 
-  static async validateServiceAccount(itemCode: string, customerReference: string | number, serviceType: string = 'tv', provider?: string) {
+  static async validateServiceAccount(itemCode: string, customerReference: string | number, serviceType?: string, providerName?: string) {
+    const activeProvider = await getBillProvider();
+    
+    // BP2: Validation Bypass for PayBeta Airtime/Data
+    // We identify these by serviceType OR by itemCode patterns (AT... for Airtime, BIL108+ for Data)
+    const isAirtime = serviceType === 'airtime' || itemCode?.startsWith('AT');
+    const isData = serviceType === 'data' || ['BIL108', 'BIL109', 'BIL110', 'BIL111'].includes(itemCode);
+
+    if (activeProvider.providerName === 'paybeta' && (isAirtime || isData)) {
+      return { name: 'Verified', valid: true, meta: { message: 'Validation skipped for this service' } };
+    }
+
     return await withFailover(async (P) => {
       return await P.validateAccount({
-        serviceType: serviceType as any,
+        serviceType: (serviceType || 'tv') as any, // Default to tv if unknown
         customerRef: String(customerReference),
         itemCode,
-        provider
+        provider: providerName
       });
     }, 'validate-account');
   }
