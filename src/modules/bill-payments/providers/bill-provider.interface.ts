@@ -76,6 +76,13 @@ export interface PowerPurchaseParams {
   reference: string;
 }
 
+export interface BettingPurchaseParams {
+  customerId: string;
+  amount: number;
+  provider: string; // e.g., 'bet9ja', 'betking'
+  reference: string;
+}
+
 export interface ValidationParams {
   serviceType: string;       // 'tv' | 'power' | 'betting'
   customerRef: string;       // smartcard/meter/customer ID
@@ -100,6 +107,9 @@ export interface NormalizedBillProvider {
 
   /** Purchase electricity token */
   purchasePower(params: PowerPurchaseParams): Promise<BillProviderResult>;
+
+  /** Fund betting wallet */
+  purchaseBetting(params: BettingPurchaseParams): Promise<BillProviderResult>;
 
   /** Validate a customer account (meter, smartcard, etc.) */
   validateAccount(params: ValidationParams): Promise<BillValidationResult>;

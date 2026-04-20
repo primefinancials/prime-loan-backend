@@ -8,7 +8,7 @@ import {
   BillCategory, BillBiller, BillProduct,
   BillProviderResult, BillValidationResult,
   AirtimePurchaseParams, DataPurchaseParams,
-  TVPurchaseParams, PowerPurchaseParams, ValidationParams
+  TVPurchaseParams, PowerPurchaseParams, BettingPurchaseParams, ValidationParams
 } from './bill-provider.interface';
 import pino from 'pino';
 
@@ -90,6 +90,15 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
       country: 'NG'
     });
     return this.normalizeResult(resp, params.reference);
+  }
+
+  async purchaseBetting(params: BettingPurchaseParams): Promise<BillProviderResult> {
+    return {
+      success: false,
+      reference: params.reference,
+      status: 'FAILED',
+      message: 'Betting not supported via Flutterwave at this time'
+    };
   }
 
   async validateAccount(params: ValidationParams): Promise<BillValidationResult> {
