@@ -183,13 +183,16 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
       let result: any;
       switch (params.serviceType) {
         case 'tv':
-          result = await this.pb.validateTv(params.provider || '', params.customerRef);
+          const tvServ = await this.resolveService(params.provider || '', 'tv');
+          result = await this.pb.validateTv(tvServ, params.customerRef);
           break;
         case 'power':
-          result = await this.pb.validateMeter(params.provider || '', params.customerRef, params.itemCode || 'prepaid');
+          const pwrServ = await this.resolveService(params.provider || '', 'power');
+          result = await this.pb.validateMeter(pwrServ, params.customerRef, params.itemCode || 'prepaid');
           break;
         case 'betting':
-          result = await this.pb.validateGaming(params.provider || '', params.customerRef);
+          const betServ = await this.resolveService(params.provider || '', 'betting');
+          result = await this.pb.validateGaming(betServ, params.customerRef);
           break;
         default:
           return { name: '', valid: false, meta: { error: 'Unsupported service type for validation' } };
@@ -259,11 +262,9 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
 
   async getProducts(billerId: string): Promise<BillProduct[]> {
     try {
-      const service = billerId.toLowerCase();
-      
-      // For data bundles and TV bouquets, we can fetch products
-      // Try Data first
-      const dataBundles = await this.pb.getDataBundles(service).catch(() => null);
+      // Try Data Bundles
+      const dataService = await this.resolveService(billerId, 'data');
+      const dataBundles = await this.pb.getDataBundles(dataService).catch(() => null);
       if (dataBundles?.data) {
         // PayBeta can return data: [...] OR data: { packages: [...] }
         const items = Array.isArray(dataBundles.data) 
@@ -283,7 +284,8 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
       }
 
       // Try TV
-      const tvBouquets = await this.pb.getTvBouquets(service).catch(() => null);
+      const tvService = await this.resolveService(billerId, 'tv');
+      const tvBouquets = await this.pb.getTvBouquets(tvService).catch(() => null);
       if (tvBouquets?.data) {
         const items = Array.isArray(tvBouquets.data) 
           ? tvBouquets.data 

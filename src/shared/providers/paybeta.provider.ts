@@ -147,19 +147,8 @@ export class PayBetaProvider {
   }
 
   async getDataBundles(service: string): Promise<any> {
-    try {
-      // Primary endpoint
-      return await this.request<any>('POST', '/data-bundle/list', { service });
-    } catch (err: any) {
-      // Fallback if /data-bundle/list is 404 OR 422 "Invalid service"
-      const isInvalidService = err.status === 422 && (err.message?.toLowerCase().includes('service') || err.message?.toLowerCase().includes('invalid'));
-      
-      if (err.status === 404 || isInvalidService) {
-        logger.info({ service, status: err.status, message: err.message }, 'Primary data-bundle/list failed, trying fallback /data/list');
-        return await this.request<any>('POST', '/data/list', { service });
-      }
-      throw err;
-    }
+    // Primary and only endpoint for bundles in V2
+    return await this.request<any>('POST', '/data-bundle/list', { service });
   }
 
   async buyData(params: {
