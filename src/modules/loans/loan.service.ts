@@ -537,6 +537,76 @@ export class LoanService {
     requiredParam("loanId", params.loanId);
     requiredParam("amount", params.amount);
 
+    // ───────────────────────────────────────────────
+    // INTERNAL-ONLY PATH: Direct DB update, no VFD transfer
+    // Used by autoDeductActiveLoan during savings withdrawals
+    // ───────────────────────────────────────────────
+    if (params.internalOnly) {
+      const session = params.session || await DatabaseService.startSession();
+
+      const executeInternalRepayment = async () => {
+        const loan = await Loan.findById(params.loanId).session(session);
+        if (!loan) throw new NotFoundError("Loan not found");
+
+        let repayAmount = Number(params.amount);
+        let newOutstanding = Number(loan.outstanding) - repayAmount;
+        const paidInFull = newOutstanding <= 0;
+
+        const now = new Date();
+        loan.repayment_history = [...(loan.repayment_history || []), {
+          amount: repayAmount,
+          outstanding: newOutstanding >= 0 ? newOutstanding : 0,
+          action: "auto-deduction",
+          date: now.toISOString()
+        }];
+
+        loan.outstanding = newOutstanding >= 0 ? newOutstanding : 0;
+        loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
+        if (paidInFull) {
+          loan.status = "completed" as any;
+        }
+        await loan.save({ session });
+
+        // Ledger double entry: savings_pool -> loan_repayment
+        await LedgerService.createDoubleEntry(
+          UuidService.generateTraceId(),
+          `user_wallet:${params.userId}`,
+          "loan_repayment",
+          repayAmount,
+          "loan",
+          {
+            userId: params.userId,
+            subtype: "auto_deduction",
+            idempotencyKey: params.idempotencyKey || `auto-deduct-${loan._id}-${Date.now()}`,
+            session
+          }
+        );
+
+        logger.info({
+          loanId: loan._id,
+          userId: params.userId,
+          repayAmount,
+          newOutstanding: loan.outstanding,
+          paidInFull,
+        }, "Internal-only loan repayment completed (auto-deduction from savings)");
+
+        return { loan, providerResponse: { status: "00", internal: true }, trxnRes: null };
+      };
+
+      if (params.session) {
+        return await executeInternalRepayment();
+      } else {
+        try {
+          return await DatabaseService.withTransaction(session, executeInternalRepayment);
+        } finally {
+          await session.endSession();
+        }
+      }
+    }
+
+    // ───────────────────────────────────────────────
+    // STANDARD PATH: Full VFD transfer + TransferService
+    // ───────────────────────────────────────────────
     const session = params.session || await DatabaseService.startSession();
     const executeRepayment = async () => {
       const loan = await Loan.findById(params.loanId).session(session);

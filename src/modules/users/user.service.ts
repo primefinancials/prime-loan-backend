@@ -348,15 +348,18 @@ export class UserService {
         delete (userObj as any).__v;
         delete (userObj as any).refresh_tokens;
 
-        // const vfdUser = await UserService.vfdProvider.getAccountInfo(user.user_metadata.accountNo);
-
-        // console.log({ vfdUser })
-
-        // Update last sign in
-        // if (vfdUser?.data && Number(user.user_metadata.wallet) != Number(vfdUser.data.accountBalance)) {
-        //     user.user_metadata = { ...user.user_metadata, wallet: vfdUser.data.accountBalance }
-        //     user.save();
-        // }
+        // Hydrate live VFD balance on login
+        if (user.user_metadata?.accountNo) {
+            try {
+                const vfdUser = await UserService.vfdProvider.getAccountInfo(user.user_metadata.accountNo);
+                if (vfdUser?.data && Number(user.user_metadata.wallet) !== Number(vfdUser.data.accountBalance)) {
+                    user.user_metadata.wallet = String(vfdUser.data.accountBalance);
+                    await user.save();
+                }
+            } catch (err: any) {
+                console.error("Failed to fetch VFD balance on login (non-fatal):", err.message);
+            }
+        }
 
         console.log({
             ...userObj,

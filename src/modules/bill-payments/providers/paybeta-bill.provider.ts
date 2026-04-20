@@ -58,17 +58,33 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
 
   private async resolveService(id: string, category: string): Promise<string> {
     const fwMap: Record<string, string> = {
-      // Airtime/Data
+      // Airtime/Data — Flutterwave biller codes
       'BIL108': 'mtn',
       'BIL109': 'glo',
       'BIL110': 'airtel',
       'BIL111': '9mobile',
       'BIL136': 'mtn',
+      // Airtime/Data — PayBeta native network codes
+      '01': 'mtn',
+      '02': 'glo',
+      '03': '9mobile',
+      '04': 'airtel',
+      // Airtime/Data — Common network name variants
+      'MTN': 'mtn',
+      'GLO': 'glo',
+      'AIRTEL': 'airtel',
+      '9MOBILE': '9mobile',
+      'ETISALAT': '9mobile',
       // TV
       'BIL121': 'dstv',
       'BIL122': 'gotv',
       'BIL123': 'startimes',
       'BIL126': 'showmax',
+      // TV — name variants
+      'DSTV': 'dstv',
+      'GOTV': 'gotv',
+      'STARTIMES': 'startimes',
+      'SHOWMAX': 'showmax',
       // Power
       'BIL112': 'ikeja-electric',
       'BIL113': 'eko-electric',
