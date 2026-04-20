@@ -3,7 +3,7 @@ import { ObjectId } from "mongodb";
 
 export type LOANCATEGORY = "personal" | "working";
 export type LOANTYPE = "request" | "repay";
-export type LOANSTATUS = "pending" | "rejected" | "accepted" | "canceled" | "processing";
+export type LOANSTATUS = "pending" | "rejected" | "accepted" | "canceled" | "processing" | "completed";
 export type LOANPAYMENTSTATUS = "complete" | "in-progress" | "not-started";
 
 export interface Subscriber {
