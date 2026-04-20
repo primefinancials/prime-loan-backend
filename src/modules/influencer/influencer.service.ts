@@ -169,33 +169,42 @@ export class InfluencerService {
   ): Promise<void> {
     try {
       let influencer: IInfluencer | null = null;
+      const normalizedCode = referralCode?.toUpperCase().trim();
+      
+      logger.info({ userId, transactionType, transactionAmount, referralCode: normalizedCode }, 'Attempting to record commission for user');
 
       // Per-transaction referral code takes priority
-      if (referralCode) {
-        influencer = await Influencer.findOne({ referralCode, status: 'approved' });
+      if (normalizedCode) {
+        influencer = await Influencer.findOne({ referralCode: normalizedCode, status: 'approved' });
+        logger.info({ referralCode: normalizedCode, found: !!influencer }, 'Checked explicit referral code');
       }
 
       // Fallback to signup referrer
       if (!influencer) {
         const UserModel = (await import('../users/user.model')).default;
         const user = await UserModel.findById(userId).select('referredBy').lean();
+        logger.info({ userId, hasReferredBy: !!user?.referredBy }, 'Checked user signup referrer');
         if (!user || !user.referredBy) return;
 
         influencer = await Influencer.findById(user.referredBy);
+        logger.info({ referredBy: user.referredBy, found: !!influencer }, 'Checked influencer ID from user');
       }
 
-      if (!influencer || influencer.status !== 'approved') return;
+      if (!influencer || influencer.status !== 'approved') {
+        logger.warn({ influencerId: influencer?._id, status: influencer?.status }, 'Influencer not found or not approved');
+        return;
+      }
 
       await this.recordCommission(influencer._id.toString(), {
         userId,
         transactionType,
-        transactionAmount,
+        transactionAmount: Number(transactionAmount),
         transactionRef: transactionRef || `auto_${Date.now()}`,
-        referralCode
+        referralCode: normalizedCode
       });
     } catch (err: any) {
       // Completely non-fatal — never break the parent transaction
-      logger.warn({ userId, transactionType, error: err.message }, 'recordCommissionForUser failed (non-fatal)');
+      logger.error({ userId, transactionType, error: err.message }, 'recordCommissionForUser failed (non-fatal)');
     }
   }
 

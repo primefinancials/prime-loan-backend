@@ -16,6 +16,7 @@ import { SettingsService } from '../admin/settings.service';
 import Loan from '../loans/loan.model';
 import { LoanService } from '../loans/loan.service';
 import pino from 'pino';
+import { NotFoundError } from '../../exceptions';
 
 const logger = pino({ name: 'savings-service' });
 
@@ -132,7 +133,14 @@ export class SavingsService {
         // Only process transfer if there's an initial deposit (Fixed plans)
         if (initialDeposit > 0) {
           const user = await User.findById(userId);
-          const from = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
+          if (!user) throw new NotFoundError("User not found");
+
+          const walletBalance = Number(user.user_metadata.wallet || 0);
+          if (walletBalance < initialDeposit) {
+            throw new Error(`Insufficient wallet balance for initial deposit. Balance: ${walletBalance}, Required: ${initialDeposit}`);
+          }
+
+          const from = (await vfdProvider.getAccountInfo(user.user_metadata.accountNo)).data;
           const to = (await vfdProvider.getPrimeAccountInfo()).data;
 
           // Create transfer record
@@ -283,7 +291,14 @@ export class SavingsService {
         }
 
         const user = await User.findById(params.userId);
-        const from = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
+        if (!user) throw new NotFoundError('User not found');
+
+        const walletBalance = Number(user?.user_metadata?.wallet || 0);
+        if (walletBalance < params.amount) {
+          throw new Error(`Insufficient wallet balance for top-up. Balance: ${walletBalance}, Required: ${params.amount}`);
+        }
+
+        const from = (await vfdProvider.getAccountInfo(user.user_metadata.accountNo)).data;
         const to = (await vfdProvider.getPrimeAccountInfo()).data;
 
         // 1. Create transfer record from User to Pool
@@ -463,8 +478,12 @@ export class SavingsService {
           if (amountToDisburse > 0) {
             // Execute Transfer for the remainder only
             const user = await User.findById(plan.userId);
-            const to = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
+            if (!user) throw new NotFoundError("User not found");
+
+            const to = (await vfdProvider.getAccountInfo(user.user_metadata.accountNo)).data;
             const from = (await vfdProvider.getPrimeAccountInfo()).data;
+
+            const walletBalance = user.user_metadata.wallet || "0";
 
             trxn = await TransferService.initiateTransfer({
               fromAccount: from.accountNo,
@@ -476,7 +495,7 @@ export class SavingsService {
               bankCode: "999999",
               remark: `Flexible Instant withdrawal for ${plan.planName}`,
               idempotencyKey: params.idempotencyKey,
-              walletBalance: String(to.accountBalance),
+              walletBalance,
               meta: {
                 earlyWithdrawal: !!isEarlyWithdrawal,
                 penalty,
@@ -618,11 +637,15 @@ export class SavingsService {
 
         let trxn: any;
         if (amountToDisburse > 0) {
-            const user = await User.findById(plan.userId);
-            const to = (await vfdProvider.getAccountInfo(user ? user.user_metadata.accountNo : "trx-user")).data;
-            const from = (await vfdProvider.getPrimeAccountInfo()).data;
+          const user = await User.findById(plan.userId);
+          if (!user) throw new NotFoundError("User not found");
 
-            trxn = await TransferService.initiateTransfer({
+          const to = (await vfdProvider.getAccountInfo(user.user_metadata.accountNo)).data;
+          const from = (await vfdProvider.getPrimeAccountInfo()).data;
+
+          const walletBalance = user.user_metadata.wallet || "0";
+
+          trxn = await TransferService.initiateTransfer({
             fromAccount: from.accountNo,
             userId: plan.userId,
             toAccount: to.accountNo,
@@ -632,11 +655,11 @@ export class SavingsService {
             bankCode: "999999",
             remark: `Fixed plan withdrawal for ${plan.planName}`,
             idempotencyKey: params.idempotencyKey,
-            walletBalance: String(to.accountBalance),
+            walletBalance,
             meta: { earlyWithdrawal: isEarlyWithdrawal, penalty, principal: amount, loanDeducted: deductAmount }
-            }, "savings-withdrawal");
+          }, "savings-withdrawal");
 
-            const transferRequest: TransferRequest = {
+          const transferRequest: TransferRequest = {
             uniqueSenderAccountId: "",
             fromAccount: from.accountNo,
             fromClientId: from.clientId,
@@ -653,66 +676,66 @@ export class SavingsService {
             remark: `Fixed plan withdrawal for ${plan.planName}`,
             transferType: "intra",
             reference: trxn.reference,
-            };
+          };
 
-            const providerRes = await vfdProvider.transfer(transferRequest);
+          const providerRes = await vfdProvider.transfer(transferRequest);
 
-            if (providerRes.status !== "00") {
-                await TransferService.failTransfer(trxn.reference);
-                throw new Error(`Transfer failed: ${providerRes.message}`);
-            }
-            await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
+          if (providerRes.status !== "00") {
+            await TransferService.failTransfer(trxn.reference);
+            throw new Error(`Transfer failed: ${providerRes.message}`);
+          }
+          await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
         }
 
         await LedgerService.createDoubleEntry(
-            trxn?.reference || traceId,
-            'savings_pool',
-            `user_wallet:${params.userId}`,
-            initialNetAmount,
-            'savings',
-            { userId: params.userId, subtype: 'withdrawal', idempotencyKey: params.idempotencyKey, session }
+          trxn?.reference || traceId,
+          'savings_pool',
+          `user_wallet:${params.userId}`,
+          initialNetAmount,
+          'savings',
+          { userId: params.userId, subtype: 'withdrawal', idempotencyKey: params.idempotencyKey, session }
         );
 
         if (penalty > 0) {
-        await LedgerService.createEntry({
+          await LedgerService.createEntry({
             traceId, userId: params.userId, account: 'platform_revenue', entryType: 'CREDIT', category: 'savings', subtype: 'penalty', amount: penalty, status: 'COMPLETED', meta: { planId: plan._id, reason: 'Early withdrawal penalty' }
-        }, session);
+          }, session);
         }
 
         plan.principal -= amount;
         if (isEarlyWithdrawal || plan.principal <= 0) {
-        plan.status = 'COMPLETED';
-        plan.completedAt = new Date();
-        plan.principal = 0;
+          plan.status = 'COMPLETED';
+          plan.completedAt = new Date();
+          plan.principal = 0;
         } else {
-        plan.status = 'ACTIVE';
+          plan.status = 'ACTIVE';
         }
 
         // Record to Withdrawal History
         if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
         plan.withdrawalHistory.push({
-        amount,
-        penalty,
-        netAmount: initialNetAmount,
-        initiated: new Date(),
-        completed: new Date(),
-        earlyWithdrawal: !!isEarlyWithdrawal,
-        processed: true,
-        traceId,
-        transactionId: trxn?.reference
+          amount,
+          penalty,
+          netAmount: initialNetAmount,
+          initiated: new Date(),
+          completed: new Date(),
+          earlyWithdrawal: !!isEarlyWithdrawal,
+          processed: true,
+          traceId,
+          transactionId: trxn?.reference
         });
 
         await plan.save({ session });
 
         return {
-        traceId,
-        transactionId: trxn?.reference,
-        withdrawnAmount: amount,
-        penalty,
-        initialNetAmount,
-        amountDisbursed: amountToDisburse,
-        loanDeduction,
-        newPrincipal: plan.principal
+          traceId,
+          transactionId: trxn?.reference,
+          withdrawnAmount: amount,
+          penalty,
+          initialNetAmount,
+          amountDisbursed: amountToDisburse,
+          loanDeduction,
+          newPrincipal: plan.principal
         };
       });
     } finally {
@@ -739,6 +762,7 @@ export class SavingsService {
       const activeLoan = await Loan.findOne({
         userId,
         status: { $in: ['accepted', 'processing'] },
+        loan_payment_status: { $in: ['in-progress', 'not-started'] },
         outstanding: { $gt: 0 }
       }).sort({ createdAt: 1 }).session(session);
 
@@ -788,7 +812,7 @@ export class SavingsService {
    */
   static async processPendingWithdrawals() {
     const now = new Date();
-    
+
     while (true) {
       const plan = await SavingsPlan.findOneAndUpdate(
         {
@@ -891,36 +915,36 @@ export class SavingsService {
             }, session);
           }
 
-                // Finalize withdrawal in document
-                await SavingsPlan.updateOne(
-                    { _id: plan._id, "withdrawalHistory.traceId": withdrawal.traceId },
-                    { 
-                        $set: { 
-                            "withdrawalHistory.$.processed": true,
-                            "withdrawalHistory.$.completed": new Date(),
-                            "withdrawalHistory.$.transactionId": trxn?.reference || "internal"
-                        },
-                        $unset: { "withdrawalHistory.$.claiming": "" }
-                    },
-                    { session }
-                );
+          // Finalize withdrawal in document
+          await SavingsPlan.updateOne(
+            { _id: plan._id, "withdrawalHistory.traceId": withdrawal.traceId },
+            {
+              $set: {
+                "withdrawalHistory.$.processed": true,
+                "withdrawalHistory.$.completed": new Date(),
+                "withdrawalHistory.$.transactionId": trxn?.reference || "internal"
+              },
+              $unset: { "withdrawalHistory.$.claiming": "" }
+            },
+            { session }
+          );
 
-                if (plan.principal <= 0) {
-                    await SavingsPlan.updateOne({ _id: plan._id }, { $set: { status: 'COMPLETED' } }, { session });
-                } else {
-                    await SavingsPlan.updateOne({ _id: plan._id }, { $set: { status: 'ACTIVE' } }, { session });
-                }
-            });
-        } catch (error: any) {
-            console.error(`Error processing pending withdrawal for plan ${plan._id}:`, error);
-            // Revert claiming status upon failure
-            await SavingsPlan.findOneAndUpdate(
-                { _id: plan._id, 'withdrawalHistory.traceId': withdrawal.traceId },
-                { $unset: { 'withdrawalHistory.$.claiming': "" } }
-            );
-        } finally {
-            await session.endSession();
-        }
+          if (plan.principal <= 0) {
+            await SavingsPlan.updateOne({ _id: plan._id }, { $set: { status: 'COMPLETED' } }, { session });
+          } else {
+            await SavingsPlan.updateOne({ _id: plan._id }, { $set: { status: 'ACTIVE' } }, { session });
+          }
+        });
+      } catch (error: any) {
+        console.error(`Error processing pending withdrawal for plan ${plan._id}:`, error);
+        // Revert claiming status upon failure
+        await SavingsPlan.findOneAndUpdate(
+          { _id: plan._id, 'withdrawalHistory.traceId': withdrawal.traceId },
+          { $unset: { 'withdrawalHistory.$.claiming': "" } }
+        );
+      } finally {
+        await session.endSession();
+      }
     }
   }
 

@@ -244,6 +244,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
       { id: 'power', name: 'Electricity', description: 'Prepaid/postpaid electricity tokens' },
       { id: 'betting', name: 'Betting', description: 'Fund betting wallets' },
       { id: 'education', name: 'Education', description: 'Exam cards and education services' }
+      // Internet removed as PayBeta does not offer simple wifi/internet bundles
     ];
   }
 
@@ -339,6 +340,21 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
             }));
           }
         }
+      }
+
+      // Try Power (Electricity) - Return Meter Types as products
+      if (category === 'power') {
+        return [
+          { id: 'prepaid', name: 'Prepaid Meter', billerId, amount: 0, description: 'Pay for prepaid meter' },
+          { id: 'postpaid', name: 'Postpaid Meter', billerId, amount: 0, description: 'Pay for postpaid meter' }
+        ];
+      }
+
+      // Try Betting - Often just requires the provider slug and customer ID
+      if (category === 'betting') {
+        return [
+          { id: 'fund', name: 'Fund Wallet', billerId, amount: 0, description: 'Top up betting account' }
+        ];
       }
 
       return [];

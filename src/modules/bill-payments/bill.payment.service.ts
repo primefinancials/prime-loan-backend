@@ -95,11 +95,10 @@ export default class BillPaymentService {
               });
 
             case 'betting':
-              // Use airtime route as generic — providers handle gaming differently
-              return await provider.purchaseAirtime({
-                phone: req.customerReference,
+              return await provider.purchaseBetting({
+                customerId: req.customerReference,
                 amount: req.amount,
-                network: req.serviceId,
+                provider: req.serviceId,
                 reference: idempotencyKey
               });
 
