@@ -563,7 +563,7 @@ export class LoanService {
         loan.outstanding = newOutstanding >= 0 ? newOutstanding : 0;
         loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
         if (paidInFull) {
-          loan.status = "completed" as any;
+          loan.status = "completed";
         }
         await loan.save({ session });
 

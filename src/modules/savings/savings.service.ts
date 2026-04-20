@@ -758,13 +758,19 @@ export class SavingsService {
     session: any
   ): Promise<{ deductAmount: number, loanDeduction?: { loans: Array<{ loanId: string; deducted: number; loanOutstanding: number }>; totalDeducted: number; remaining: number } }> {
     try {
+      // Ensure userId is a plain string (may arrive as ObjectId from controller)
+      const userIdStr = String(userId);
+
+      logger.info({ userId: userIdStr, withdrawalAmount }, 'Auto-deduct loan: starting lookup');
+
       // Find ALL active loans with outstanding > 0, oldest first
-      // Use $expr with $gt and $toDouble to handle outstanding stored as string or number
       const activeLoans = await Loan.find({
-        userId,
+        userId: userIdStr,
         status: { $in: ['accepted', 'processing'] },
         loan_payment_status: { $in: ['in-progress', 'not-started'] },
-      });
+      }).session(session);
+
+      logger.info({ userId: userIdStr, activeLoansFound: activeLoans.length }, 'Auto-deduct loan: query results');
 
       // Filter loans with outstanding > 0 (handle both string and number types)
       const loansWithOutstanding = activeLoans.filter(loan => {
@@ -772,7 +778,10 @@ export class SavingsService {
         return outstanding > 0;
       });
 
-      if (!loansWithOutstanding.length) return { deductAmount: 0 };
+      if (!loansWithOutstanding.length) {
+        logger.info({ userId: userIdStr }, 'Auto-deduct loan: no loans with outstanding > 0 found');
+        return { deductAmount: 0 };
+      }
 
       let remainingWithdrawal = withdrawalAmount;
       let totalDeducted = 0;
@@ -790,7 +799,7 @@ export class SavingsService {
         // Repay the loan internally (no VFD transfer — just book-keeping)
         await LoanService.repayLoan({
           loanId: loan._id,
-          userId,
+          userId: userIdStr,
           amount: deductFromThisLoan,
           internalOnly: true,
           skipBalanceCheck: true,
@@ -807,7 +816,7 @@ export class SavingsService {
         });
 
         logger.info({
-          userId,
+          userId: userIdStr,
           loanId: loan._id,
           deducted: deductFromThisLoan,
           loanOutstanding: outstanding - deductFromThisLoan,
@@ -827,10 +836,11 @@ export class SavingsService {
       };
     } catch (err: any) {
       // Don't fail the withdrawal if loan deduction fails — log and continue
-      logger.error({ userId, error: err.message, stack: err.stack }, 'Failed to auto-deduct loan from savings withdrawal');
+      logger.error({ userId: String(userId), error: err.message, stack: err.stack }, 'CRITICAL: Failed to auto-deduct loan from savings withdrawal — loan deduction SKIPPED');
       return { deductAmount: 0 };
     }
   }
+
 
   /**
    * Process all pending withdrawals for Standard Flexible plans
