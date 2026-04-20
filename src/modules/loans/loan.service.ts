@@ -23,10 +23,11 @@ import { sha512 } from "js-sha512";
 import { getMailsByPermission } from "../../shared/utils/checkPermission";
 import { ILoanLadder } from "./loan-ladder.model";
 import { Transfer } from "../transfers/transfer.model";
-import { SettingsService } from "../admin/settings.service";
-import pino from "pino";
+import pino from 'pino';
 
-const logger = pino({ name: "loan-service" });
+const logger = pino({ name: 'loan-service' });
+import { SettingsService } from "../admin/settings.service";
+
 
 /* ---------- Types ---------- */
 

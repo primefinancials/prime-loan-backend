@@ -1,0 +1,330 @@
+PrimeLoan Backend — Full Bug Fix & Stabilization Plan
+Comprehensive plan to resolve all identified bugs across core services (20 issues) and workers (12 issues) — totaling 32 issues spanning financial logic, data integrity, and reliability.
+
+User Review Required
+CAUTION
+
+Issue #2 (Signup Bonus Unlimited) — This operator precedence bug means the 100-user cap is non-functional and unlimited signup bonuses are being disbursed. This should be deployed ASAP.
+
+WARNING
+
+Issue #3 (Escrow Auto-Expire Dead Code) — The _confirmDeliveryLogic stub means expired escrows never release funds to sellers. Any currently-stuck PROCESSING escrows need manual resolution.
+
+IMPORTANT
+
+Issue #W5 (Bill Payments Poller Ledger Misuse) — LedgerService.updateStatus() expects a document _id, but the poller passes traceId. This means resolved bill payments never have their ledger entries updated.
+
+IMPORTANT
+
+Issue #W8 (Auto-Save Service Missing VFD Transfer) — The auto-save service only increments principal in MongoDB without executing an actual VFD bank transfer, meaning money never moves from the user's bank account.
+
+Proposed Changes
+Changes are grouped by priority tier (Critical → High → Medium → Low), then by component.
+
+Phase 1: CRITICAL Fixes (Money-Losing Bugs)
+These should be deployed immediately.
+
+Fix #1 — Loan Outstanding Goes Negative (Standard Repayment)
+[MODIFY] 
+loan.service.ts
+Line 701: Clamp loan.outstanding to >= 0 (matching the internal-only path at line 563)
+Line 702: Also set loan.status = "completed" when paidInFull is true (matching internal-only path at line 565-566)
+diff
+- loan.outstanding = newOutstanding;
+- loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
++ loan.outstanding = newOutstanding >= 0 ? newOutstanding : 0;
++ loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
++ if (paidInFull) {
++   loan.status = "completed";
++ }
+Fix #2 — Signup Bonus Given to Unlimited Users (Operator Precedence)
+[MODIFY] 
+transfer.service.ts
+Line ~332: Fix operator precedence so the count is properly compared
+diff
+- if ((await counterModel.findOne({ name: 'signupBonus' }))?.count || 0 <= 100) {
++ if (((await counterModel.findOne({ name: 'signupBonus' }))?.count || 0) <= 100) {
+Fix #3 — Escrow _confirmDeliveryLogic is a Dead Stub
+[MODIFY] 
+escrow.service.ts
+Replace the empty _confirmDeliveryLogic stub body with a delegation to this.confirmDelivery(), which already supports isSystem = true
+diff
+private static async _confirmDeliveryLogic(escrowId: string, actorId: string, isSystem: boolean = false) {
+-     // (empty stub body)
++     return await this.confirmDelivery(escrowId, actorId, isSystem);
+  }
+Fix #4 — Bill Payment Processor Double-Refund & Undefined txnResponse
+[MODIFY] 
+BillPaymentTransactionProcessor.ts
+Line 77: Guard against undefined txnResponse in the txnProvider() catch block
+Lines 188-223: Remove the VFD refund provider call on provider failure (since failTransfer already handles balance restoration — doing both causes double refund)
+diff
+} catch (err: any) {
+    billPayment.status = "FAILED";
+    billPayment.meta = { ...billPayment.meta, txnError: err.message };
+    await billPayment.save({ session });
+-   await TransferService.failTransfer(txnResponse?.reference || "");
++   if (txnResponse?.reference) {
++     await TransferService.failTransfer(txnResponse.reference);
++   }
+    throw new Error(err?.response?.data?.message || err.message || "Transaction initialization failed");
+  }
+For the provider failure path (line 185-223): Remove the refundProvider() call since failTransfer on line 191 already restores the wallet balance. Keeping both causes double-refund.
+
+Fix #5 — failTransfer Adds Balance to Wrong Party for Platform Transfers
+[MODIFY] 
+transfer.service.ts
+Lines 305-310: Only add balance back if the transfer was user-initiated (type === "transfer"), not for internal platform-to-user transfers like savings, escrow, bill payments
+diff
+// Only restore wallet balance for user-initiated transfers
+- user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(transfer.amount));
++ if (transfer.type === "transfer") {
++   user.user_metadata.wallet = String(Number(user.user_metadata.wallet || 0) + Number(transfer.amount));
++ }
+Fix #6 — listAllLoans Count/Data Filter Mismatch
+[MODIFY] 
+loan.service.ts
+Line 864: Change Loan.find({}) to Loan.find(filter) so data and count use the same query
+diff
+-  Loan.find({}).skip(skip).limit(limit).sort({ createdAt: -1 }),
++  Loan.find(filter).skip(skip).limit(limit).sort({ createdAt: -1 }),
+Phase 2: WORKER BUGS
+Fix #W1 — Loan Penalties Worker: applyPenaltyToLoan Returns Inside Transaction Callback
+[MODIFY] 
+penaltiesCron.ts
+Line 285: The return 0 inside withTransaction() callback returns from the callback, not from applyPenaltyToLoan. The outer appliedPenalty variable is never set when daysSinceLastPenalty <= 0. This is harmless since appliedPenalty is initialized to 0, but the return 0 is misleading — should just be return (void).
+diff
+- if (daysSinceLastPenalty <= 0) return 0;
++ if (daysSinceLastPenalty <= 0) return;
+Fix #W2 — Loan Penalties Worker: Penalty Applied on loan.amount Not loan.outstanding
+[MODIFY] 
+penaltiesCron.ts
+Line 287: Penalty is Math.floor(loan.amount * penaltyRate) * daysSinceLastPenalty. This uses loan.amount (original disbursed amount) rather than loan.outstanding (current balance). A user who has repaid 99% of their loan still gets penalized on the full original amount.
+diff
+- appliedPenalty = Math.floor(loan.amount * penaltyRate) * daysSinceLastPenalty;
++ appliedPenalty = Math.floor(loan.outstanding * penaltyRate) * daysSinceLastPenalty;
+Fix #W3 — Loan Penalties Worker: Wallet-Based Auto-Repay Uses VFD Path (Not internalOnly)
+[MODIFY] 
+penaltiesCron.ts
+Lines 109-113: The worker calls LoanService.repayLoan() by reading the user's user_metadata.wallet and passing that as the amount. But it doesn't pass internalOnly: true, so it triggers a full VFD provider transfer. The wallet balance in user_metadata is a cached value and may not match VFD — this could cause VFD transfer failures.
+Decision needed: Should this be an internalOnly repay (book-keeping only) or a real VFD transfer? Given the worker also does Flutterwave auto-debit as fallback, the VFD path makes sense for real wallet-funded repayments, but the wallet check should use VFD balance, not cached user_metadata.wallet.
+
+For now, leave as-is but add a note. No code change.
+
+Fix #W4 — Savings Contribution Worker: No Transaction Session for Plan Update + Ledger
+[MODIFY] 
+contributionWorker.ts
+Lines 196-228: After a successful VFD transfer, plan.save() and LedgerService.createDoubleEntry() are called without a MongoDB session. If the ledger call fails, the plan is updated (principal increased) without a corresponding ledger entry.
+Wrap the post-transfer DB operations in a transaction
+diff
++ const session = await DatabaseService.startSession();
++ try {
++   await DatabaseService.withTransaction(session, async () => {
+      plan.principal += amount;
+      plan.contribution.pendingDeduction = false;
+      plan.contribution.lastDeductionDate = new Date();
+      // ... save and ledger ...
++     await plan.save({ session });
++     await LedgerService.createDoubleEntry(
++       trxnRes?.traceId || "",
++       `user_wallet:${plan.userId}`,
++       'savings_pool',
++       amount,
++       'savings',
++       { userId: plan.userId, subtype: 'contribution', session, meta: { ... } }
++     );
++   });
++ } finally {
++   await session.endSession();
++ }
+Fix #W5 — Bill Payments Poller: LedgerService.updateStatus Misused
+[MODIFY] 
+billPaymentsPoller.ts
+Line 148: LedgerService.updateStatus(payment.traceId, 'COMPLETED', session) passes traceId but the method expects a document _id. This call always silently fails (finds no document by _id).
+Fix: Use LedgerEntry.updateMany({ traceId }, { status, processedAt }) or create a new updateStatusByTraceId method on LedgerService.
+[MODIFY] 
+LedgerService.ts
+Add updateStatusByTraceId method
+typescript
+static async updateStatusByTraceId(
+    traceId: string,
+    status: 'PENDING' | 'COMPLETED' | 'FAILED',
+    session?: mongoose.ClientSession
+): Promise<void> {
+    await LedgerEntry.updateMany(
+        { traceId },
+        { status, processedAt: status !== 'PENDING' ? new Date() : undefined },
+        { session }
+    );
+}
+Then update billPaymentsPoller to use updateStatusByTraceId.
+
+Fix #W6 — Transfers Poller: Creates Ledger Credit to transfer.toAccount (Wrong Format)
+[MODIFY] 
+transfersPoller.ts
+Line 150: Creates user_wallet:${transfer.toAccount} — but toAccount is a VFD bank account number (e.g., "0123456789"), NOT a userId. The ledger account format is user_wallet:userId. This creates orphaned/wrong ledger entries.
+Fix: The credit entry for the recipient should use transfer.toAccount resolved to a userId, or this entry should be removed entirely (since completeTransfer in TransferService already handles the recipient's bookkeeping).
+diff
+- await LedgerService.createEntry({
+-     traceId: transfer.traceId,
+-     account: `user_wallet:${transfer.toAccount}`,
+-     entryType: 'CREDIT',
+-     category: 'transfer',
+-     amount: transfer.amount,
+-     status: 'COMPLETED'
+- }, session);
++ // Ledger already handled by TransferService.completeTransfer
++ // Removed to prevent duplicate/incorrect entries
+Fix #W7 — Transfers Poller: refundTransfer Only Does Ledger Credit, No VFD Transfer
+[MODIFY] 
+transfersPoller.ts
+Lines 169-212: refundTransfer creates a ledger CREDIT entry for the user's wallet but does NOT initiate a real VFD transfer to send the money back to the user's bank account. The user sees a refund in the ledger but the money doesn't actually move.
+This is an intentional design choice IF the original transfer never debited the user's VFD account (i.e., if the transfer was pending and never executed). But if the VFD transfer DID succeed and we're "refunding," we need an actual VFD reverse transfer.
+Add a check: only create ledger-only refund if the transfer has no provider confirmation. Otherwise, initiate a VFD reverse transfer.
+Fix #W8 — Auto-Save Service: No VFD Transfer Executed
+[MODIFY] 
+auto-save.service.ts
+Lines 39-60: executeDebit checks user_metadata.wallet balance and increments principal in MongoDB, but never actually moves money via VFD. The user's bank balance is unchanged while the savings plan shows increased principal.
+This should either: A. Call SavingsService.topUp() which handles VFD transfers properly, OR B. Implement the full VFD transfer logic like contributionWorker.ts does
+diff
+private static async executeDebit(userId: string, amount: number, planId: string) {
+-     const user = await User.findById(userId);
+-     if (!user) throw new Error("User not found");
+-     if (Number(user.user_metadata.wallet) < amount) {
+-         throw new Error("Insufficient Funds");
+-     }
+-     await SavingsPlan.findByIdAndUpdate(planId, { $inc: { principal: amount } });
++     // Delegate to SavingsService.topUp which handles VFD + ledger + DB atomically
++     await SavingsService.topUp({
++         userId,
++         planId,
++         amount,
++         idempotencyKey: `autosave_${planId}_${Date.now()}`
++     });
+  }
+Fix #W9 — Maturities Worker: VFD Transfer Inside MongoDB Transaction
+[MODIFY] 
+maturitiesWorker.ts
+Lines 100-255: Same pattern as Escrow (#8 in services audit). VFD transfer is called INSIDE DatabaseService.withTransaction(). If VFD succeeds but the DB commit fails, money moves but no record exists.
+Move VFD call outside the transaction, or use the "initiate → transfer → commit" pattern used in SavingsService.completePlan.
+This is a structural issue shared across multiple files. For immediate safety, add a try-catch around the VFD + commit block that logs critical errors:
+
+diff
+if (providerRes.status == "00") {
++   // VFD succeeded — from here we MUST complete or flag for reconciliation
++   try {
+      await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
+      // ... ledger, plan update ...
++   } catch (commitErr: any) {
++     logger.error({ planId: plan._id, err: commitErr.message }, 'CRITICAL: VFD succeeded but DB commit failed — needs manual reconciliation');
++     await WorkerLogService.log('savings-maturities', 'error', `CRITICAL: VFD success but DB failed for plan ${plan._id}`);
++     throw commitErr; // Still throw to trigger abort, but logged for reconciliation
++   }
+Fix #W10 — Maturities Worker: Loose Equality == for Provider Status
+[MODIFY] 
+maturitiesWorker.ts
+Line 189: providerRes.status == "00" — should use strict equality ===
+diff
+- if (providerRes.status == "00") {
++ if (providerRes.status === "00") {
+Fix #W11 — Early Withdrawal Worker: Dead Code processWithdrawal Method
+[MODIFY] 
+earlyWithdrawalWorker.ts
+Lines 96-140: processWithdrawal is never called (the main loop at line 73 calls SavingsService.completePlan directly with forceImmediate: true). This dead code with as any type cast should be removed.
+diff
+-     private static async processWithdrawal(plan: any) {
+-         // ... 44 lines of dead code ...
+-     }
+Fix #W12 — Early Withdrawal Worker: Status Race Condition with completePlan
+[MODIFY] 
+earlyWithdrawalWorker.ts
+Lines 62-66: The worker claims the plan by setting status: 'PROCESSING', then calls SavingsService.completePlan. But completePlan (line 403-404) does SavingsPlan.findById(params.planId).session(session) and immediately checks that the plan exists — but does NOT check if status is PROCESSING. Instead, completePlan checks plan.userId !== params.userId and proceeds to the Fixed plan early withdrawal path, which checks plan.maturityDate && now < plan.maturityDate. If this is true and forceImmediate is true, it proceeds.
+However, completePlan contains plan.status = 'COMPLETED' at line 707 which will save over the PROCESSING status. This is fine because COMPLETED is the desired end state. The claim lock works correctly in this case.
+BUT: On error, the worker reverts to ACTIVE (line 86). If completePlan partially succeeded (e.g., VFD transfer OK but ledger failed), reverting to ACTIVE would allow re-processing, potentially causing a duplicate VFD transfer.
+Add an idempotency check: only revert if no VFD transfer was completed for this plan.
+No immediate code change needed — this is a design consideration. Add a comment for awareness.
+
+Phase 3: HIGH Service-Level Fixes
+Fix #7 — Loan Admin Stats Miss completed Status
+[MODIFY] 
+loan.service.ts
+Line 990: Add "completed" to the status check for repaid loans
+diff
+- if (loan.loan_payment_status === "complete" && loan.status === "accepted") {
++ if (loan.loan_payment_status === "complete" && (loan.status === "accepted" || loan.status === "completed")) {
+Line 1002: Same for in-progress loans
+diff
+- if (loan.loan_payment_status === "in-progress" && sum > 0 && loan.status === "accepted") {
++ if (loan.loan_payment_status === "in-progress" && sum > 0 && (loan.status === "accepted" || loan.status === "completed")) {
+Fix #10 — Savings Standard Withdrawal: Missing Balance Check Override
+Already handled by the existing code path — TransferService.initiateTransfer for platform-originated transfers doesn't enforce wallet balance. No change needed after closer review.
+
+Fix #11 — Order Checkout: clearCart Outside Transaction
+[MODIFY] 
+cart.service.ts
+Add optional session parameter to clearCart
+diff
+- static async clearCart(userId: string) {
++ static async clearCart(userId: string, session?: any) {
+    const cart = await this.getCartDocument(userId);
+    cart.items = [];
+    cart.totalAmount = 0;
+-   await cart.save();
++   await cart.save(session ? { session } : undefined);
+    return cart;
+  }
+[MODIFY] 
+order.service.ts
+Line 92: Pass session to clearCart
+diff
+- await CartService.clearCart(userId);
++ await CartService.clearCart(userId, session);
+Fix #16 — Bill Payment Controller: meterType Not Passed
+[MODIFY] 
+bill-payment.controller.ts
+Line 28: Extract and pass meterType
+diff
+- const { amount, serviceType, serviceId, customerReference, itemCode, extras, referralCode } = req.body;
++ const { amount, serviceType, serviceId, customerReference, itemCode, extras, referralCode, meterType } = req.body;
+Phase 4: MEDIUM Fixes
+Fix #12 — (Already covered in Fix #7 above)
+Fix #14 — Transfer Service: upsert: true on User Update
+[MODIFY] 
+transfer.service.ts
+Line ~516: Remove upsert: true
+diff
+- { new: true, upsert: true }
++ { new: true }
+Phase 5: LOW Fixes (Code Quality)
+Fix #17 — Remove console.log statements in production code
+Replace with logger.debug() across loan.service.ts and transfer.service.ts
+
+Fix #18 — Replace == with ===
+Fix loose equality in transfer.service.ts (lines 62, 252) and savings.service.ts (line 1074)
+
+Fix #19 — Remove hardcoded API key
+Remove fallback key from loan.service.ts line 184: process.env.MONO_SEC_KEY || "live_sk_..." → process.env.MONO_SEC_KEY || ""
+
+Open Questions
+IMPORTANT
+
+Q1: Escrow VFD-in-Transaction Pattern — Issues #8, #W9 share the same root cause: VFD bank transfers executed inside MongoDB transactions. A proper fix requires an architectural refactor to a "two-phase commit" pattern (initiate transfer → VFD → commit). Should I implement this refactor now, or just add defensive logging for reconciliation?
+
+IMPORTANT
+
+Q2: failTransfer Balance Restoration — Fix #5 restricts wallet restoration to type === "transfer". But the existing type field values need verification. What are all the possible type values? Should we use a whitelist of user-initiated types, or a blacklist of platform-initiated types?
+
+IMPORTANT
+
+Q3: Auto-Save Service — Fix #W8 proposes delegating to SavingsService.topUp(). Should the auto-save feature be fully functional, or is it deliberately stubbed out as a future feature?
+
+Verification Plan
+Automated Tests
+npx tsc --noEmit — Ensure zero TypeScript compilation errors after all changes
+Manually trace through each modified function's control flow to verify correctness
+Manual Verification
+Loan Repayment: Test overpayment scenario — verify outstanding clamps to 0 and status becomes "completed"
+Signup Bonus: Verify the counter check correctly caps at 100 users
+Escrow Timeout: Trigger an expired LOCKED escrow and verify funds release to seller
+Bill Payment Refund: Simulate a provider failure and verify single (not double) refund
+Worker Logs: After deploying, monitor worker logs for any errors in the first 24 hours

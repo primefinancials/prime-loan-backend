@@ -44,7 +44,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
       // BIL112-BIL120 and BIL124-125 are Power
       return 'power';
     }
-    
+
     // Simple heuristic for raw names/slugs
     const lower = id.toLowerCase();
     if (lower.includes('vtu') || lower.includes('airtime')) return 'airtime';
@@ -52,51 +52,45 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
     if (lower.includes('dstv') || lower.includes('gotv') || lower.includes('startimes') || lower.includes('tv')) return 'tv';
     if (lower.includes('electric') || lower.includes('meter') || lower.includes('diso')) return 'power';
     if (lower.includes('bet') || lower.includes('king') || lower.includes('gaming')) return 'betting';
-    
+
     return 'unknown';
   }
 
   private async resolveService(id: string, category: string): Promise<string> {
     const fwMap: Record<string, string> = {
-      // Airtime/Data — Flutterwave biller codes
+      // Airtime — Flutterwave biller codes from frontend
+      'BIL099': 'mtn',
+      'BIL100': 'airtel',
+      'BIL102': 'glo',
+      'BIL103': '9mobile',
+      // Data — Flutterwave biller codes from frontend
       'BIL108': 'mtn',
       'BIL109': 'glo',
       'BIL110': 'airtel',
       'BIL111': '9mobile',
       'BIL136': 'mtn',
-      // Airtime/Data — PayBeta native network codes
+      // PayBeta native network codes
       '01': 'mtn',
       '02': 'glo',
       '03': '9mobile',
       '04': 'airtel',
-      // Airtime/Data — Common network name variants
-      'MTN': 'mtn',
-      'GLO': 'glo',
-      'AIRTEL': 'airtel',
-      '9MOBILE': '9mobile',
-      'ETISALAT': '9mobile',
       // TV
       'BIL121': 'dstv',
       'BIL122': 'gotv',
       'BIL123': 'startimes',
       'BIL126': 'showmax',
-      // TV — name variants
-      'DSTV': 'dstv',
-      'GOTV': 'gotv',
-      'STARTIMES': 'startimes',
-      'SHOWMAX': 'showmax',
-      // Power
-      'BIL112': 'ikeja-electric',
-      'BIL113': 'eko-electric',
-      'BIL114': 'kano-electric',
-      'BIL115': 'port-harcourt-electric',
-      'BIL116': 'jos-electric',
-      'BIL117': 'ibadan-electric',
-      'BIL118': 'kaduna-electric',
-      'BIL119': 'enugu-electric',
-      'BIL120': 'abuja-electric',
-      'BIL124': 'benin-electric',
-      'BIL125': 'yola-electric',
+      // Power — Corrected to match PowerForm.tsx
+      'BIL112': 'eko-electric',
+      'BIL113': 'ikeja-electric',
+      'BIL114': 'ibadan-electric',
+      'BIL115': 'enugu-electric',
+      'BIL116': 'port-harcourt-electric',
+      'BIL117': 'benin-electric',
+      'BIL118': 'yola-electric',
+      'BIL119': 'kaduna-electric',
+      'BIL120': 'kano-electric',
+      'BIL127': 'lekki-concession',
+      'BIL204': 'abuja-electric',
     };
 
     let mapped = fwMap[id.toUpperCase()];
@@ -151,7 +145,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
 
   async purchaseTV(params: TVPurchaseParams): Promise<BillProviderResult> {
     const service = await this.resolveService(params.provider, 'tv');
-    
+
     // First validate to get customer name
     let customerName = 'Customer';
     try {
@@ -174,7 +168,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
 
   async purchasePower(params: PowerPurchaseParams): Promise<BillProviderResult> {
     const service = await this.resolveService(params.provider, 'power');
-    
+
     // Validate meter first
     let customerName = 'Customer';
     let customerAddress = '';
@@ -200,7 +194,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
 
   async purchaseBetting(params: BettingPurchaseParams): Promise<BillProviderResult> {
     const service = await this.resolveService(params.provider, 'betting');
-    
+
     // Validate gaming account first
     let customerName = 'Customer';
     try {
@@ -306,16 +300,16 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
   async getProducts(billerId: string): Promise<BillProduct[]> {
     try {
       const category = this.detectCategory(billerId);
-      
+
       // Try Data Bundles
       if (category === 'data' || category === 'airtime' || category === 'unknown') {
         const dataService = await this.resolveService(billerId, 'data');
         const dataBundles = await this.pb.getDataBundles(dataService).catch(() => null);
         if (dataBundles?.data) {
-          const items = Array.isArray(dataBundles.data) 
-            ? dataBundles.data 
+          const items = Array.isArray(dataBundles.data)
+            ? dataBundles.data
             : (dataBundles.data.packages || dataBundles.data.bundles || []);
-            
+
           if (items.length > 0) {
             return items.map((b: any) => ({
               id: b.code || b.id || b.datacode || '',
@@ -333,7 +327,7 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
       // Try TV
       if (category === 'tv' || category === 'unknown') {
         const tvService = await this.resolveService(billerId, 'tv');
-        
+
         let tvBouquets: any;
         if (tvService === 'showmax') {
           tvBouquets = await this.pb.getShowmaxBouquets().catch(() => null);
@@ -342,10 +336,10 @@ export class PayBetaBillProvider implements NormalizedBillProvider {
         }
 
         if (tvBouquets?.data) {
-          const items = Array.isArray(tvBouquets.data) 
-            ? tvBouquets.data 
+          const items = Array.isArray(tvBouquets.data)
+            ? tvBouquets.data
             : (tvBouquets.data.packages || tvBouquets.data.bouquets || []);
-            
+
           if (items.length > 0) {
             return items.map((b: any) => ({
               id: b.code || b.packageCode || b.id || '',

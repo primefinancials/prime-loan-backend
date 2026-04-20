@@ -7,6 +7,9 @@ import { BillPayment } from "../../modules/bill-payments/bill-payment.model";
 import { APIError } from "../../exceptions";
 import { TransferResponse } from "../providers/vfd.provider";
 import { TransferService } from "../../modules/transfers/transfer.service";
+import pino from 'pino';
+
+const logger = pino({ name: 'bill-payment-processor' });
 
 export async function processTransaction({
   userId,
@@ -73,8 +76,10 @@ export async function processTransaction({
         billPayment.status = "FAILED";
         billPayment.meta = { ...billPayment.meta, txnError: err.message };
         await billPayment.save({ session });
-        console.log(err?.response?.data?.message || err.message);
-        await TransferService.failTransfer(txnResponse?.reference || "");
+        logger.error(err?.response?.data?.message || err.message);
+        if (txnResponse?.reference) {
+          await TransferService.failTransfer(txnResponse.reference);
+        }
         throw new Error(err?.response?.data?.message || err.message || "Transaction initialization failed");
       }
 
@@ -186,9 +191,16 @@ export async function processTransaction({
         console.log("Provider Error:", err.message);
 
         // ❌ Provider failed → trigger refund
+        // Ensure we have a reference to attempt refund/failure
+        const originalRef = txnResponse?.reference || "";
 
-        // Mark the original internal transfer as "failed" to reflect the overall business context
-        await TransferService.failTransfer(txnResponse?.reference || "");
+        if (originalRef) {
+          try {
+            await TransferService.failTransfer(originalRef);
+          } catch (failErr) {
+            logger.warn({ error: (failErr as Error).message, originalRef }, "failTransfer failed (pre-refund)");
+          }
+        }
 
         // 5️⃣ Attempt refund
         try {
@@ -197,9 +209,12 @@ export async function processTransaction({
           if (refundResponse?.status === "00") {
             await TransferService.completeTransfer(refundResponse.reference, "bill-payment");
           } else {
-            await TransferService.failTransfer(refundResponse?.reference || "");
+            if (refundResponse?.reference) {
+              await TransferService.failTransfer(refundResponse.reference);
+            }
           }
 
+          // Record the refund in the ledger
           await LedgerService.createDoubleEntry(
             UuidService.generate(),
             `bill-payment:${serviceType}`,
@@ -209,31 +224,39 @@ export async function processTransaction({
             {
               userId,
               subtype: serviceType,
-              idempotencyKey: UuidService.generate(),
+              idempotencyKey: `refund_ledger_${idempotencyKey}_${Date.now()}`,
               session,
               meta: {
                 billPaymentId: billPayment._id,
-                transactionId: txnResponse.reference,
+                transactionId: originalRef,
+                refundReference: refundResponse?.reference
               },
             }
           );
           console.log("Refund Response:", refundResponse);
         } catch (refundErr: any) {
-          console.error("Refund Failed:", refundErr?.response?.data?.message || refundErr.message);
+          console.error("Refund Failed:", refundErr?.response?.data?.message || refundErr.message || refundErr);
         }
 
         // 6️⃣ Mark failed + save all responses
+        // We DO NOT throw here because we want the transaction to COMMIT the FAILED status and the Refund ledger entry.
         billPayment.status = "FAILED";
         billPayment.meta = {
           ...billPayment.meta,
           txnResponse,
           providerResponse,
           refundResponse,
-          providerError: err.message,
+          providerError: err.message || "Unknown Provider Error",
         };
         await billPayment.save({ session });
 
-        throw new APIError(400, err.message || "Transaction failed and refund attempted")
+        // Return a failure object instead of throwing to allow the transaction to commit
+        return {
+          traceId,
+          status: "FAILED",
+          billPayment,
+          message: err.message || "Transaction failed and refund attempted",
+        };
       }
     }) as any;
   } finally {

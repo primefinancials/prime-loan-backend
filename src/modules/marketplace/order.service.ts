@@ -89,10 +89,7 @@ export class OrderService {
             }
 
             // Clear Cart
-            await CartService.clearCart(userId); // This saves cart, might need to pass session if CartService supported it.
-            // For now, let's assume CartService operation is safe enough or we risk partial failure if cart clear fails.
-            // Ideally pass session to clearCart. But CartService doesn't accept session yet.
-            // I'll leave it as is for MVP.
+            await CartService.clearCart(userId, session);
 
             await session.commitTransaction();
         } catch (error) {

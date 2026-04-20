@@ -143,11 +143,11 @@ export class CartService {
         return cart;
     }
 
-    static async clearCart(userId: string) {
+    static async clearCart(userId: string, session?: any) {
         const cart = await this.getCartDocument(userId);
         cart.items = [];
         cart.totalAmount = 0;
-        await cart.save();
+        await cart.save(session ? { session } : undefined);
         return cart;
     }
 

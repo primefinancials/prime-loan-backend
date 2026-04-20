@@ -54,7 +54,7 @@ export class TransferService {
 
     const session = await DatabaseService.startSession();
 
-    console.log("In Initiate Transfer:", request)
+    logger.debug({ request }, 'In Initiate Transfer');
 
     try {
       return await DatabaseService.withTransaction(session, async () => {
