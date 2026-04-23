@@ -87,6 +87,10 @@ export class SavingsEarlyWithdrawalWorker {
                     await WorkerLogService.log('savings-early-withdrawal', 'error', `Error processing scheduled early withdrawal: ${error.message}`, { planId: plan._id });
                 }
             }
+
+            // Also process FLEXIBLE STANDARD pending withdrawals!
+            await SavingsService.processPendingWithdrawals();
+
         } catch (error: any) {
             logger.error({ error: error.message }, 'Error in savings early withdrawal worker');
             await WorkerLogService.log('savings-early-withdrawal', 'error', `Fatal error: ${error.message}`);

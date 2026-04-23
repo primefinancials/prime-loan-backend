@@ -3,7 +3,7 @@ import { ObjectId } from "mongodb";
 
 export type LOANCATEGORY = "personal" | "working";
 export type LOANTYPE = "request" | "repay";
-export type LOANSTATUS = "pending" | "rejected" | "accepted" | "canceled" | "processing" | "completed";
+export type LOANSTATUS = "pending" | "rejected" | "accepted" | "canceled" | "processing";
 export type LOANPAYMENTSTATUS = "complete" | "in-progress" | "not-started";
 
 export interface Subscriber {
@@ -105,6 +105,7 @@ export interface ILoan extends Document {
     adminId: string | "system",
     date: string
   };
+  referralCode?: string;
   call_history?: {
     date: Date;
     status: string;
@@ -149,6 +150,7 @@ export interface CREATELOAN {
   credit_message: string;
   credit_score: ICreditScore | null;
   debit_account: string;
+  referralCode?: string;
 }
 
 export interface UPDATELOAN {

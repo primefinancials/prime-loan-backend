@@ -249,13 +249,6 @@ export class LoanController {
         type: "unrealized",
       });
 
-      // Influencer commission hook (fire-and-forget)
-      try {
-        await InfluencerService.recordCommissionForUser(result.loan.userId, 'loan', amount, undefined, (result.loan as any).referralCode);
-      } catch (err) {
-        console.warn('Influencer commission recording failed (non-fatal):', (err as Error).message);
-      }
-
       res.status(200).json({ status: "success", data: result });
     } catch (error) {
       next(error);
