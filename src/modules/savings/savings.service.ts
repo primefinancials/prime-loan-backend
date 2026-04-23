@@ -758,14 +758,19 @@ export class SavingsService {
     session: any
   ): Promise<{ deductAmount: number, loanDeduction?: { loans: Array<{ loanId: string; deducted: number; loanOutstanding: number }>; totalDeducted: number; remaining: number } }> {
     try {
-      // Ensure userId is a plain string (may arrive as ObjectId from controller)
+      const mongoose = require('mongoose');
       const userIdStr = String(userId);
+      const userIds: any[] = [userIdStr];
+      if (mongoose.Types.ObjectId.isValid(userIdStr)) {
+        userIds.push(new mongoose.Types.ObjectId(userIdStr));
+      }
 
       logger.info({ userId: userIdStr, withdrawalAmount }, 'Auto-deduct loan: starting lookup');
 
       // Find ALL active loans with outstanding > 0, oldest first
+      // Some legacy data might use ObjectId instead of String for userId, hence $in check
       const activeLoans = await Loan.find({
-        userId: userIdStr,
+        userId: { $in: userIds },
         status: { $in: ['accepted', 'processing'] },
         loan_payment_status: { $in: ['in-progress', 'not-started'] },
       }).session(session);
@@ -775,7 +780,7 @@ export class SavingsService {
       // Filter loans with outstanding > 0 (handle both string and number types)
       const loansWithOutstanding = activeLoans.filter(loan => {
         const outstanding = Number(loan.outstanding || 0);
-        return outstanding > 0;
+        return !isNaN(outstanding) && outstanding > 0;
       });
 
       if (!loansWithOutstanding.length) {

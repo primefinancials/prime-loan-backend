@@ -259,6 +259,7 @@ export interface InitiateBillPaymentRequest {
     idempotencyKey: string;
     itemCode: string;                 // e.g., BIL108 for MTN airtime
     meterType?: string;         // required for power serviceType (01 for prepaid, 02 for postpaid)
+    referralCode?: string;
 }
 
 export interface BillPaymentResult {

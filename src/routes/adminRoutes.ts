@@ -310,6 +310,15 @@ router.post("/test-integrations/sms", verifyJwtRest(), TestIntegrationsControlle
 router.post("/test-integrations/penalty", verifyJwtRest(), TestIntegrationsController.testPenalty as any);
 router.post("/test-integrations/auto-debit", verifyJwtRest(), TestIntegrationsController.testAutoDebit as any);
 router.post("/test-integrations/wallet-deduction", verifyJwtRest(), TestIntegrationsController.testWalletDeduction as any);
+router.post("/test-integrations/transfer", verifyJwtRest(), TestIntegrationsController.testTransfer as any);
+
+/* =============================
+   ADMIN TRANSFERS (ACTUAL)
+============================= */
+import { AdminTransferController } from "../modules/admin/admin.transfer.controller";
+
+router.post("/transfers/actual/company", verifyJwtRest(), AdminTransferController.transferFromCompany as any);
+router.post("/transfers/actual/user", verifyJwtRest(), AdminTransferController.transferFromUser as any);
 
 export default router;
 

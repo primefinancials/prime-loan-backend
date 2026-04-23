@@ -31,6 +31,7 @@ export interface InitiateTransferRequest {
   naration?: string;
   idempotencyKey?: string;
   skipBalanceCheck?: boolean;
+  skipDbRecord?: boolean;
 }
 
 export interface TransferResult {
@@ -106,45 +107,53 @@ export class TransferService {
         }
 
         // Create transfer record
-        const [transfer] = await Transfer.create([{
-          userId: request.userId,
-          traceId,
-          fromAccount: request.fromAccount,
-          toAccount: request.toAccount,
-          amount: request.amount,
-          transferType: request.transferType,
-          status: 'PENDING',
-          beneficiaryName: request.beneficiaryName,
-          reference,
-          idempotencyKey: request.idempotencyKey ? `${type}:${request.idempotencyKey}` : undefined,
-          remark: request.remark,
-          bankCode: request.bankCode,
-          meta: request.meta,
-          naration: request.naration
-        }], { session });
+        let transferId = `test-${traceId}`;
+        let referenceValue = reference;
 
-        if (user) {
-          // Create debit ledger entry ONLY for basic transfers to avoid double-entry with domain services
-          if (type === 'transfer') {
-            await LedgerService.createEntry({
-              traceId,
-              userId: user._id as any,
-              account: `user_wallet:${user._id}`,
-              entryType: 'DEBIT',
-              category: 'transfer',
-              amount: request.amount,
-              status: 'PENDING',
-              idempotencyKey: request.idempotencyKey,
-              meta: { transferId: transfer._id, toAccount: request.toAccount, subtype: type }
-            }, session);
+        if (!request.skipDbRecord) {
+          const [transfer] = await Transfer.create([{
+            userId: request.userId,
+            traceId,
+            fromAccount: request.fromAccount,
+            toAccount: request.toAccount,
+            amount: request.amount,
+            transferType: request.transferType,
+            status: 'PENDING',
+            beneficiaryName: request.beneficiaryName,
+            reference,
+            idempotencyKey: request.idempotencyKey ? `${type}:${request.idempotencyKey}` : undefined,
+            remark: request.remark,
+            bankCode: request.bankCode,
+            meta: request.meta,
+            naration: request.naration
+          }], { session });
+          
+          transferId = String(transfer._id);
+          referenceValue = transfer.reference;
+
+          if (user) {
+            // Create debit ledger entry ONLY for basic transfers to avoid double-entry with domain services
+            if (type === 'transfer') {
+              await LedgerService.createEntry({
+                traceId,
+                userId: user._id as any,
+                account: `user_wallet:${user._id}`,
+                entryType: 'DEBIT',
+                category: 'transfer',
+                amount: request.amount,
+                status: 'PENDING',
+                idempotencyKey: request.idempotencyKey,
+                meta: { transferId: transfer._id, toAccount: request.toAccount, subtype: type }
+              }, session);
+            }
           }
         }
 
         const result: TransferResult = {
           traceId,
           status: 'PENDING',
-          transferId: String(transfer._id),
-          reference
+          transferId,
+          reference: referenceValue
         };
 
         return result;

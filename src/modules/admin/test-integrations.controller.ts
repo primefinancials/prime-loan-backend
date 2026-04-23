@@ -8,6 +8,9 @@ import {
   AfricasTalkingVoiceProvider,
   getVoiceProvider,
 } from '../../shared/providers/voice-call.provider';
+import { TransferService } from '../../modules/transfers/transfer.service';
+import { VfdProvider } from '../../shared/providers/vfd.provider';
+import { sha512 } from 'js-sha512';
 
 const logger = pino({ name: 'test-integrations' });
 
@@ -236,6 +239,76 @@ export class TestIntegrationsController {
       });
     } catch (err: any) {
       logger.error({ error: err.message }, 'Test wallet deduction failed');
+      return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
+
+  /**
+   * POST /backoffice/test-integrations/transfer
+   * body: { fromAccount, toAccount, bankCode, amount, remark }
+   * Tests actual VFD transfer but optionally skips local DB recording
+   */
+  static async testTransfer(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { fromAccount, toAccount, bankCode, amount, remark } = req.body;
+      if (!fromAccount || !toAccount || !amount || !bankCode) {
+        return res.status(400).json({ status: 'failed', message: 'fromAccount, toAccount, amount, and bankCode are required' });
+      }
+
+      const vfdProvider = new VfdProvider();
+      
+      // 1. Get From Account Info to verify it exists and get balances
+      const accountRes = await vfdProvider.getAccountInfo(fromAccount);
+      if (!accountRes.data) return res.status(404).json({ status: 'failed', message: 'From account not found on VFD' });
+      
+      const fromData = accountRes.data;
+      const transferType = (bankCode === '999999' || bankCode === 'vfd') ? 'intra' : 'inter';
+
+      // 2. Initiate Transfer (Skip DB if it's just a "test" transfer as per user request)
+      const initResult = await TransferService.initiateTransfer({
+        fromAccount,
+        toAccount,
+        amount,
+        bankCode,
+        beneficiaryName: "Test Transfer",
+        remark: remark || "Admin UI Test",
+        transferType,
+        walletBalance: String(fromData.accountBalance),
+        userId: 'admin-test',
+        skipBalanceCheck: true,
+        skipDbRecord: true // User requested: "Don't record it in transfer service/database"
+      }, 'transfer');
+
+      // 3. Execute VFD Transfer
+      const transferReq = {
+        fromAccount: fromData.accountNo,
+        uniqueSenderAccountId: fromData.accountId,
+        fromClientId: fromData.clientId,
+        fromClient: fromData.client,
+        fromSavingsId: fromData.accountId,
+        toAccount,
+        toBank: bankCode,
+        signature: sha512.hex(`${fromData.accountNo}${toAccount}`),
+        amount: amount,
+        remark: remark || "Admin UI Test",
+        transferType: transferType as "intra" | "inter",
+        reference: initResult.reference,
+      };
+
+      const vfdResponse = await vfdProvider.transfer(transferReq);
+
+      return res.status(200).json({
+        status: vfdResponse.status === '00' ? 'success' : 'failed',
+        message: vfdResponse.message,
+        data: {
+          traceId: initResult.traceId,
+          reference: initResult.reference,
+          vfdResponse: vfdResponse.data,
+          vfdRaw: vfdResponse
+        }
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Test transfer failed');
       return res.status(500).json({ status: 'failed', message: err.message });
     }
   }

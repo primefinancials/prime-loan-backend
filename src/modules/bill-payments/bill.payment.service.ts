@@ -19,6 +19,7 @@ import {
   getBillProvider, withFailover
 } from './providers/bill-provider.factory';
 import { NormalizedBillProvider, BillCategory, BillBiller, BillProduct } from './providers/bill-provider.interface';
+import logger from "../../shared/utils/logger";
 
 const billCache = new NodeCache({ stdTTL: 24 * 60 * 60 }); // 24 hours
 
@@ -48,16 +49,34 @@ export default class BillPaymentService {
 
     const idempotencyKey = req.idempotencyKey || cryptoRandom();
 
+    // 1️⃣ Handle Referral Discounts / Commissions
+    const { InfluencerService } = await import('../influencer/influencer.service');
+    const referral = await InfluencerService.resolveReferralCode(req.referralCode || "");
+
+    let debitAmount = req.amount;
+    let discountValue = 0;
+    let bonusAmount = 0;
+
+    if (referral) {
+      const discountResult = InfluencerService.applyReferralDiscount(req.amount, referral.discountConfig);
+      debitAmount = discountResult.discountedAmount;
+      discountValue = discountResult.discountValue;
+      bonusAmount = discountResult.bonusAmount;
+      logger.info({ userId, original: req.amount, discounted: debitAmount, referralCode: req.referralCode }, "Applied referral discount to bill payment");
+    }
+
     return await processTransaction({
       userId: req.userId,
-      amount: req.amount,
+      amount: debitAmount, // The amount the user is debited
       serviceType: req.serviceType,
       serviceId: req.serviceId,
       customerReference: req.customerReference,
       idempotencyKey,
       providerFn: async () => {
         // Route to provider via normalizer — with automatic failover
+        // NOTE: Provider always gets the ORIGINAL amount (the user gets exactly what they requested)
         return await withFailover(async (provider) => {
+          const providerAmount = req.amount;
           switch (req.serviceType) {
             case 'airtime':
               return await provider.purchaseAirtime({
@@ -134,7 +153,7 @@ export default class BillPaymentService {
           toSavingsId: to.accountId,
           toBank: '999999',
           signature: sha512.hex(`${from.accountNo}${to.accountNo}`),
-          amount: req.amount,
+          amount: debitAmount,
           remark: `${req.serviceType} purchase`,
           transferType: 'intra',
           reference: result.reference,
@@ -150,7 +169,7 @@ export default class BillPaymentService {
           userId,
           toAccount: from.accountNo,
           beneficiaryName: from.client,
-          amount: req.amount,
+          amount: debitAmount,
           transferType: 'intra',
           bankCode: '999999',
           remark: `${req.serviceType} purchase refund`,
@@ -171,7 +190,7 @@ export default class BillPaymentService {
           toSavingsId: from.accountId,
           toBank: '999999',
           signature: sha512.hex(`${to.accountNo}${from.accountNo}`),
-          amount: req.amount,
+          amount: debitAmount,
           remark: `${req.serviceType} purchase refund`,
           transferType: 'intra',
           reference: result.reference,
@@ -222,7 +241,7 @@ export default class BillPaymentService {
 
   static async validateServiceAccount(itemCode: string, customerReference: string | number, serviceType?: string, providerName?: string) {
     const activeProvider = await getBillProvider();
-    
+
     // BP2: Validation Bypass for PayBeta Airtime/Data
     // We identify these by serviceType OR by itemCode patterns (AT... for Airtime, BIL108+ for Data)
     const isAirtime = serviceType === 'airtime' || itemCode?.startsWith('AT');

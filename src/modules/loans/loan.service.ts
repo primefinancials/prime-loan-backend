@@ -291,6 +291,7 @@ export class LoanService {
       credit_score: creditScoreObj,
       status: params.status as LOANSTATUS || "pending",
       repayment_history: [],
+      referralCode: params.referralCode,
       // These are explicitly NOT set at creation — they are calculated during disbursement
       outstanding: 0,
       repayment_amount: 0,
@@ -352,180 +353,177 @@ export class LoanService {
       throw new BadRequestError("Loan must be in a pending state to be disbursed");
     }
 
-    const session = await DatabaseService.startSession();
+    const transferIdempotency = params.idempotencyKey || `disburse-${lockLoan._id}`;
 
     try {
-      return await DatabaseService.withTransaction(session, async () => {
-        const { loanId, adminId } = params;
-        const loan = await Loan.findById(params.loanId);
+      const user = await User.findById(lockLoan.userId);
+      if (!user) throw new NotFoundError("User not found");
 
-        if (!loan) throw new Error("Loan not found");
+      // 2️⃣ Check for existing completed transfer (Idempotency Recovery)
+      const existingTransfer = await Transfer.findOne({ idempotencyKey: transferIdempotency });
+      if (existingTransfer && existingTransfer.status === "COMPLETED") {
+          const settings = await SettingsService.getSettings();
+          const fee = settings.loan?.serviceFee || 0;
+          const percentage = settings.loan?.interestPercentage || 0;
+          const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (percentage / 100));
 
-        const user = await User.findById(loan.userId).session(session);
-        if (!user) throw new NotFoundError("User not found");
+          lockLoan.status = "accepted";
+          lockLoan.amount = params.amount;
+          lockLoan.outstanding = total;
+          lockLoan.repayment_amount = total;
+          lockLoan.loan_payment_status = "not-started";
+          await lockLoan.save();
 
-        // 2️⃣ Ensure idempotency key (Now persistent in Transfer model)
-        const transferIdempotency = params.idempotencyKey || `disburse-${loan._id}`;
-        const existingTransfer = await Transfer.findOne({ idempotencyKey: transferIdempotency }).session(session);
-        if (existingTransfer) {
-          if (existingTransfer.status === "COMPLETED" && loan.status !== "accepted") {
-            // "Make it Complete" - Provider succeeded previously but DB didn't finish.
-            // RE-CALCULATE outstanding even on recovery to ensure accuracy based on actual disbursement
-            const duration = loan.duration || 21;
-            const settings = await SettingsService.getSettings();
-            const fee = settings.loan?.serviceFee || 0;
-            const percentage = settings.loan?.interestPercentage || 0;
-            const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (percentage / 100));
+          // Recovery Ledger Entry
+          await LedgerService.createDoubleEntry(
+            UuidService.generateTraceId(),
+            "loan_disbursement",
+            `user_wallet:${user._id}`,
+            params.amount,
+            "loan",
+            { userId: user._id as any, subtype: "disbursement" }
+          );
 
-            loan.status = "accepted";
-            loan.amount = params.amount;
-            loan.outstanding = total;
-            loan.repayment_amount = total;
-            loan.loan_payment_status = "not-started";
-            await loan.save({ session });
-            logger.info({ loanId: loan._id, total }, "Loan recovery: marked as accepted and recalibrated outstanding");
+          // Recovery Notification
+          try {
+            await NotificationService.sendLoanApproval(user, lockLoan as any);
+          } catch (err) {
+            console.warn("Notification error in recovery:", err);
           }
-          return { loan, transfer: existingTransfer, reused: true };
-        }
 
-        // 3️⃣ Get account details
-        const primeInfo = (await this.vfd.getPrimeAccountInfo())?.data;
-        const userAccTyped = (await this.vfd.getAccountInfo(user.user_metadata.accountNo))?.data;
+          return { loan: lockLoan, transfer: existingTransfer, reused: true };
+      }
 
-        if (!primeInfo?.accountNo || !userAccTyped?.accountNo) {
-          throw new BadRequestError("Unable to get account info for disbursement");
-        }
+      // 3️⃣ Get account details
+      const primeInfo = (await this.vfd.getPrimeAccountInfo())?.data;
+      const userAccTyped = (await this.vfd.getAccountInfo(user.user_metadata.accountNo))?.data;
 
-        const amountNaira = params.amount;
+      if (!primeInfo?.accountNo || !userAccTyped?.accountNo) {
+        throw new BadRequestError("Unable to get account info for disbursement");
+      }
 
-        // 4️⃣ Initiate transfer
-        const transferRecord = await TransferService.initiateTransfer({
-          fromAccount: primeInfo.accountNo,
-          userId: loan.userId,
-          beneficiaryName: userAccTyped.client,
-          toAccount: userAccTyped.accountNo,
-          amount: amountNaira,
-          transferType: "intra",
-          bankCode: "999999",
-          remark: "Loan disbursement",
-          idempotencyKey: transferIdempotency,
-          walletBalance: String(userAccTyped.accountBalance),
-        }, "loan-disbursement");
+      const amountNaira = params.amount;
 
-        // 5️⃣ Send to provider
-        const transferRequest: TransferRequest = {
-          fromAccount: primeInfo.accountNo,
-          uniqueSenderAccountId: "",
-          fromClientId: primeInfo.clientId,
-          fromClient: primeInfo.client,
-          fromSavingsId: primeInfo.accountId,
-          toClientId: userAccTyped.clientId,
-          toClient: userAccTyped.client,
-          toSavingsId: userAccTyped.accountId,
-          toSession: userAccTyped.accountId,
-          toAccount: userAccTyped.accountNo,
-          toBank: "999999",
-          signature: sha512.hex(`${primeInfo.accountNo}${userAccTyped.accountNo}`),
-          amount: amountNaira,
-          remark: "Loan Disbursement",
-          transferType: "intra",
-          reference: transferRecord.reference,
-        } as any;
+      // 4️⃣ Initiate transfer (Outside Transaction)
+      const transferRecord = await TransferService.initiateTransfer({
+        fromAccount: primeInfo.accountNo,
+        userId: lockLoan.userId,
+        beneficiaryName: userAccTyped.client,
+        toAccount: userAccTyped.accountNo,
+        amount: amountNaira,
+        transferType: "intra",
+        bankCode: "999999",
+        remark: "Loan disbursement",
+        idempotencyKey: transferIdempotency,
+        walletBalance: String(userAccTyped.accountBalance),
+      }, "loan-disbursement");
 
-        let providerResponse: any;
-        try {
-          providerResponse = await this.vfd.transfer(transferRequest);
-          console.log({ providerResponse });
-        } catch (err: any) {
-          // Provider call failed (network error etc.) - SAFE to revert only if we catch it here
-          await TransferService.failTransfer(transferRecord.reference);
-          logger.error({
-            err: err.message,
-            response: err.response?.data,
-            payload: transferRequest
-          }, "VFD Transfer call failed (pre-response)");
+      // 5️⃣ Send to provider
+      const transferRequest: TransferRequest = {
+        fromAccount: primeInfo.accountNo,
+        uniqueSenderAccountId: "",
+        fromClientId: primeInfo.clientId,
+        fromClient: primeInfo.client,
+        fromSavingsId: primeInfo.accountId,
+        toClientId: userAccTyped.clientId,
+        toClient: userAccTyped.client,
+        toSavingsId: userAccTyped.accountId,
+        toSession: userAccTyped.accountId,
+        toAccount: userAccTyped.accountNo,
+        toBank: "999999",
+        signature: sha512.hex(`${primeInfo.accountNo}${userAccTyped.accountNo}`),
+        amount: amountNaira,
+        remark: "Loan Disbursement",
+        transferType: "intra",
+        reference: transferRecord.reference,
+      } as any;
 
-          throw new APIError(409, `Provider disbursement failed (reverting to pending): ${err.message}`);
-        }
+      let providerResponse: any;
+      try {
+        providerResponse = await this.vfd.transfer(transferRequest);
+      } catch (err: any) {
+        await TransferService.failTransfer(transferRecord.reference);
+        throw new APIError(409, `Provider disbursement failed: ${err.message}`);
+      }
 
-        const ok =
-          providerResponse &&
-          (providerResponse.status === "00" ||
-            providerResponse?.data?.txnId ||
-            providerResponse.txnId);
+      if (!providerResponse || providerResponse.status !== "00") {
+        await TransferService.failTransfer(transferRecord.reference);
+        throw new APIError(409, `Disbursement failed at provider: ${JSON.stringify(providerResponse)}`);
+      }
 
-        if (!ok) {
-          await TransferService.failTransfer(transferRecord.reference);
-          throw new APIError(409, `Disbursement failed (reverting to pending): ${JSON.stringify(providerResponse)}`);
-        }
+      // 6️⃣ ATOMIC COMPLETION - Provider success
+      const session = await DatabaseService.startSession();
+      try {
+        return await DatabaseService.withTransaction(session, async () => {
+          await TransferService.completeTransfer(
+            transferRecord.reference,
+            "loan-disbursement"
+          );
 
-        // 6️⃣ SUCCESS - ATOMIC COMPLETION (Once provider says 00, we "make it complete")
-        const trxnRes = await TransferService.completeTransfer(
-          transferRecord.reference,
-          "loan-disbursement"
-        );
+          const duration = lockLoan.duration || 21;
+          const settings = await SettingsService.getSettings();
+          const fee = settings.loan?.serviceFee || 0;
+          const percentage = settings.loan?.interestPercentage || 0;
+          const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (Number(percentage) / 100));
 
-        // 6️⃣ Compute repayment details
-        const duration = loan.duration || 21;
-        const settings = await SettingsService.getSettings();
-        const fee = settings.loan?.serviceFee || 0;
-        const percentage = settings.loan?.interestPercentage || 0;
+          const loanDate = new Date();
+          const repaymentDate = new Date(loanDate);
+          repaymentDate.setDate(repaymentDate.getDate() + Number(duration));
 
-        const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (Number(percentage) / 100));
+          // Reload loan to ensure we are in session
+          const sessionLoan = await Loan.findById(lockLoan._id).session(session);
+          if (!sessionLoan) throw new Error("Loan not found in session");
 
-        const loanDate = new Date();
+          sessionLoan.outstanding = total;
+          sessionLoan.amount = params.amount;
+          sessionLoan.repayment_amount = total;
+          sessionLoan.status = "accepted";
+          sessionLoan.loan_date = loanDate.toISOString();
+          sessionLoan.repayment_date = repaymentDate.toISOString();
+          sessionLoan.loan_payment_status = "not-started";
+          sessionLoan.adminAction = {
+            adminId: params.adminId,
+            action: "Approve",
+            date: new Date().toISOString(),
+          };
 
-        // Add duration (in days) to the repayment date
-        const repaymentDate = new Date(loanDate);
-        repaymentDate.setDate(repaymentDate.getDate() + Number(duration));
+          await sessionLoan.save({ session });
 
-        loan.outstanding = total;
-        loan.amount = params.amount;
-        loan.repayment_amount = total;
-        loan.status = "accepted";
-        loan.loan_date = loanDate.toISOString();
-        loan.repayment_date = repaymentDate.toISOString();
-        loan.loan_payment_status = "not-started";
-        loan.adminAction = {
-          adminId,
-          action: "Approve",
-          date: new Date().toISOString(),
-        };
+          await LedgerService.createDoubleEntry(
+            UuidService.generateTraceId(),
+            "loan_disbursement",
+            `user_wallet:${user._id}`,
+            params.amount,
+            "loan",
+            { userId: user._id as any, subtype: "disbursement", session }
+          );
 
-        await loan.save({ session });
+          // 8️⃣ Notify user (best-effort)
+          try {
+            await NotificationService.sendLoanApproval(user, sessionLoan);
+          } catch (err) {
+            console.warn("Notification error:", err);
+          }
 
-        // 7️⃣ Ledger entry
-        await LedgerService.createDoubleEntry(
-          UuidService.generateTraceId(),
-          "loan_disbursement",
-          `user_wallet:${user._id}`,
-          params.amount,
-          "loan",
-          { userId: user._id as any, subtype: "disbursement", session }
-        );
+          return { loan: sessionLoan, providerResponse, trxnRes: "COMPLETED" };
+        });
+      } catch (dbErr: any) {
+        logger.error({ err: dbErr.message, loanId: lockLoan._id }, "CRITICAL: Money sent via VFD but DB commit failed");
+        throw new APIError(500, "Money sent successfully, but account status update failed. Please contact support.");
+      } finally {
+        await session.endSession();
+      }
 
-        // 8️⃣ Notify user (best-effort)
-        try {
-          await NotificationService.sendLoanApproval(user, loan);
-        } catch (err) {
-          console.warn("Notification error:", err);
-        }
-
-        return { loan, providerResponse, trxnRes };
-      });
     } catch (e: any) {
-      // Revert lock on failure ONLY if it's a known non-provider success case
-      // If it's an APIError from our provider block, it's already logged and throws back to here.
-      // We check if the loan is still 'processing' before reverting to 'pending'
+      // Revert lock on failure ONLY if it hasn't reached provider success
       const checkLoan = await Loan.findById(params.loanId);
       if (checkLoan && checkLoan.status === "processing") {
         await Loan.findByIdAndUpdate(params.loanId, { status: "pending" });
       }
       throw e;
-    } finally {
-      await session.endSession();
     }
   }
+
 
   /* ---------------------
    * Repay loan
@@ -563,9 +561,6 @@ export class LoanService {
 
         loan.outstanding = newOutstanding >= 0 ? newOutstanding : 0;
         loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-        if (paidInFull) {
-          loan.status = "completed";
-        }
         await loan.save({ session });
 
         // Ledger double entry: savings_pool -> loan_repayment
@@ -582,6 +577,20 @@ export class LoanService {
             session
           }
         );
+
+        // Influencer commission on repayment
+        try {
+          const { InfluencerService } = await import('../influencer/influencer.service');
+          await InfluencerService.recordCommissionForUser(
+              params.userId.toString(), 
+              'loan', 
+              repayAmount, 
+              undefined, 
+              (loan as any).referralCode
+          );
+        } catch (err) {
+          logger.warn({ err }, "Failed to record influencer commission for internal repayment");
+        }
 
         logger.info({
           loanId: loan._id,
@@ -719,6 +728,20 @@ export class LoanService {
           session
         }
       );
+
+      // Influencer commission on repayment
+      try {
+        const { InfluencerService } = await import('../influencer/influencer.service');
+        await InfluencerService.recordCommissionForUser(
+            user._id.toString(), 
+            'loan', 
+            repayAmount, 
+            undefined, 
+            (loan as any).referralCode
+        );
+      } catch (err) {
+        logger.warn({ err }, "Failed to record influencer commission for standard repayment");
+      }
 
       // 8) compute and persist updated credit score based on timeliness
       try {

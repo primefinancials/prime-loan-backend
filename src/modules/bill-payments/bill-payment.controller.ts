@@ -37,7 +37,8 @@ export class BillPaymentController {
         customerReference,
         itemCode,
         idempotencyKey,
-        meterType
+        meterType,
+        referralCode
       });
 
       // Background non-critical hooks to improve endpoint speed

@@ -61,9 +61,19 @@ export class EscrowController {
                 return item;
             }));
 
+            // Resolve Vendor userId to avoid "inviting" the seller if they are already a user
+            let resolvedSellerId = sellerId;
+            try {
+                const { Vendor } = await import('../marketplace/vendor.model');
+                const vendor = await Vendor.findById(sellerId);
+                if (vendor && vendor.userId) {
+                    resolvedSellerId = vendor.userId.toString();
+                }
+            } catch (e) {}
+
             const escrow = await EscrowService.createEscrow({
                 buyerId: userId,
-                sellerId,
+                sellerId: resolvedSellerId,
                 type: 'marketplace',
                 amount,
                 description: description || "Marketplace Order",
