@@ -19,7 +19,7 @@ import {
   getBillProvider, withFailover
 } from './providers/bill-provider.factory';
 import { NormalizedBillProvider, BillCategory, BillBiller, BillProduct } from './providers/bill-provider.interface';
-import logger from '../../shared/utils/logger';
+import logger from "../../shared/utils/logger";
 
 const billCache = new NodeCache({ stdTTL: 24 * 60 * 60 }); // 24 hours
 
