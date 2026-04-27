@@ -66,10 +66,11 @@ export class LoanPenaltiesCron {
     const tomorrowISO = tomorrow.toISOString().split('T')[0];
 
     try {
-      // Pull all active loans with outstanding balances
+      // Pull all active loans with outstanding balances (exclude already-complete loans)
       const loans = await Loan.find({
-        status: 'accepted',
-        outstanding: { $gt: 0 }
+        status: { $in: ['accepted', 'processing'] },
+        outstanding: { $gt: 0 },
+        loan_payment_status: { $ne: 'complete' }
       });
 
       const penalizedUsers: { email?: string, phone?: string, amount?: number }[] = [];
@@ -100,31 +101,42 @@ export class LoanPenaltiesCron {
 
           // 2. Deduction (Only for overdue)
           if (repaymentDateISO < todayISO) {
-            const walletBalance = Number(user.user_metadata?.wallet || 0);
-            const outstanding = Number(loan.outstanding || 0);
-            const repaymentAmount = Math.min(walletBalance, outstanding);
+            // Re-fetch loan to get fresh outstanding (prevents stale-read double deductions)
+            const freshLoan = await Loan.findById(loan._id);
+            if (!freshLoan || freshLoan.loan_payment_status === 'complete' || Number(freshLoan.outstanding) <= 0) {
+              logger.info({ loanId: loan._id }, 'Skipping deduction — loan already fully paid (fresh check)');
+            } else {
+              const walletBalance = Number(user.user_metadata?.wallet || 0);
+              const outstanding = Number(freshLoan.outstanding || 0);
+              const repaymentAmount = Math.min(walletBalance, outstanding);
 
-            if (walletBalance > 0 && repaymentAmount > 0) {
-              try {
-                await LoanService.repayLoan({
-                  loanId: loan._id,
-                  userId: user._id,
-                  amount: repaymentAmount
-                });
-                deductedUsers.push({ email: user.email, phone: user.user_metadata?.phone });
-                await WorkerLogService.log('loan-penalties', 'info', `Auto-deducted wallet balance for overdue loan for ${user.email || user.user_metadata?.phone}`, { userId: user._id, loanId: loan._id });
-              } catch (error: any) {
-                logger.error({ loanId: loan._id, error: error.message }, 'Error repaying loan');
-                await WorkerLogService.log('loan-penalties', 'error', `Error repaying loan: ${error.message}`, { loanId: loan._id });
+              if (walletBalance > 0 && repaymentAmount > 0) {
+                try {
+                  await LoanService.repayLoan({
+                    loanId: loan._id,
+                    userId: user._id,
+                    amount: repaymentAmount,
+                    idempotencyKey: `worker-deduct-${loan._id}-${todayISO}`
+                  });
+                  deductedUsers.push({ email: user.email, phone: user.user_metadata?.phone });
+                  await WorkerLogService.log('loan-penalties', 'info', `Auto-deducted wallet balance for overdue loan for ${user.email || user.user_metadata?.phone}`, { userId: user._id, loanId: loan._id });
+                } catch (error: any) {
+                  logger.error({ loanId: loan._id, error: error.message }, 'Error repaying loan');
+                  await WorkerLogService.log('loan-penalties', 'error', `Error repaying loan: ${error.message}`, { loanId: loan._id });
+                }
               }
             }
 
             // 3. Flutterwave Auto-Debit Fallback
             // If wallet was insufficient and user has a linked payment method, try auto-debit
+            const refreshedLoan = await Loan.findById(loan._id);
+            if (refreshedLoan && refreshedLoan.loan_payment_status === 'complete') {
+              logger.info({ loanId: loan._id }, 'Skipping Flutterwave auto-debit — loan fully paid after wallet deduction');
+            } else {
             const refreshedUser = await UserService.getUser(loan.userId);
             if (refreshedUser && !Array.isArray(refreshedUser)) {
               const updatedWallet = Number(refreshedUser.user_metadata?.wallet || 0);
-              const remainingOutstanding = Number(loan.outstanding || 0);
+              const remainingOutstanding = Number(refreshedLoan?.outstanding || 0);
 
               if (updatedWallet < remainingOutstanding && settings.autoDebit?.enabled !== false) {
                 const debitAmount = remainingOutstanding - updatedWallet;
@@ -201,6 +213,7 @@ export class LoanPenaltiesCron {
                 }
               }
             }
+            } // close refreshedLoan guard
           }
 
           // 3. Reminders (Overdue, Due Today, Due Tomorrow)
