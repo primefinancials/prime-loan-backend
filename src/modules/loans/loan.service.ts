@@ -536,6 +536,14 @@ export class LoanService {
     requiredParam("loanId", params.loanId);
     requiredParam("amount", params.amount);
 
+    // ─── GLOBAL GUARD: prevent repaying an already-complete loan ───
+    const guardLoan = await Loan.findById(params.loanId);
+    if (!guardLoan) throw new NotFoundError("Loan not found");
+    if (guardLoan.loan_payment_status === 'complete' || Number(guardLoan.outstanding) <= 0) {
+      logger.warn({ loanId: params.loanId, status: guardLoan.loan_payment_status, outstanding: guardLoan.outstanding }, 'Repayment rejected — loan already fully paid');
+      return { loan: guardLoan, providerResponse: { status: "00", alreadyPaid: true }, trxnRes: null };
+    }
+
     // ───────────────────────────────────────────────
     // INTERNAL-ONLY PATH: Direct DB update, no VFD transfer
     // Used by autoDeductActiveLoan during savings withdrawals
@@ -547,20 +555,28 @@ export class LoanService {
         const loan = await Loan.findById(params.loanId).session(session);
         if (!loan) throw new NotFoundError("Loan not found");
 
-        let repayAmount = Number(params.amount);
-        let newOutstanding = Number(loan.outstanding) - repayAmount;
+        // Guard: skip if already complete (race condition protection)
+        if (loan.loan_payment_status === 'complete' || Number(loan.outstanding) <= 0) {
+          logger.warn({ loanId: loan._id }, 'Internal repayment skipped — loan already fully paid (in-session)');
+          return { loan, providerResponse: { status: "00", alreadyPaid: true }, trxnRes: null };
+        }
+
+        // Cap repayment at actual outstanding — never overpay
+        let repayAmount = Math.min(Number(params.amount), Number(loan.outstanding));
+        let newOutstanding = Math.max(0, Number(loan.outstanding) - repayAmount);
         const paidInFull = newOutstanding <= 0;
 
         const now = new Date();
         loan.repayment_history = [...(loan.repayment_history || []), {
           amount: repayAmount,
-          outstanding: newOutstanding >= 0 ? newOutstanding : 0,
+          outstanding: newOutstanding,
           action: "auto-deduction",
           date: now.toISOString()
         }];
 
-        loan.outstanding = newOutstanding >= 0 ? newOutstanding : 0;
+        loan.outstanding = newOutstanding;
         loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
+        if (paidInFull) loan.status = 'completed' as any;
         await loan.save({ session });
 
         // Ledger double entry: savings_pool -> loan_repayment
@@ -634,11 +650,12 @@ export class LoanService {
 
       // Ensure user has funds (provider source of truth)
       const userBalance = parseFloat(userAcc.accountBalance || "0");
-      let repayAmount = Number(params.amount);
+      // Cap at outstanding so we never transfer more than what's owed
+      let repayAmount = Math.min(Number(params.amount), Number(loan.outstanding));
 
       if (userBalance < repayAmount && !params.skipBalanceCheck) {
         if (userBalance <= 0) throw new BadRequestError("Insufficient funds to repay loan");
-        else repayAmount = userBalance;
+        else repayAmount = Math.min(userBalance, repayAmount);
       }
 
       // 1) internal transfer record
@@ -695,21 +712,22 @@ export class LoanService {
       // 3) complete internal transfer
       const trxnRes = await TransferService.completeTransfer(transferRecord.reference, "loan-repayment");
 
-      // 4) update loan outstanding & history
-      let newOutstanding = Number(loan.outstanding) - Number(params.amount);
+      // 4) update loan outstanding & history — use repayAmount (capped), not params.amount
+      let newOutstanding = Math.max(0, Number(loan.outstanding) - repayAmount);
 
       const paidInFull = newOutstanding <= 0;
 
       const now = new Date();
       loan.repayment_history = [...loan.repayment_history, {
-        amount: params.amount,
-        outstanding: newOutstanding >= 0 ? newOutstanding : 0,
+        amount: repayAmount,
+        outstanding: newOutstanding,
         action: "repayment",
         date: now.toISOString()
       }];
 
       loan.outstanding = newOutstanding;
       loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
+      if (paidInFull) loan.status = 'completed' as any;
       await loan.save({ session });
 
       console.log({ newOutstanding, paidInFull, loan })
