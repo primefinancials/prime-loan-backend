@@ -259,7 +259,7 @@ export class TestIntegrationsController {
   }
 
   /**
-   * GET /backoffice/test-integrations/name-enquiry
+   * GET /backoffice/test-integrations/verify-beneficiary
    * query: { bankCode, accountNo }
    */
   static async nameEnquiry(req: Request, res: Response) {
