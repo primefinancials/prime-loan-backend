@@ -291,7 +291,8 @@ export class TestIntegrationsController {
         });
       }
     } catch (err: any) {
-      // Error handling...
+      logger.error({ error: err.message }, 'Name enquiry failed');
+      return res.status(500).json({ status: 'failed', message: err.message });
     }
   }
 
@@ -304,14 +305,14 @@ export class TestIntegrationsController {
   static async testTransfer(req: Request, res: Response, next: NextFunction) {
     try {
       const { fromAccount, toAccount, bankCode, amount, remark, beneficiaryName } = req.body;
-      if (!fromAccount || !toAccount || !amount || !bankCode) {
-        return res.status(400).json({ status: 'failed', message: 'fromAccount, toAccount, amount, and bankCode are required' });
+      if (!toAccount || !amount || !bankCode) {
+        return res.status(400).json({ status: 'failed', message: 'toAccount, amount, and bankCode are required' });
       }
 
       const vfdProvider = new VfdProvider();
 
       // 1. Get From Account Info to verify it exists and get balances
-      const accountRes = await vfdProvider.getAccountInfo(fromAccount);
+      const accountRes = await vfdProvider.getAccountInfo(fromAccount || undefined);
       if (!accountRes.data) return res.status(404).json({ status: 'failed', message: 'From account not found on VFD' });
 
       const fromData = accountRes.data;
@@ -320,7 +321,7 @@ export class TestIntegrationsController {
       // 2. Initiate Transfer (Skip DB if it's just a "test" transfer as per user request)
       // We still call initiateTransfer but with skipDbRecord: true
       const initResult = await TransferService.initiateTransfer({
-        fromAccount,
+        fromAccount: fromData.accountNo,
         toAccount,
         amount,
         bankCode,

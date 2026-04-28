@@ -60,7 +60,7 @@ export class TransferService {
     try {
       return await DatabaseService.withTransaction(session, async () => {
         const user = await User.findOne({ "user_metadata.accountNo": request.fromAccount });
-        if (!user && type == "transfer") {
+        if (!user && type == "transfer" && !request.skipDbRecord) {
           throw new Error("User Not Found");
         }
 
