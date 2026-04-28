@@ -270,13 +270,25 @@ export class TestIntegrationsController {
       const vfdProvider = new VfdProvider();
       const result = await vfdProvider.nameEnquiry(String(bankCode), String(accountNo));
       
-      if (result.status === 'success' || result.data) {
+      if (result.status === 'success' || result.data || (result as any).status === 'Success') {
         return res.status(200).json({ status: 'success', data: result.data });
       } else {
-        return res.status(400).json({ status: 'failed', message: result.message || 'Verification failed' });
+        return res.status(400).json({ 
+          status: 'failed', 
+          message: result.message || 'Verification failed',
+          data: result.data
+        });
       }
     } catch (err: any) {
-      return res.status(500).json({ status: 'failed', message: err.message });
+      console.error('[NameEnquiry Error]', err.response?.data || err.message);
+      const statusCode = err.response?.status || 500;
+      const errorMessage = err.response?.data?.message || err.message || 'Internal Server Error';
+      
+      return res.status(statusCode).json({ 
+        status: 'failed', 
+        message: `VFD Error: ${errorMessage}`,
+        details: err.response?.data
+      });
     }
   }
 
