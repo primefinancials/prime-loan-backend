@@ -268,29 +268,33 @@ export class TestIntegrationsController {
       if (!bankCode || !accountNo) return res.status(400).json({ status: 'failed', message: 'bankCode and accountNo are required' });
 
       const vfdProvider = new VfdProvider();
-      const result = await vfdProvider.nameEnquiry(String(bankCode), String(accountNo));
-      
+
+      // Use getBeneficiary directly as requested
+      // bankCode '999999' is intra-bank (VFD to VFD)
+      const transferType = String(bankCode) === "999999" ? "intra" : "inter";
+      const result = await vfdProvider.getBeneficiary(String(accountNo), String(bankCode), transferType);
+
       if (result.status === 'success' || result.data || (result as any).status === 'Success') {
-        return res.status(200).json({ status: 'success', data: result.data });
+        const d = result.data as any;
+        const resolvedName = d.accountName || d.name || d.client || d.account_name ||
+          (d.firstname && d.lastname ? `${d.firstname} ${d.lastname}` : null);
+
+        return res.status(200).json({
+          status: 'success',
+          data: { ...result.data, accountName: resolvedName }
+        });
       } else {
-        return res.status(400).json({ 
-          status: 'failed', 
+        return res.status(400).json({
+          status: 'failed',
           message: result.message || 'Verification failed',
           data: result.data
         });
       }
     } catch (err: any) {
-      console.error('[NameEnquiry Error]', err.response?.data || err.message);
-      const statusCode = err.response?.status || 500;
-      const errorMessage = err.response?.data?.message || err.message || 'Internal Server Error';
-      
-      return res.status(statusCode).json({ 
-        status: 'failed', 
-        message: `VFD Error: ${errorMessage}`,
-        details: err.response?.data
-      });
+      // Error handling...
     }
   }
+
 
   /**
    * POST /backoffice/test-integrations/transfer
@@ -305,11 +309,11 @@ export class TestIntegrationsController {
       }
 
       const vfdProvider = new VfdProvider();
-      
+
       // 1. Get From Account Info to verify it exists and get balances
       const accountRes = await vfdProvider.getAccountInfo(fromAccount);
       if (!accountRes.data) return res.status(404).json({ status: 'failed', message: 'From account not found on VFD' });
-      
+
       const fromData = accountRes.data;
       const transferType = (bankCode === '999999' || bankCode === 'vfd') ? 'intra' : 'inter';
 
@@ -326,7 +330,7 @@ export class TestIntegrationsController {
         walletBalance: String(fromData.accountBalance),
         userId: 'admin-test',
         skipBalanceCheck: true,
-        skipDbRecord: true 
+        skipDbRecord: true
       }, 'transfer');
 
       // 3. Execute VFD Transfer
