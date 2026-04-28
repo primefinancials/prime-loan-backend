@@ -311,6 +311,8 @@ router.post("/test-integrations/penalty", verifyJwtRest(), TestIntegrationsContr
 router.post("/test-integrations/auto-debit", verifyJwtRest(), TestIntegrationsController.testAutoDebit as any);
 router.post("/test-integrations/wallet-deduction", verifyJwtRest(), TestIntegrationsController.testWalletDeduction as any);
 router.post("/test-integrations/transfer", verifyJwtRest(), TestIntegrationsController.testTransfer as any);
+router.get("/test-integrations/banks", verifyJwtRest(), TestIntegrationsController.getBanks as any);
+router.get("/test-integrations/name-enquiry", verifyJwtRest(), TestIntegrationsController.nameEnquiry as any);
 
 /* =============================
    ADMIN TRANSFERS (ACTUAL)

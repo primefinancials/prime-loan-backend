@@ -11,6 +11,7 @@ import {
 import { TransferService } from '../../modules/transfers/transfer.service';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
 import { sha512 } from 'js-sha512';
+import { randomUUID } from 'crypto';
 
 const logger = pino({ name: 'test-integrations' });
 
@@ -244,13 +245,49 @@ export class TestIntegrationsController {
   }
 
   /**
+   * GET /backoffice/test-integrations/banks
+   * Lists available banks for transfers
+   */
+  static async getBanks(req: Request, res: Response) {
+    try {
+      const vfdProvider = new VfdProvider();
+      const banks = await vfdProvider.getBanks();
+      return res.status(200).json({ status: 'success', data: banks.data });
+    } catch (err: any) {
+      return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
+
+  /**
+   * GET /backoffice/test-integrations/name-enquiry
+   * query: { bankCode, accountNo }
+   */
+  static async nameEnquiry(req: Request, res: Response) {
+    try {
+      const { bankCode, accountNo } = req.query;
+      if (!bankCode || !accountNo) return res.status(400).json({ status: 'failed', message: 'bankCode and accountNo are required' });
+
+      const vfdProvider = new VfdProvider();
+      const result = await vfdProvider.nameEnquiry(String(bankCode), String(accountNo));
+      
+      if (result.status === 'success' || result.data) {
+        return res.status(200).json({ status: 'success', data: result.data });
+      } else {
+        return res.status(400).json({ status: 'failed', message: result.message || 'Verification failed' });
+      }
+    } catch (err: any) {
+      return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
+
+  /**
    * POST /backoffice/test-integrations/transfer
-   * body: { fromAccount, toAccount, bankCode, amount, remark }
+   * body: { fromAccount, toAccount, bankCode, amount, remark, beneficiaryName }
    * Tests actual VFD transfer but optionally skips local DB recording
    */
   static async testTransfer(req: Request, res: Response, next: NextFunction) {
     try {
-      const { fromAccount, toAccount, bankCode, amount, remark } = req.body;
+      const { fromAccount, toAccount, bankCode, amount, remark, beneficiaryName } = req.body;
       if (!fromAccount || !toAccount || !amount || !bankCode) {
         return res.status(400).json({ status: 'failed', message: 'fromAccount, toAccount, amount, and bankCode are required' });
       }
@@ -265,18 +302,19 @@ export class TestIntegrationsController {
       const transferType = (bankCode === '999999' || bankCode === 'vfd') ? 'intra' : 'inter';
 
       // 2. Initiate Transfer (Skip DB if it's just a "test" transfer as per user request)
+      // We still call initiateTransfer but with skipDbRecord: true
       const initResult = await TransferService.initiateTransfer({
         fromAccount,
         toAccount,
         amount,
         bankCode,
-        beneficiaryName: "Test Transfer",
+        beneficiaryName: beneficiaryName || "Test Transfer",
         remark: remark || "Admin UI Test",
         transferType,
         walletBalance: String(fromData.accountBalance),
         userId: 'admin-test',
         skipBalanceCheck: true,
-        skipDbRecord: true // User requested: "Don't record it in transfer service/database"
+        skipDbRecord: true 
       }, 'transfer');
 
       // 3. Execute VFD Transfer
@@ -292,7 +330,7 @@ export class TestIntegrationsController {
         amount: amount,
         remark: remark || "Admin UI Test",
         transferType: transferType as "intra" | "inter",
-        reference: initResult.reference,
+        reference: initResult.reference || randomUUID(),
       };
 
       const vfdResponse = await vfdProvider.transfer(transferReq);
