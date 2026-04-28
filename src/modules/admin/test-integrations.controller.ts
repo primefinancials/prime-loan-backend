@@ -312,7 +312,7 @@ export class TestIntegrationsController {
       const vfdProvider = new VfdProvider();
 
       // 1. Get From Account Info to verify it exists and get balances
-      const accountRes = await vfdProvider.getAccountInfo(fromAccount || undefined);
+      const accountRes = await vfdProvider.getAccountInfo((fromAccount && fromAccount !== '') ? fromAccount : undefined);
       if (!accountRes.data) return res.status(404).json({ status: 'failed', message: 'From account not found on VFD' });
 
       const fromData = accountRes.data;
