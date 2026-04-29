@@ -347,7 +347,7 @@ export class TestIntegrationsController {
       // 3. Execute VFD Transfer
       const transferReq = {
         fromAccount: fromData.accountNo,
-        uniqueSenderAccountId: fromData.accountId,
+        uniqueSenderAccountId: fromAccount ? fromData.accountId : "", // Company transfers use empty string
         fromClientId: fromData.clientId,
         fromClient: fromData.client,
         fromSavingsId: fromData.accountId,
@@ -355,6 +355,7 @@ export class TestIntegrationsController {
         toClient: beneData.name,
         toClientId: beneData.clientId,
         toSavingsId: beneData.account?.id || "",
+        toSession: transferType === 'intra' ? (beneData.account?.id || "") : undefined,
         toBank: bankCode,
         signature: sha512.hex(`${fromData.accountNo}${toAccount}`),
         amount: numAmount,
