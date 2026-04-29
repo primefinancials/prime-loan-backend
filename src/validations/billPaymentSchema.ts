@@ -23,4 +23,5 @@ export const billPaymentSchema = Joi.object({
   itemCode: Joi.string().required(), // may be required depending on
   meterType: Joi.string(), // 01 = prepaid, 02 = postpaid
   idempotencyKey: Joi.string().optional(),
+  referralCode: Joi.string().optional().allow('').max(20),
 });

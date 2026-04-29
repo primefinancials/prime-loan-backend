@@ -20,6 +20,7 @@ const BillPaymentSchema = new Schema<IBillPayment>({
     index: true
   },
   providerRef: { type: String },
+  referralCode: { type: String },
   processedAt: { type: Date },
   meta: { type: Schema.Types.Mixed }
 }, {

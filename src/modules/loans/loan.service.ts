@@ -593,20 +593,6 @@ export class LoanService {
           }
         );
 
-        // Influencer commission on repayment
-        try {
-          const { InfluencerService } = await import('../influencer/influencer.service');
-          await InfluencerService.recordCommissionForUser(
-            params.userId.toString(),
-            'loan',
-            repayAmount,
-            undefined,
-            (loan as any).referralCode
-          );
-        } catch (err) {
-          logger.warn({ err }, "Failed to record influencer commission for internal repayment");
-        }
-
         logger.info({
           loanId: loan._id,
           userId: params.userId,
@@ -622,7 +608,23 @@ export class LoanService {
         return await executeInternalRepayment();
       } else {
         try {
-          return await DatabaseService.withTransaction(session, executeInternalRepayment);
+          const result = await DatabaseService.withTransaction(session, executeInternalRepayment);
+
+          // Influencer commission — fire-and-forget AFTER transaction commits
+          try {
+            const { InfluencerService } = await import('../influencer/influencer.service');
+            InfluencerService.recordCommissionForUser(
+              params.userId.toString(),
+              'loan',
+              Number(params.amount),
+              undefined,
+              (result.loan as any).referralCode
+            ).catch(err => logger.warn({ err: (err as Error).message }, "Failed to record influencer commission for internal repayment"));
+          } catch (err) {
+            logger.warn({ err }, "Failed to import InfluencerService for internal repayment commission");
+          }
+
+          return result;
         } finally {
           await session.endSession();
         }
@@ -754,20 +756,6 @@ export class LoanService {
         }
       );
 
-      // Influencer commission on repayment
-      try {
-        const { InfluencerService } = await import('../influencer/influencer.service');
-        await InfluencerService.recordCommissionForUser(
-          user._id.toString(),
-          'loan',
-          repayAmount,
-          undefined,
-          (loan as any).referralCode
-        );
-      } catch (err) {
-        logger.warn({ err }, "Failed to record influencer commission for standard repayment");
-      }
-
       // 8) compute and persist updated credit score based on timeliness
       try {
         const dueDateISO = loan.repayment_date;
@@ -792,7 +780,23 @@ export class LoanService {
       return await executeRepayment();
     } else {
       try {
-        return await DatabaseService.withTransaction(session, executeRepayment);
+        const result = await DatabaseService.withTransaction(session, executeRepayment);
+
+        // Influencer commission — fire-and-forget AFTER transaction commits
+        try {
+          const { InfluencerService } = await import('../influencer/influencer.service');
+          InfluencerService.recordCommissionForUser(
+            params.userId.toString(),
+            'loan',
+            Number(params.amount),
+            undefined,
+            (result.loan as any).referralCode
+          ).catch(err => logger.warn({ err: (err as Error).message }, "Failed to record influencer commission for standard repayment"));
+        } catch (err) {
+          logger.warn({ err }, "Failed to import InfluencerService for standard repayment commission");
+        }
+
+        return result;
       } finally {
         await session.endSession();
       }

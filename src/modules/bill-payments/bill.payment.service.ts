@@ -72,6 +72,7 @@ export default class BillPaymentService {
       serviceId: req.serviceId,
       customerReference: req.customerReference,
       idempotencyKey,
+      referralCode: req.referralCode,
       providerFn: async () => {
         // Route to provider via normalizer — with automatic failover
         // NOTE: Provider always gets the ORIGINAL amount (the user gets exactly what they requested)
@@ -201,9 +202,11 @@ export default class BillPaymentService {
       }
     });
 
-    // Record commission (Awaited for reliability)
-    await InfluencerService.recordCommissionForUser(req.userId, 'bill-payment', debitAmount, undefined, req.referralCode)
-      .catch(err => logger.warn({ err: err.message }, "Bill payment commission failed"));
+    // Record commission only for successful transactions (fire-and-forget)
+    if (result.status === 'COMPLETED') {
+      InfluencerService.recordCommissionForUser(req.userId, 'bill-payment', debitAmount, undefined, req.referralCode)
+        .catch(err => logger.warn({ err: err.message }, "Bill payment commission failed"));
+    }
 
     return result;
   }
