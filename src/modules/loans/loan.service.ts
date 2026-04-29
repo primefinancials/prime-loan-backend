@@ -505,7 +505,7 @@ export class LoanService {
             console.warn("Notification error:", err);
           }
 
-          return { loan: sessionLoan, providerResponse, trxnRes: "COMPLETED" };
+          return { loan: sessionLoan, providerResponse, trxnRes: "COMPLETED", repayAmount: 0 };
         });
       } catch (dbErr: any) {
         logger.error({ err: dbErr.message, loanId: lockLoan._id }, "CRITICAL: Money sent via VFD but DB commit failed");
@@ -541,7 +541,7 @@ export class LoanService {
     if (!guardLoan) throw new NotFoundError("Loan not found");
     if (guardLoan.loan_payment_status === 'complete' || Number(guardLoan.outstanding) <= 0) {
       logger.warn({ loanId: params.loanId, status: guardLoan.loan_payment_status, outstanding: guardLoan.outstanding }, 'Repayment rejected — loan already fully paid');
-      return { loan: guardLoan, providerResponse: { status: "00", alreadyPaid: true }, trxnRes: null };
+      return { loan: guardLoan, providerResponse: { status: "00", alreadyPaid: true }, trxnRes: null, repayAmount: 0 };
     }
 
     // ───────────────────────────────────────────────
@@ -558,7 +558,7 @@ export class LoanService {
         // Guard: skip if already complete (race condition protection)
         if (loan.loan_payment_status === 'complete' || Number(loan.outstanding) <= 0) {
           logger.warn({ loanId: loan._id }, 'Internal repayment skipped — loan already fully paid (in-session)');
-          return { loan, providerResponse: { status: "00", alreadyPaid: true }, trxnRes: null };
+          return { loan, providerResponse: { status: "00", alreadyPaid: true }, trxnRes: null, repayAmount: 0 };
         }
 
         // Cap repayment at actual outstanding — never overpay
@@ -601,7 +601,7 @@ export class LoanService {
           paidInFull,
         }, "Internal-only loan repayment completed (auto-deduction from savings)");
 
-        return { loan, providerResponse: { status: "00", internal: true }, trxnRes: null };
+        return { loan, providerResponse: { status: "00", internal: true }, trxnRes: null, repayAmount };
       };
 
       if (params.session) {
@@ -773,7 +773,7 @@ export class LoanService {
         console.warn("Failed updating credit score (non-fatal):", err);
       }
 
-      return { loan, providerResponse, trxnRes };
+      return { loan, providerResponse, trxnRes, repayAmount };
     };
 
     if (params.session) {

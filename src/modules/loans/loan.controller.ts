@@ -178,19 +178,20 @@ export class LoanController {
         idempotencyKey,
       } as RepayParams);
 
+      const actualAmount = result.repayAmount ?? Number(amount);
       const profit = await LoanController.profitService.getProfitByReference(id);
 
-      if ((profit?.amount || 0) >= amount) {
+      if ((profit?.amount || 0) >= actualAmount) {
         await LoanController.profitService.deleteProfit(id);
         await LoanController.profitService.recordProfit({
-          amount,
+          amount: actualAmount,
           source: "loan",
           userId: result.loan.userId,
           reference: result.loan._id as any,
           type: "realized",
         });
       } else {
-        const [figure, outstanding] = [amount, (profit?.amount || 0) - amount];
+        const [figure, outstanding] = [actualAmount, (profit?.amount || 0) - actualAmount];
 
         await LoanController.profitService.deleteProfit(id);
 
@@ -211,7 +212,15 @@ export class LoanController {
         });
       }
 
-      res.status(200).json({ status: "success", data: result });
+      res.status(200).json({
+        status: "success",
+        data: result,
+        meta: {
+          requestedAmount: Number(amount),
+          actualAmount,
+          wasCapped: actualAmount < Number(amount),
+        }
+      });
     } catch (error) {
       next(error);
     }
