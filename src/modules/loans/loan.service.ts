@@ -664,7 +664,7 @@ export class LoanService {
         beneficiaryName: primeInfo.client,
         userId: String(user._id),
         toAccount: primeInfo.accountNo,
-        amount: params.amount,
+        amount: repayAmount,
         transferType: "intra",
         bankCode: "999999",
         remark: "Loan repayment",
@@ -698,7 +698,8 @@ export class LoanService {
           providerResponse = await this.vfd.transfer(transferRequest);
         } catch (err: any) {
           await TransferService.failTransfer(transferRecord.reference);
-          throw new Error(`Repayment provider transfer failed: ${String(err.message)}`);
+          const providerError = err.response?.data?.message || err.response?.data || err.message;
+          throw new Error(`Repayment provider transfer failed: ${String(providerError)}`);
         }
 
         const ok = providerResponse && (providerResponse.status === "00");
@@ -717,7 +718,7 @@ export class LoanService {
       const paidInFull = newOutstanding <= 0;
 
       const now = new Date();
-      loan.repayment_history = [...loan.repayment_history, {
+      loan.repayment_history = [...(loan.repayment_history || []), {
         amount: repayAmount,
         outstanding: newOutstanding,
         action: "repayment",
@@ -1223,4 +1224,3 @@ export class LoanService {
     return ladder;
   }
 }
-
