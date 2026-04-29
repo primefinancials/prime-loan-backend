@@ -213,6 +213,7 @@ router.post("/influencers/:id/reject", verifyJwtRest(), InfluencerController.rej
 router.post("/influencers/:id/suspend", verifyJwtRest(), InfluencerController.suspend as any);
 router.post("/influencers/:id/reactivate", verifyJwtRest(), InfluencerController.reactivate as any);
 router.put("/influencers/:id/discount-config", verifyJwtRest(), InfluencerController.updateDiscountConfig as any);
+router.post("/influencers/:id/payout", verifyJwtRest(), InfluencerController.payoutSingleInfluencer as any);
 
 /* =============================
    AUTO-DEBIT LOGS
