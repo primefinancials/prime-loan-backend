@@ -362,36 +362,36 @@ export class LoanService {
       // 2️⃣ Check for existing completed transfer (Idempotency Recovery)
       const existingTransfer = await Transfer.findOne({ idempotencyKey: transferIdempotency });
       if (existingTransfer && existingTransfer.status === "COMPLETED") {
-          const settings = await SettingsService.getSettings();
-          const fee = settings.loan?.serviceFee || 0;
-          const percentage = settings.loan?.interestPercentage || 0;
-          const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (percentage / 100));
+        const settings = await SettingsService.getSettings();
+        const fee = settings.loan?.serviceFee || 0;
+        const percentage = settings.loan?.interestPercentage || 0;
+        const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (percentage / 100));
 
-          lockLoan.status = "accepted";
-          lockLoan.amount = params.amount;
-          lockLoan.outstanding = total;
-          lockLoan.repayment_amount = total;
-          lockLoan.loan_payment_status = "not-started";
-          await lockLoan.save();
+        lockLoan.status = "accepted";
+        lockLoan.amount = params.amount;
+        lockLoan.outstanding = total;
+        lockLoan.repayment_amount = total;
+        lockLoan.loan_payment_status = "not-started";
+        await lockLoan.save();
 
-          // Recovery Ledger Entry
-          await LedgerService.createDoubleEntry(
-            UuidService.generateTraceId(),
-            "loan_disbursement",
-            `user_wallet:${user._id}`,
-            params.amount,
-            "loan",
-            { userId: user._id as any, subtype: "disbursement" }
-          );
+        // Recovery Ledger Entry
+        await LedgerService.createDoubleEntry(
+          UuidService.generateTraceId(),
+          "loan_disbursement",
+          `user_wallet:${user._id}`,
+          params.amount,
+          "loan",
+          { userId: user._id as any, subtype: "disbursement" }
+        );
 
-          // Recovery Notification
-          try {
-            await NotificationService.sendLoanApproval(user, lockLoan as any);
-          } catch (err) {
-            console.warn("Notification error in recovery:", err);
-          }
+        // Recovery Notification
+        try {
+          await NotificationService.sendLoanApproval(user, lockLoan as any);
+        } catch (err) {
+          console.warn("Notification error in recovery:", err);
+        }
 
-          return { loan: lockLoan, transfer: existingTransfer, reused: true };
+        return { loan: lockLoan, transfer: existingTransfer, reused: true };
       }
 
       // 3️⃣ Get account details
@@ -576,7 +576,6 @@ export class LoanService {
 
         loan.outstanding = newOutstanding;
         loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-        if (paidInFull) loan.status = 'completed' as any;
         await loan.save({ session });
 
         // Ledger double entry: savings_pool -> loan_repayment
@@ -598,11 +597,11 @@ export class LoanService {
         try {
           const { InfluencerService } = await import('../influencer/influencer.service');
           await InfluencerService.recordCommissionForUser(
-              params.userId.toString(), 
-              'loan', 
-              repayAmount, 
-              undefined, 
-              (loan as any).referralCode
+            params.userId.toString(),
+            'loan',
+            repayAmount,
+            undefined,
+            (loan as any).referralCode
           );
         } catch (err) {
           logger.warn({ err }, "Failed to record influencer commission for internal repayment");
@@ -727,7 +726,6 @@ export class LoanService {
 
       loan.outstanding = newOutstanding;
       loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-      if (paidInFull) loan.status = 'completed' as any;
       await loan.save({ session });
 
       console.log({ newOutstanding, paidInFull, loan })
@@ -751,11 +749,11 @@ export class LoanService {
       try {
         const { InfluencerService } = await import('../influencer/influencer.service');
         await InfluencerService.recordCommissionForUser(
-            user._id.toString(), 
-            'loan', 
-            repayAmount, 
-            undefined, 
-            (loan as any).referralCode
+          user._id.toString(),
+          'loan',
+          repayAmount,
+          undefined,
+          (loan as any).referralCode
         );
       } catch (err) {
         logger.warn({ err }, "Failed to record influencer commission for standard repayment");
