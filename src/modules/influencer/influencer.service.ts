@@ -99,22 +99,29 @@ export class InfluencerService {
   static async recordCommission(influencerId: string, data: RecordCommissionDto): Promise<void> {
     try {
       const settings = await SettingsService.getSettings();
-      if (!settings.influencer?.enabled) return;
+      if (!settings.influencer?.enabled) {
+        logger.warn({ influencerId }, 'Influencer system is disabled in settings, skipping commission record');
+        return;
+      }
 
       const influencer = await Influencer.findById(influencerId);
-      if (!influencer || influencer.status !== 'approved') return;
+      if (!influencer || influencer.status !== 'approved') {
+        logger.warn({ influencerId, status: influencer?.status }, 'Influencer not found or not approved, skipping commission record');
+        return;
+      }
 
-      const rates = (settings.influencer.commissionRates as any)?.toObject?.() || settings.influencer.commissionRates;
+      const ratesObj = (settings.influencer.commissionRates as any)?.toObject?.() || settings.influencer.commissionRates;
       let commissionRate = 0;
       let commissionAmount = 0;
 
       if (data.transactionType === 'signup') {
         // Flat bonus for signup - prioritize explicitly passed amount
-        commissionAmount = data.transactionAmount > 0 ? data.transactionAmount : (rates.signup_bonus || 100);
+        commissionAmount = data.transactionAmount > 0 ? data.transactionAmount : (ratesObj.signup_bonus || 100);
         commissionRate = 0;
       } else {
         // Percentage-based for transactions
-        commissionRate = rates[data.transactionType] || 0;
+        // Support both rates.key and rates['key'] access
+        commissionRate = ratesObj[data.transactionType] || (settings.influencer.commissionRates as any)?.[data.transactionType] || 0;
         commissionAmount = Number(((commissionRate / 100) * data.transactionAmount).toFixed(2));
       }
 
@@ -123,7 +130,8 @@ export class InfluencerService {
         transactionType: data.transactionType,
         amount: data.transactionAmount,
         rate: commissionRate,
-        commission: commissionAmount
+        commission: commissionAmount,
+        ratesAvailable: Object.keys(ratesObj)
       }, 'Calculating influencer commission');
 
       if (commissionAmount <= 0 && data.transactionType !== 'signup') {
@@ -183,7 +191,13 @@ export class InfluencerService {
       let influencer: IInfluencer | null = null;
       const normalizedCode = referralCode?.toUpperCase().trim();
       
-      logger.info({ userId, transactionType, transactionAmount, referralCode: normalizedCode }, 'Attempting to record commission for user');
+      logger.info({ 
+        userId, 
+        transactionType, 
+        transactionAmount, 
+        referralCode: referralCode,
+        normalizedCode 
+      }, 'recordCommissionForUser: Initiation');
 
       // Per-transaction referral code takes priority
       if (normalizedCode) {

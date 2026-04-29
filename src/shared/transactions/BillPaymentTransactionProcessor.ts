@@ -18,6 +18,7 @@ export async function processTransaction({
   serviceId,
   customerReference,
   idempotencyKey,
+  referralCode,
   providerFn,
   txnProvider,
   refundProvider
@@ -28,6 +29,7 @@ export async function processTransaction({
   serviceId: string;
   customerReference: string;
   idempotencyKey: string;
+  referralCode?: string;
   providerFn: () => Promise<any>;
   txnProvider: () => Promise<TransferResponse & { reference: string }>;
   refundProvider: () => Promise<TransferResponse & { reference: string }>;
@@ -58,6 +60,7 @@ export async function processTransaction({
             customerReference,
             amount,
             status: "PENDING",
+            referralCode,
             meta: { originalAmount: amount },
           },
         ],

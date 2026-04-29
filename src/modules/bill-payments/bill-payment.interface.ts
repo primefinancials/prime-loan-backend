@@ -279,6 +279,7 @@ export interface IBillPayment extends Document {
     amount: number; // in kobo
     status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'MANUAL_REVIEW';
     providerRef?: string;
+    referralCode?: string;
     createdAt: Date;
     processedAt?: Date;
     meta?: Record<string, any>;

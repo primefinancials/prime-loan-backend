@@ -67,7 +67,7 @@ export class SavingsService {
     const session = await DatabaseService.startSession();
 
     try {
-      return await DatabaseService.withTransaction(session, async () => {
+      const txResult = await DatabaseService.withTransaction(session, async () => {
         const vfdProvider = new VfdProvider();
         const setting = await SettingsService.getSettings();
         const userId = params.userId;
@@ -265,7 +265,26 @@ export class SavingsService {
         );
 
         return result;
-      });
+      }) as any;
+
+      // Influencer commission — fire-and-forget AFTER transaction commits
+      const depositAmount = params.planType === 'LOCKED' ? (params.targetAmount || params.amount || 0) : 0;
+      if (params.referralCode && depositAmount > 0) {
+        try {
+          const { InfluencerService } = await import('../influencer/influencer.service');
+          InfluencerService.recordCommissionForUser(
+            params.userId.toString(),
+            'savings',
+            depositAmount,
+            undefined,
+            params.referralCode
+          ).catch(err => logger.warn({ err: (err as Error).message }, "Failed to record influencer commission for savings creation"));
+        } catch (err) {
+          logger.warn({ err }, "Failed to import InfluencerService for savings creation commission");
+        }
+      }
+
+      return txResult;
     } finally {
       await session.endSession();
     }
@@ -279,7 +298,7 @@ export class SavingsService {
   }) {
     const session = await DatabaseService.startSession();
     try {
-      return await DatabaseService.withTransaction(session, async () => {
+      const result = await DatabaseService.withTransaction(session, async () => {
         const vfdProvider = new VfdProvider();
         const plan = await SavingsPlan.findById(params.planId).session(session);
 
@@ -377,25 +396,10 @@ export class SavingsService {
             }
           );
 
-          // 5. Influencer commission hook (on top-up)
-          if (plan.referralCode) {
-            try {
-              const { InfluencerService } = await import('../influencer/influencer.service');
-              await InfluencerService.recordCommissionForUser(
-                params.userId.toString(),
-                'savings',
-                params.amount,
-                undefined,
-                plan.referralCode
-              );
-            } catch (err) {
-              logger.warn({ err: (err as Error).message }, "Failed to record influencer commission for savings top-up");
-            }
-          }
-
           return {
             planId: plan._id,
             newPrincipal: plan.principal,
+            referralCode: plan.referralCode,
             message: 'Top-up successful'
           };
         }
@@ -403,6 +407,25 @@ export class SavingsService {
         await TransferService.failTransfer(trxn.reference);
         throw new Error(`Transfer failed: ${providerRes.message}`);
       });
+
+      // Influencer commission — fire-and-forget AFTER transaction commits
+      // Note: topUpPlan result has referralCode from plan if it existed
+      if ((result as any)?.referralCode) {
+        try {
+          const { InfluencerService } = await import('../influencer/influencer.service');
+          InfluencerService.recordCommissionForUser(
+            params.userId.toString(),
+            'savings',
+            params.amount,
+            undefined,
+            (result as any).referralCode
+          ).catch(err => logger.warn({ err: (err as Error).message }, "Failed to record influencer commission for savings top-up"));
+        } catch (err) {
+          logger.warn({ err }, "Failed to import InfluencerService for savings top-up commission");
+        }
+      }
+
+      return result;
     } finally {
       session.endSession();
     }

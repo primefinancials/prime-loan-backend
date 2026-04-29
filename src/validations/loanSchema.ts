@@ -36,6 +36,7 @@ export const createClientLoanSchema = Joi.object({
   loan_date: Joi.string().required(),
   repayment_date: Joi.string().required(),
   acknowledgment: Joi.boolean().required(),
+  referralCode: Joi.string().optional().allow('').max(20),
 });
 
 

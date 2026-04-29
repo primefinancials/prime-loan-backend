@@ -27,6 +27,7 @@ export const createPlanSchema = Joi.object({
   amount: Joi.number().positive().optional(),
   interestRate: Joi.number().min(0).optional(),
   renew: Joi.boolean().optional(),
+  referralCode: Joi.string().optional().allow('').max(20),
 });
 
 /**
