@@ -65,6 +65,7 @@ export class SavingsController {
         amount,
         interestRate,
         renew,
+        referralCode,
       });
 
       // Influencer commission hook (fire-and-forget)

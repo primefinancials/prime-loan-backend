@@ -253,11 +253,12 @@ export class InfluencerController {
             _id: null,
             totalEarnings: { $sum: '$totalEarnings' },
             pendingPayouts: { $sum: '$pendingPayout' },
+            totalVolume: { $sum: '$totalVolumeGenerated' },
           },
         },
       ]);
 
-      const agg = earningsAgg[0] || { totalEarnings: 0, pendingPayouts: 0 };
+      const agg = earningsAgg[0] || { totalEarnings: 0, pendingPayouts: 0, totalVolume: 0 };
 
       // Total paid out (commissions with status 'paid')
       const paidAgg = await InfluencerCommission.aggregate([
@@ -291,6 +292,7 @@ export class InfluencerController {
           totalEarnings: agg.totalEarnings,
           pendingPayouts: agg.pendingPayouts,
           totalPaid: paidAgg[0]?.totalPaid || 0,
+          totalVolume: agg.totalVolume || 0,
           totalReferrals,
           commissionsByService,
         },

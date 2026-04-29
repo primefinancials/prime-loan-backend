@@ -43,7 +43,7 @@ export class BillPaymentController {
 
       // Background non-critical hooks to improve endpoint speed
       SettingsService.calculateProfit("bill-payment", "send", amount)
-        .then(profit => 
+        .then(profit =>
           BillPaymentController.profitService.recordProfit({
             amount: profit,
             source: "bill-payment",
@@ -52,9 +52,6 @@ export class BillPaymentController {
             type: "realized",
           })
         ).catch(err => console.error('Profit recording failed (non-fatal):', err.message));
-
-      InfluencerService.recordCommissionForUser(userId, 'bill-payment', amount, undefined, referralCode)
-        .catch(err => console.warn('Influencer commission recording failed (non-fatal):', err.message));
 
       res.status(200).json({ status: "success", data: result });
     } catch (error) {

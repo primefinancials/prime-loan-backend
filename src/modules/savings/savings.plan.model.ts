@@ -65,6 +65,7 @@ export interface ISavingsPlan extends Document {
     retryCount: number;
   };
   earlyWithdrawalDate?: Date;
+  referralCode?: string;
 }
 
 const SavingsPlanSchema = new Schema<ISavingsPlan>({
@@ -128,7 +129,8 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
     lastRun: { type: Date },
     retryCount: { type: Number, default: 0 }
   },
-  earlyWithdrawalDate: { type: Date, default: null }
+  earlyWithdrawalDate: { type: Date, default: null },
+  referralCode: { type: String, index: true }
 }, {
   timestamps: true,
   collection: getCollectionName('savings_plans')
