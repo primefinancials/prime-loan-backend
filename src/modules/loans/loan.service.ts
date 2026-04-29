@@ -650,11 +650,12 @@ export class LoanService {
       // Ensure user has funds (provider source of truth)
       const userBalance = parseFloat(userAcc.accountBalance || "0");
       // Cap at outstanding so we never transfer more than what's owed
-      let repayAmount = Math.min(Number(params.amount), Number(loan.outstanding));
+      // Round to 2 decimal places to avoid "Invalid amount" errors from VFD
+      let repayAmount = Math.round(Math.min(Number(params.amount), Number(loan.outstanding)) * 100) / 100;
 
       if (userBalance < repayAmount && !params.skipBalanceCheck) {
         if (userBalance <= 0) throw new BadRequestError("Insufficient funds to repay loan");
-        else repayAmount = Math.min(userBalance, repayAmount);
+        else repayAmount = Math.round(Math.min(userBalance, repayAmount) * 100) / 100;
       }
 
       // 1) internal transfer record
