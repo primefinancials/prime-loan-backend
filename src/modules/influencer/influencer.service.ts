@@ -104,7 +104,7 @@ export class InfluencerService {
       const influencer = await Influencer.findById(influencerId);
       if (!influencer || influencer.status !== 'approved') return;
 
-      const rates = settings.influencer.commissionRates;
+      const rates = (settings.influencer.commissionRates as any)?.toObject?.() || settings.influencer.commissionRates;
       let commissionRate = 0;
       let commissionAmount = 0;
 
@@ -118,7 +118,18 @@ export class InfluencerService {
         commissionAmount = Number(((commissionRate / 100) * data.transactionAmount).toFixed(2));
       }
 
-      if (commissionAmount <= 0) return;
+      logger.info({
+        influencerId,
+        transactionType: data.transactionType,
+        amount: data.transactionAmount,
+        rate: commissionRate,
+        commission: commissionAmount
+      }, 'Calculating influencer commission');
+
+      if (commissionAmount <= 0 && data.transactionType !== 'signup') {
+        logger.warn({ influencerId, transactionType: data.transactionType }, 'Commission amount is 0, skipping record');
+        return;
+      }
 
       await InfluencerCommission.create({
         influencerId: influencer._id,
@@ -137,7 +148,8 @@ export class InfluencerService {
         {
           $inc: {
             totalEarnings: commissionAmount,
-            pendingPayout: commissionAmount
+            pendingPayout: commissionAmount,
+            totalVolumeGenerated: data.transactionAmount
           }
         }
       );

@@ -45,6 +45,7 @@ export interface CreatePlanParams {
   amount?: number; // in naira - initial deposit (only for Fixed now)
   interestRate?: number;
   renew?: boolean;
+  referralCode?: string;
 }
 
 export interface WithdrawParams {
@@ -223,7 +224,8 @@ export class SavingsService {
             processed: true,
             transactionId: trxnRes?.transferId || ""
           }] : [],
-          withdrawalHistory: []
+          withdrawalHistory: [],
+          referralCode: params.referralCode
         }], { session });
 
         // Ledger entry for initial deposit (Fixed only)
@@ -374,6 +376,22 @@ export class SavingsService {
               }
             }
           );
+
+          // 5. Influencer commission hook (on top-up)
+          if (plan.referralCode) {
+            try {
+              const { InfluencerService } = await import('../influencer/influencer.service');
+              await InfluencerService.recordCommissionForUser(
+                params.userId.toString(),
+                'savings',
+                params.amount,
+                undefined,
+                plan.referralCode
+              );
+            } catch (err) {
+              logger.warn({ err: (err as Error).message }, "Failed to record influencer commission for savings top-up");
+            }
+          }
 
           return {
             planId: plan._id,

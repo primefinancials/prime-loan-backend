@@ -43,6 +43,7 @@ export interface IInfluencer extends Document {
     accountNumber: string;
     accountName: string;
   };
+  totalVolumeGenerated?: number;
   discountConfig?: DiscountConfig;
   createdAt: Date;
   updatedAt: Date;
@@ -82,5 +83,6 @@ export interface InfluencerDashboard {
   totalReferred: number;
   totalEarnings: number;
   pendingPayout: number;
+  totalVolumeGenerated?: number;
   earningsByService: Record<CommissionTransactionType, { total: number; count: number }>;
 }

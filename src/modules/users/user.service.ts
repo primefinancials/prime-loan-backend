@@ -242,7 +242,7 @@ export class UserService {
             console.error('Failed to send admin alert email:', error);
         }
 
-        // Influencer signup commission hook (fire-and-forget)
+        // Influencer signup commission hook (Synchronized)
         try {
             const { InfluencerService } = await import('../influencer/influencer.service');
             await InfluencerService.recordCommissionForUser(user._id as any, 'signup', influencerSignupBonus);

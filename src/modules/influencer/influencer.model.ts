@@ -21,6 +21,7 @@ const InfluencerSchema = new Schema<IInfluencer>({
   rejectionReason: { type: String },
   totalEarnings: { type: Number, default: 0 },
   pendingPayout: { type: Number, default: 0 },
+  totalVolumeGenerated: { type: Number, default: 0 },
   payoutHistory: [{
     amount: { type: Number, required: true },
     date: { type: Date, default: Date.now },

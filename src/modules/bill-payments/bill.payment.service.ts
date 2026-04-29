@@ -65,7 +65,7 @@ export default class BillPaymentService {
       logger.info({ userId, original: req.amount, discounted: debitAmount, referralCode: req.referralCode }, "Applied referral discount to bill payment");
     }
 
-    return await processTransaction({
+    const result = await processTransaction({
       userId: req.userId,
       amount: debitAmount, // The amount the user is debited
       serviceType: req.serviceType,
@@ -200,6 +200,12 @@ export default class BillPaymentService {
         return { ...vfdResult, reference: result.reference };
       }
     });
+
+    // Record commission (Awaited for reliability)
+    await InfluencerService.recordCommissionForUser(req.userId, 'bill-payment', debitAmount, undefined, req.referralCode)
+      .catch(err => logger.warn({ err: err.message }, "Bill payment commission failed"));
+
+    return result;
   }
 
   /* ─────────────────────────────────────────────
