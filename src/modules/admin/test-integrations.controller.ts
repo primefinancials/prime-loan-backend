@@ -324,14 +324,18 @@ export class TestIntegrationsController {
       const fromData = accountRes.data;
       const transferType = (bankCode === '999999' || bankCode === 'vfd') ? 'intra' : 'inter';
 
+      // 1.5 Get Beneficiary Info (Mandatory for VFD transfers)
+      const beneRes = await vfdProvider.getBeneficiary(toAccount, bankCode, transferType);
+      if (!beneRes.data) return res.status(404).json({ status: 'failed', message: 'Beneficiary account not found on VFD' });
+      const beneData = beneRes.data;
+
       // 2. Initiate Transfer (Skip DB if it's just a "test" transfer as per user request)
-      // We still call initiateTransfer but with skipDbRecord: true
       const initResult = await TransferService.initiateTransfer({
         fromAccount: fromData.accountNo,
         toAccount,
         amount: numAmount,
         bankCode,
-        beneficiaryName: beneficiaryName || "Test Transfer",
+        beneficiaryName: beneficiaryName || beneData.name || "Test Transfer",
         remark: remark || "Admin UI Test",
         transferType,
         walletBalance: String(fromData.accountBalance),
@@ -348,6 +352,9 @@ export class TestIntegrationsController {
         fromClient: fromData.client,
         fromSavingsId: fromData.accountId,
         toAccount,
+        toClient: beneData.name,
+        toClientId: beneData.clientId,
+        toSavingsId: beneData.account?.id || "",
         toBank: bankCode,
         signature: sha512.hex(`${fromData.accountNo}${toAccount}`),
         amount: numAmount,
