@@ -697,12 +697,19 @@ export class LoanService {
         try {
           providerResponse = await this.vfd.transfer(transferRequest);
         } catch (err: any) {
-          await TransferService.failTransfer(transferRecord.reference);
-          const providerError = err.response?.data?.message || err.response?.data || err.message;
-          throw new Error(`Repayment provider transfer failed: ${String(providerError)}`);
+          const providerData = err.response?.data;
+          // Status 98 means "Transaction Exist". If we get this, it means the transaction
+          // already succeeded or was registered in a previous attempt (e.g. after a 500 timeout).
+          if (providerData?.status === "98") {
+            providerResponse = providerData;
+          } else {
+            await TransferService.failTransfer(transferRecord.reference);
+            const providerError = providerData?.message || providerData || err.message;
+            throw new Error(`Repayment provider transfer failed: ${String(providerError)}`);
+          }
         }
 
-        const ok = providerResponse && (providerResponse.status === "00");
+        const ok = providerResponse && (providerResponse.status === "00" || providerResponse.status === "98");
         if (!ok) {
           await TransferService.failTransfer(transferRecord.reference);
           throw new Error(`Repayment failed: ${JSON.stringify(providerResponse)}`);
