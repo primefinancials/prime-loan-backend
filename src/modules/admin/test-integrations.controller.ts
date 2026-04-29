@@ -305,8 +305,14 @@ export class TestIntegrationsController {
   static async testTransfer(req: Request, res: Response, next: NextFunction) {
     try {
       const { fromAccount, toAccount, bankCode, amount, remark, beneficiaryName } = req.body;
-      if (!toAccount || !amount || !bankCode) {
-        return res.status(400).json({ status: 'failed', message: 'toAccount, amount, and bankCode are required' });
+      const numAmount = Number(amount);
+
+      if (!toAccount || !numAmount || !bankCode) {
+        return res.status(400).json({ 
+          status: 'failed', 
+          message: 'toAccount, amount (positive number), and bankCode are required',
+          received: { toAccount, amount, bankCode }
+        });
       }
 
       const vfdProvider = new VfdProvider();
@@ -323,7 +329,7 @@ export class TestIntegrationsController {
       const initResult = await TransferService.initiateTransfer({
         fromAccount: fromData.accountNo,
         toAccount,
-        amount,
+        amount: numAmount,
         bankCode,
         beneficiaryName: beneficiaryName || "Test Transfer",
         remark: remark || "Admin UI Test",
@@ -344,13 +350,14 @@ export class TestIntegrationsController {
         toAccount,
         toBank: bankCode,
         signature: sha512.hex(`${fromData.accountNo}${toAccount}`),
-        amount: amount,
+        amount: numAmount,
         remark: remark || "Admin UI Test",
         transferType: transferType as "intra" | "inter",
         reference: initResult.reference || randomUUID(),
       };
 
       const vfdResponse = await vfdProvider.transfer(transferReq);
+      logger.info({ traceId: initResult.traceId, vfdStatus: vfdResponse.status }, 'VFD transfer completed');
 
       return res.status(200).json({
         status: vfdResponse.status === '00' ? 'success' : 'failed',
@@ -363,7 +370,17 @@ export class TestIntegrationsController {
         }
       });
     } catch (err: any) {
-      logger.error({ error: err.message }, 'Test transfer failed');
+      logger.error({ error: err.message, stack: err.stack }, 'Test transfer failed');
+      
+      // Handle Axios errors from VFD
+      if (err.isAxiosError && err.response) {
+        return res.status(err.response.status || 400).json({
+          status: 'failed',
+          message: err.response.data?.message || err.message,
+          data: err.response.data
+        });
+      }
+
       return res.status(500).json({ status: 'failed', message: err.message });
     }
   }
