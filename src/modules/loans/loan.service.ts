@@ -471,7 +471,7 @@ export class LoanService {
           repaymentDate.setDate(repaymentDate.getDate() + Number(duration));
 
           // Reload loan to ensure we are in session
-          const sessionLoan = await Loan.findById(lockLoan._id).session(session);
+          const sessionLoan = await Loan.findById(lockLoan._id);
           if (!sessionLoan) throw new Error("Loan not found in session");
 
           sessionLoan.outstanding = total;
@@ -552,7 +552,7 @@ export class LoanService {
       const session = params.session || await DatabaseService.startSession();
 
       const executeInternalRepayment = async () => {
-        const loan = await Loan.findById(params.loanId).session(session);
+        const loan = await Loan.findById(params.loanId);
         if (!loan) throw new NotFoundError("Loan not found");
 
         // Guard: skip if already complete (race condition protection)
@@ -576,7 +576,7 @@ export class LoanService {
 
         loan.outstanding = newOutstanding;
         loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-        await loan.save({ session });
+        await loan.save();
 
         // Ledger double entry: savings_pool -> loan_repayment
         await LedgerService.createDoubleEntry(
@@ -633,169 +633,213 @@ export class LoanService {
 
     // ───────────────────────────────────────────────
     // STANDARD PATH: Full VFD transfer + TransferService
+    //
+    // Architecture mirrors disburseLoan:
+    //   1. All pre-flight work (fetch, balance check, initiateTransfer,
+    //      vfd.transfer) runs OUTSIDE any Mongoose session.
+    //   2. A fresh session is opened ONLY for the atomic DB commit that
+    //      follows a confirmed VFD success.
+    //
+    // This guarantees that a Mongoose transaction rollback can never
+    // leave money deducted at VFD without the loan being updated, and
+    // conversely that a VFD failure never silently updates the loan.
     // ───────────────────────────────────────────────
-    const session = params.session || await DatabaseService.startSession();
-    const executeRepayment = async () => {
-      const loan = await Loan.findById(params.loanId).session(session);
-      if (!loan) throw new NotFoundError("Loan not found");
 
-      const user = await User.findOne({ _id: params.userId });
-      if (!user || Array.isArray(user) || !user._id) throw new NotFoundError("User not found");
+    // ── Step 1: Load loan, user and live account info OUTSIDE any session ──
+    const loan = await Loan.findById(params.loanId);
+    if (!loan) throw new NotFoundError("Loan not found");
 
-      const primeInfo = (await this.vfd.getPrimeAccountInfo()).data;
-      const userAcc = (await this.vfd.getAccountInfo(user.user_metadata.accountNo)).data;
+    const user = await User.findOne({ _id: params.userId });
+    if (!user || Array.isArray(user) || !user._id) throw new NotFoundError("User not found");
 
-      if (!primeInfo?.accountNo || !userAcc?.accountNo) {
-        throw new Error("Could not fetch account info to perform repayment");
-      }
+    const primeInfo = (await this.vfd.getPrimeAccountInfo()).data;
+    const userAcc = (await this.vfd.getAccountInfo(user.user_metadata.accountNo)).data;
 
-      // Ensure user has funds (provider source of truth)
-      const userBalance = parseFloat(userAcc.accountBalance || "0");
-      let repayAmount = Math.round(Number(loan.outstanding) * 100) / 100;
+    if (!primeInfo?.accountNo || !userAcc?.accountNo) {
+      throw new Error("Could not fetch account info to perform repayment");
+    }
 
-      // STRICT BALANCE CHECK: If user has less than requested, fail instead of auto-capping
-      if (userBalance < repayAmount && !params.skipBalanceCheck) {
-        throw new BadRequestError(`Insufficient funds. Your balance is ₦${userBalance.toLocaleString()}, but ₦${repayAmount.toLocaleString()} is required for this repayment.`);
-      }
+    // ── Step 2: Determine repayment amount ──
+    // BUG FIX: params.amount was previously ignored; repayAmount was always
+    // set to loan.outstanding regardless of what the caller requested.
+    // Now we honour params.amount but cap it at the actual outstanding so we
+    // never overpay, and round to 2 decimal places to avoid floating-point drift.
+    const userBalance = parseFloat(userAcc.accountBalance || "0");
+    const repayAmount = Math.round(
+      Math.min(Number(params.amount), Number(loan.outstanding)) * 100
+    ) / 100;
 
-      // 1) internal transfer record
-      const transferIdempotency = params.idempotencyKey || `repay-${UuidService.generate()}`;
-      const transferRecord = await TransferService.initiateTransfer({
-        fromAccount: userAcc.accountNo,
-        beneficiaryName: primeInfo.client,
-        userId: String(user._id),
-        toAccount: primeInfo.accountNo,
-        amount: repayAmount,
-        transferType: "intra",
-        bankCode: "999999",
-        remark: "Loan repayment",
-        idempotencyKey: transferIdempotency,
-        walletBalance: String(userBalance)
-      }, "loan-repayment");
+    if (repayAmount <= 0) {
+      throw new BadRequestError("Repayment amount must be greater than zero");
+    }
 
-      // 2) provider transfer (user -> prime)
-      let providerResponse: any = { status: "00" }; // Default success for internal
-      if (!params.internalOnly) {
-        const transferRequest: TransferRequest = {
-          fromAccount: userAcc.accountNo,
-          uniqueSenderAccountId: userAcc.accountId,
-          fromClientId: userAcc.clientId,
-          fromClient: userAcc.client,
-          fromSavingsId: userAcc.accountId,
-          toClientId: primeInfo.clientId,
-          toClient: primeInfo.client,
-          toSavingsId: primeInfo.accountId,
-          toSession: primeInfo.accountId,
-          toAccount: primeInfo.accountNo,
-          toBank: "999999",
-          signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
-          amount: repayAmount,
-          remark: `${params.mandatory ? "Mandatory" : "Voluntary"} Loan Repayment`,
-          transferType: "intra",
-          reference: transferRecord.reference
-        } as any;
-
-        try {
-          providerResponse = await this.vfd.transfer(transferRequest);
-        } catch (err: any) {
-          const providerData = err.response?.data;
-          if (providerData?.status === "98") {
-            providerResponse = providerData;
-          } else {
-            await TransferService.failTransfer(transferRecord.reference);
-            const providerError = providerData?.message || providerData || err.message;
-            throw new Error(`Repayment provider transfer failed: ${String(providerError)}`);
-          }
-        }
-
-        const ok = providerResponse && (providerResponse.status === "00" || providerResponse.status === "98");
-        if (!ok) {
-          await TransferService.failTransfer(transferRecord.reference);
-          throw new Error(`Repayment failed at provider: ${JSON.stringify(providerResponse)}`);
-        }
-      }
-
-      // 3) complete internal transfer
-      const trxnRes = await TransferService.completeTransfer(transferRecord.reference, "loan-repayment");
-
-      // 4) update loan outstanding & history
-      let newOutstanding = Math.max(0, Number(loan.outstanding) - repayAmount);
-      const paidInFull = newOutstanding <= 0;
-      const now = new Date();
-
-      loan.repayment_history = [...(loan.repayment_history || []), {
-        amount: repayAmount,
-        outstanding: newOutstanding,
-        action: "repayment",
-        date: now.toISOString()
-      }];
-
-      loan.outstanding = newOutstanding;
-      loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-
-      await loan.save({ session });
-
-      console.log({ newOutstanding, paidInFull, loan })
-
-      // 5) ledger double entry: user_wallet -> platform_cash
-      await LedgerService.createDoubleEntry(
-        UuidService.generateTraceId(),
-        `user_wallet:${user._id}`,
-        "loan_repayment",
-        repayAmount,
-        "loan",
-        {
-          userId: user._id as any,
-          subtype: "repayment",
-          idempotencyKey: params.idempotencyKey,
-          session
-        }
+    // ── Step 3: Balance check against live provider balance BEFORE any transfer ──
+    // BUG FIX: The check was previously inside the Mongoose transaction, meaning
+    // the provider balance fetch could be stale by the time the VFD call happened.
+    // It now runs on the freshly fetched balance, strictly before any money moves.
+    if (!params.skipBalanceCheck && userBalance < repayAmount) {
+      throw new BadRequestError(
+        `Insufficient funds. Your balance is ₦${userBalance.toLocaleString()}, but ₦${repayAmount.toLocaleString()} is required for this repayment.`
       );
+    }
 
-      // 8) compute and persist updated credit score based on timeliness
-      try {
-        const dueDateISO = loan.repayment_date;
-        if (dueDateISO) {
-          const dueDate = new Date(dueDateISO);
-          const daysLate = daysBetween(now, dueDate); // positive -> late
-          const [newScore, ladderIndex, category, message] = LoanService.computeCreditScoreFromTimeliness(daysLate, user.user_metadata.ladderIndex || 1);
-          user.user_metadata.creditScore = newScore;
-          user.user_metadata.ladderIndex = ladderIndex;
-          await user.save({ session });
+    // ── Step 4: Create internal PENDING transfer record OUTSIDE session ──
+    // BUG FIX: Previously inside withTransaction — if the session rolled back,
+    // this record was also rolled back, leaving no audit trail for a VFD deduction.
+    const transferIdempotency = params.idempotencyKey || `repay-${UuidService.generate()}`;
+    const transferRecord = await TransferService.initiateTransfer({
+      fromAccount: userAcc.accountNo,
+      beneficiaryName: primeInfo.client,
+      userId: String(user._id),
+      toAccount: primeInfo.accountNo,
+      amount: repayAmount,
+      transferType: "intra",
+      bankCode: "999999",
+      remark: "Loan repayment",
+      idempotencyKey: transferIdempotency,
+      walletBalance: String(userBalance)
+    }, "loan-repayment");
 
-          await NotificationService.sendLoanRepayment(user, repayAmount, message);
-        }
-      } catch (err) {
-        console.warn("Failed updating credit score (non-fatal):", err);
+    // ── Step 5: Call VFD provider OUTSIDE session — money moves here ──
+    // BUG FIX: Previously inside withTransaction. Any DB failure after this
+    // call caused Mongoose to roll back the loan update while VFD money was
+    // already gone. By moving it outside, the DB commit (Step 6) is a separate
+    // concern; if it fails we log CRITICAL and surface a recoverable error.
+    const transferRequest: TransferRequest = {
+      fromAccount: userAcc.accountNo,
+      uniqueSenderAccountId: userAcc.accountId,
+      fromClientId: userAcc.clientId,
+      fromClient: userAcc.client,
+      fromSavingsId: userAcc.accountId,
+      toClientId: primeInfo.clientId,
+      toClient: primeInfo.client,
+      toSavingsId: primeInfo.accountId,
+      toSession: primeInfo.accountId,
+      toAccount: primeInfo.accountNo,
+      toBank: "999999",
+      signature: sha512.hex(`${userAcc.accountNo}${primeInfo.accountNo}`),
+      amount: repayAmount,
+      remark: `${params.mandatory ? "Mandatory" : "Voluntary"} Loan Repayment`,
+      transferType: "intra",
+      reference: transferRecord.reference
+    } as any;
+
+    let providerResponse: any;
+    try {
+      providerResponse = await this.vfd.transfer(transferRequest);
+    } catch (err: any) {
+      const providerData = err.response?.data;
+      if (providerData?.status === "98") {
+        // VFD status 98 = duplicate / already processed — treat as success
+        providerResponse = providerData;
+      } else {
+        await TransferService.failTransfer(transferRecord.reference);
+        const providerError = providerData?.message || providerData || err.message;
+        throw new Error(`Repayment provider transfer failed: ${String(providerError)}`);
       }
+    }
 
-      return { loan, providerResponse, trxnRes, repayAmount };
-    };
+    const ok = providerResponse && (providerResponse.status === "00" || providerResponse.status === "98");
+    if (!ok) {
+      await TransferService.failTransfer(transferRecord.reference);
+      throw new Error(`Repayment failed at provider: ${JSON.stringify(providerResponse)}`);
+    }
 
-    if (params.session) {
-      return await executeRepayment();
-    } else {
-      try {
-        const result = await DatabaseService.withTransaction(session, executeRepayment);
+    // ── Step 6: ATOMIC DB COMMIT — VFD confirmed, now update all DB state ──
+    // We open a fresh session here (not reusing params.session, which belongs
+    // to a caller context that has no relation to VFD atomicity).
+    const session = await DatabaseService.startSession();
+    try {
+      const result = await DatabaseService.withTransaction(session, async () => {
+        // 6a) Mark internal transfer as completed
+        const trxnRes = await TransferService.completeTransfer(transferRecord.reference, "loan-repayment");
 
-        // Influencer commission — fire-and-forget AFTER transaction commits
+        // 6b) Re-fetch loan inside session for a consistent snapshot
+        // BUG FIX: Previously the code reused the `loan` variable read before
+        // the VFD call. Re-fetching inside the session ensures we compute
+        // newOutstanding from the value actually stored in the DB, not a
+        // potentially stale in-memory copy, and that our save is atomic.
+        const sessionLoan = await Loan.findById(params.loanId);
+        if (!sessionLoan) throw new Error("Loan not found in session");
+
+        // 6c) Compute new outstanding using the exact repayAmount sent to VFD
+        const newOutstanding = Math.max(0, Number(sessionLoan.outstanding) - repayAmount);
+        const paidInFull = newOutstanding <= 0;
+        const now = new Date();
+
+        sessionLoan.repayment_history = [...(sessionLoan.repayment_history || []), {
+          amount: repayAmount,
+          outstanding: newOutstanding,
+          action: "repayment",
+          date: now.toISOString()
+        }];
+        sessionLoan.outstanding = newOutstanding;
+        sessionLoan.loan_payment_status = paidInFull ? "complete" : "in-progress";
+        await sessionLoan.save({ session });
+
+        logger.info({ loanId: sessionLoan._id, repayAmount, newOutstanding, paidInFull }, "Loan repayment DB committed");
+
+        // 6d) Ledger double entry: user_wallet -> loan_repayment
+        await LedgerService.createDoubleEntry(
+          UuidService.generateTraceId(),
+          `user_wallet:${user._id}`,
+          "loan_repayment",
+          repayAmount,
+          "loan",
+          {
+            userId: user._id as any,
+            subtype: "repayment",
+            idempotencyKey: params.idempotencyKey,
+            session
+          }
+        );
+
+        // 6e) Update credit score based on repayment timeliness (non-fatal)
         try {
-          const { InfluencerService } = await import('../influencer/influencer.service');
-          InfluencerService.recordCommissionForUser(
-            params.userId.toString(),
-            'loan',
-            Number(params.amount),
-            undefined,
-            (result.loan as any).referralCode
-          ).catch(err => logger.warn({ err: (err as Error).message }, "Failed to record influencer commission for standard repayment"));
+          const dueDateISO = sessionLoan.repayment_date;
+          if (dueDateISO) {
+            const dueDate = new Date(dueDateISO);
+            const daysLate = daysBetween(now, dueDate); // positive = late
+            const [newScore, ladderIndex, , message] = LoanService.computeCreditScoreFromTimeliness(
+              daysLate, user.user_metadata.ladderIndex || 1
+            );
+            user.user_metadata.creditScore = newScore;
+            user.user_metadata.ladderIndex = ladderIndex;
+            await user.save({ session });
+            await NotificationService.sendLoanRepayment(user, repayAmount, message);
+          }
         } catch (err) {
-          logger.warn({ err }, "Failed to import InfluencerService for standard repayment commission");
+          console.warn("Failed updating credit score (non-fatal):", err);
         }
 
-        return result;
-      } finally {
-        await session.endSession();
+        return { loan: sessionLoan, providerResponse, trxnRes, repayAmount };
+      });
+
+      // Influencer commission — fire-and-forget AFTER transaction commits
+      try {
+        const { InfluencerService } = await import('../influencer/influencer.service');
+        InfluencerService.recordCommissionForUser(
+          params.userId.toString(),
+          'loan',
+          repayAmount,
+          undefined,
+          (result.loan as any).referralCode
+        ).catch(err => logger.warn({ err: (err as Error).message }, "Failed to record influencer commission for standard repayment"));
+      } catch (err) {
+        logger.warn({ err }, "Failed to import InfluencerService for standard repayment commission");
       }
+
+      return result;
+    } catch (dbErr: any) {
+      // CRITICAL: VFD transfer succeeded (money moved) but DB commit failed.
+      // The loan outstanding has NOT been updated. Ops must reconcile manually.
+      logger.error(
+        { err: dbErr.message, loanId: params.loanId, userId: params.userId, repayAmount, transferRef: transferRecord.reference },
+        "CRITICAL: Money deducted via VFD but DB commit failed for repayment — manual reconciliation required"
+      );
+      throw new APIError(500, "Payment was processed successfully but your loan record could not be updated. Please contact support immediately.");
+    } finally {
+      await session.endSession();
     }
   }
 

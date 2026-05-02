@@ -16,16 +16,6 @@ export class OrderController {
 
             const orders = await OrderService.checkout(userId, shippingAddress || "Default Address");
 
-            // Influencer commission hook (Awaited to ensure reliability)
-            const totalAmount = orders.reduce((sum: number, o: any) => sum + (o.totalAmount || 0), 0);
-            if (totalAmount > 0) {
-                try {
-                    await InfluencerService.recordCommissionForUser(userId, 'marketplace', totalAmount, undefined, referralCode);
-                } catch (err) {
-                    console.warn('Marketplace influencer commission failed (non-fatal):', (err as Error).message);
-                }
-            }
-
             res.status(201).json({ status: "success", data: orders });
         } catch (error) {
             next(error);
