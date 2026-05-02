@@ -334,6 +334,21 @@ export class NotificationService {
     );
   }
 
+  static async sendAdminPayoutRequestAlert(influencer: any, amount: number, admins: string) {
+    const body = `
+      <p>A new influencer payout request has been received.</p>
+      <p><strong>Influencer:</strong> ${influencer.name}</p>
+      <p><strong>Amount:</strong> ₦${amount.toLocaleString()}</p>
+      <p><strong>Influencer ID:</strong> ${influencer._id}</p>
+      <p>Please log in to the admin dashboard to review and process this payout.</p>
+    `;
+    return this.sendEmail(
+      admins,
+      "New Influencer Payout Request",
+      this.template("Payout Request Alert", body)
+    );
+  }
+
   static async sendPush(userId: string, message: string) {
     // Placeholder for push notification implementation
     console.log(`Sending push to ${userId}: ${message}`);

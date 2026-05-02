@@ -635,6 +635,19 @@ export class InfluencerController {
 
       logger.info({ userId, amount: withdrawAmount, reference: trxn.reference }, 'Influencer withdrawal completed');
 
+      // --- ADMIN NOTIFICATION HOOK ---
+      try {
+          const { SettingsService } = await import("../admin/settings.service");
+          const settings = await SettingsService.getSettings();
+          const adminEmails = (settings as any).adminEmails || process.env.ADMIN_EMAILS || "admin@primefinance.live";
+          
+          const { NotificationService } = await import("../notifications/notification.service");
+          await NotificationService.sendAdminPayoutRequestAlert(influencer, withdrawAmount, adminEmails);
+      } catch (notifyErr) {
+          console.warn("Failed to send admin payout alert (non-fatal):", notifyErr);
+      }
+      // --------------------------------
+
       return res.status(200).json({
         status: 'success',
         message: `₦${withdrawAmount.toLocaleString()} has been transferred to your wallet`,

@@ -92,6 +92,32 @@ export class OrderService {
             await CartService.clearCart(userId, session);
 
             await session.commitTransaction();
+            
+            // --- INFLUENCER COMMISSION HOOK ---
+            // Trigger commission recording for referring influencers after successful order
+            try {
+                const UserModel = (await import("../users/user.model")).default;
+                const user = await UserModel.findById(userId);
+                
+                if (user && user.referralCode) {
+                    const { InfluencerService } = await import("../influencer/influencer.service");
+                    
+                    // We sum up all order amounts to record a single total commission for the checkout
+                    const totalVolume = createdOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+                    
+                    InfluencerService.recordCommissionForUser(
+                        userId,
+                        "marketplace",
+                        totalVolume,
+                        undefined, // transactionRef (could use first order ID)
+                        user.referralCode
+                    ).catch(err => console.warn("Marketplace commission recording failed (non-fatal):", err));
+                }
+            } catch (hookErr) {
+                console.warn("Failed to trigger influencer hook for marketplace checkout:", hookErr);
+            }
+            // -----------------------------------
+
         } catch (error) {
             await session.abortTransaction();
             throw error;
