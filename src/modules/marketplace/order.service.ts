@@ -14,8 +14,14 @@ export class OrderService {
      * 4. Create an Order for each vendor.
      * 5. Clear cart.
      * 6. Return created orders.
+     *
+     * @param referralCode - Optional per-transaction influencer referral code (from request body).
+     *   Priority inside recordCommissionForUser:
+     *     1. referralCode param  — per-transaction code, takes priority if provided
+     *     2. user.referredBy     — signup referral fallback (influencer who referred this user)
+     *     3. Neither found       — commission silently skipped, no error thrown
      */
-    static async checkout(userId: string, shippingAddress: string): Promise<IOrder[]> {
+    static async checkout(userId: string, shippingAddress: string, referralCode?: string): Promise<IOrder[]> {
         const cart = await CartService.getCart(userId);
 
         if (!cart.items || cart.items.length === 0) {
@@ -34,8 +40,7 @@ export class OrderService {
             return {
                 ...item,
                 productName: product.name,
-                vendorId: product.vendorId, // Ensure we use current vendorId from product
-                // Handle variant name update if needed
+                vendorId: product.vendorId,
             };
         }));
 
@@ -43,17 +48,15 @@ export class OrderService {
         const ordersByVendor = new Map<string, IOrderItem[]>();
 
         for (const item of itemsWithProduct) {
-            // Re-map to OrderItem interface
             const orderItem: IOrderItem = {
-                productId: item.productId.toString(), // Ensure string
+                productId: item.productId.toString(),
                 productName: item.productName,
                 quantity: item.quantity,
                 price: item.price,
                 variantId: item.variantId,
-                // variantName: ... (fetch if needed)
             };
 
-            const vendorId = (item as any).vendorId || (item as any)._doc?.vendorId; // Safe access
+            const vendorId = (item as any).vendorId || (item as any)._doc?.vendorId;
 
             if (!ordersByVendor.has(vendorId)) {
                 ordersByVendor.set(vendorId, []);
@@ -92,31 +95,29 @@ export class OrderService {
             await CartService.clearCart(userId, session);
 
             await session.commitTransaction();
-            
+
             // --- INFLUENCER COMMISSION HOOK ---
-            // Trigger commission recording for referring influencers after successful order
+            // Single authoritative location — do NOT also call in the controller (causes double-recording).
+            // recordCommissionForUser resolves priority internally:
+            //   1. referralCode (per-transaction, from request body via controller)  — highest priority
+            //   2. user.referredBy (signup influencer)                               — automatic fallback
+            //   3. Neither found → returns silently, no commission recorded
             try {
-                const UserModel = (await import("../users/user.model")).default;
-                const user = await UserModel.findById(userId);
-                
-                if (user && user.referralCode) {
-                    const { InfluencerService } = await import("../influencer/influencer.service");
-                    
-                    // We sum up all order amounts to record a single total commission for the checkout
-                    const totalVolume = createdOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-                    
-                    InfluencerService.recordCommissionForUser(
-                        userId,
-                        "marketplace",
-                        totalVolume,
-                        undefined, // transactionRef (could use first order ID)
-                        user.referralCode
-                    ).catch(err => console.warn("Marketplace commission recording failed (non-fatal):", err));
-                }
+                const { InfluencerService } = await import("../influencer/influencer.service");
+                const totalVolume = createdOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+                const transactionRef = createdOrders[0]?._id?.toString();
+
+                InfluencerService.recordCommissionForUser(
+                    userId,
+                    "marketplace",
+                    totalVolume,
+                    transactionRef,
+                    referralCode   // undefined is fine — triggers user.referredBy fallback inside the service
+                ).catch(err => console.warn("Marketplace commission recording failed (non-fatal):", err));
             } catch (hookErr) {
                 console.warn("Failed to trigger influencer hook for marketplace checkout:", hookErr);
             }
-            // -----------------------------------
+            // ----------------------------------
 
         } catch (error) {
             await session.abortTransaction();
