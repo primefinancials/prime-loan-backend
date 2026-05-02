@@ -296,58 +296,78 @@ export class TestIntegrationsController {
     }
   }
 
-
   /**
    * POST /backoffice/test-integrations/transfer
-   * body: { fromAccount, toAccount, bankCode, amount, remark, beneficiaryName }
-   * Tests actual VFD transfer but optionally skips local DB recording
+   * body: { fromAccount, toAccount, amount, remark, beneficiaryName }
+   * Tests actual VFD transfer - RESTRICTED TO INTRABANK ONLY (Prime Bank)
    */
   static async testTransfer(req: Request, res: Response, next: NextFunction) {
     try {
-      const { fromAccount, toAccount, bankCode, amount, remark, beneficiaryName } = req.body;
+      const { fromAccount, toAccount, amount, remark, beneficiaryName } = req.body;
       const numAmount = Number(amount);
+      const adminId = (req as any).admin?._id || (req as any).admin?.id || 'admin-system';
 
-      if (!toAccount || !numAmount || !bankCode) {
+      // ENFORCE INTRABANK (Prime Bank)
+      const bankCode = '999999';
+      const transferType = 'intra';
+
+      if (!toAccount || !numAmount) {
         return res.status(400).json({ 
           status: 'failed', 
-          message: 'toAccount, amount (positive number), and bankCode are required',
-          received: { toAccount, amount, bankCode }
+          message: 'toAccount and amount (positive number) are required',
+          received: { toAccount, amount }
         });
       }
 
       const vfdProvider = new VfdProvider();
 
-      // 1. Get From Account Info to verify it exists and get balances
+      // 1. Validate both accounts exist on platform (except Prime/Company account)
+      const UserModel = (await import('../../modules/users/user.model')).default;
+      const [fromUser, toUser] = await Promise.all([
+        UserModel.findOne({ "user_metadata.accountNo": fromAccount }),
+        UserModel.findOne({ "user_metadata.accountNo": toAccount })
+      ]);
+
+      if (!fromAccount && !fromUser) {
+        // Defaults to Prime Account in getAccountInfo if fromAccount is undefined
+      } else if (fromAccount && !fromUser) {
+        return res.status(404).json({ status: 'failed', message: 'Source account not found in platform database' });
+      }
+
+      if (!toUser) {
+        return res.status(404).json({ status: 'failed', message: 'Destination account not found in platform database' });
+      }
+
+      // 2. Get From Account Info to verify it exists on VFD and get balances
       const accountRes = await vfdProvider.getAccountInfo((fromAccount && fromAccount !== '') ? fromAccount : undefined);
-      if (!accountRes.data) return res.status(404).json({ status: 'failed', message: 'From account not found on VFD' });
+      if (!accountRes.data) return res.status(404).json({ status: 'failed', message: 'Source account not found on VFD' });
 
       const fromData = accountRes.data;
-      const transferType = (bankCode === '999999' || bankCode === 'vfd') ? 'intra' : 'inter';
 
-      // 1.5 Get Beneficiary Info (Mandatory for VFD transfers)
+      // 3. Get Beneficiary Info (Mandatory for VFD transfers)
       const beneRes = await vfdProvider.getBeneficiary(toAccount, bankCode, transferType);
       if (!beneRes.data) return res.status(404).json({ status: 'failed', message: 'Beneficiary account not found on VFD' });
       const beneData = beneRes.data;
 
-      // 2. Initiate Transfer (Skip DB if it's just a "test" transfer as per user request)
+      // 4. Initiate Transfer (RECORD TO DB)
       const initResult = await TransferService.initiateTransfer({
         fromAccount: fromData.accountNo,
         toAccount,
         amount: numAmount,
         bankCode,
-        beneficiaryName: beneficiaryName || beneData.name || "Test Transfer",
-        remark: remark || "Admin UI Test",
+        beneficiaryName: beneficiaryName || beneData.name || "Admin Test",
+        remark: remark || "Admin Intrabank Test",
         transferType,
         walletBalance: String(fromData.accountBalance),
-        userId: 'admin-test',
+        userId: String(adminId),
         skipBalanceCheck: true,
-        skipDbRecord: true
+        skipDbRecord: false // ALWAYS RECORD
       }, 'transfer');
 
-      // 3. Execute VFD Transfer
+      // 5. Execute VFD Transfer
       const transferReq = {
         fromAccount: fromData.accountNo,
-        uniqueSenderAccountId: fromAccount ? fromData.accountId : "", // Company transfers use empty string
+        uniqueSenderAccountId: fromAccount ? fromData.accountId : "", 
         fromClientId: fromData.clientId,
         fromClient: fromData.client,
         fromSavingsId: fromData.accountId,
@@ -355,7 +375,7 @@ export class TestIntegrationsController {
         toClient: beneData.name,
         toClientId: beneData.clientId,
         toSavingsId: beneData.account?.id || "",
-        toSession: transferType === 'intra' ? (beneData.account?.id || "") : undefined,
+        toSession: beneData.account?.id || "",
         toBank: bankCode,
         signature: sha512.hex(`${fromData.accountNo}${toAccount}`),
         amount: numAmount,

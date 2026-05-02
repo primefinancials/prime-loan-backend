@@ -133,23 +133,23 @@ export class LoanPenaltiesCron {
             if (refreshedLoan && refreshedLoan.loan_payment_status === 'complete') {
               logger.info({ loanId: loan._id }, 'Skipping Flutterwave auto-debit — loan fully paid after wallet deduction');
             } else {
-            const refreshedUser = await UserService.getUser(loan.userId);
-            if (refreshedUser && !Array.isArray(refreshedUser)) {
-              const updatedWallet = Number(refreshedUser.user_metadata?.wallet || 0);
-              const remainingOutstanding = Number(refreshedLoan?.outstanding || 0);
+              const refreshedUser = await UserService.getUser(loan.userId);
+              if (refreshedUser && !Array.isArray(refreshedUser)) {
+                const updatedWallet = Number(refreshedUser.user_metadata?.wallet || 0);
+                const remainingOutstanding = Number(refreshedLoan?.outstanding || 0);
 
-              if (updatedWallet < remainingOutstanding && settings.autoDebit?.enabled !== false) {
-                const debitAmount = remainingOutstanding - updatedWallet;
-                const minDebit = settings.autoDebit?.minDebitAmount || 100;
+                if (updatedWallet < remainingOutstanding && settings.autoDebit?.enabled !== false) {
+                  const debitAmount = remainingOutstanding - updatedWallet;
+                  const minDebit = settings.autoDebit?.minDebitAmount || 100;
 
-                if (debitAmount >= minDebit) {
-                  try {
-                    // Attempt auto-debit every cron run (no daily limit)
-                    // Find the user's active linked payment method (prefer card)
-                    const linkedMethod = await AutoDebit.findOne({
-                      userId: String(refreshedUser._id),
-                      status: 'active'
-                    }).sort({ type: 1 }); // card sorts before bank
+                  if (debitAmount >= minDebit) {
+                    try {
+                      // Attempt auto-debit every cron run (no daily limit)
+                      // Find the user's active linked payment method (prefer card)
+                      const linkedMethod = await AutoDebit.findOne({
+                        userId: String(refreshedUser._id),
+                        status: 'active'
+                      }).sort({ type: 1 }); // card sorts before bank
 
                       if (linkedMethod) {
                         const fwProvider = new FlutterwaveDebitProvider();
@@ -203,16 +203,16 @@ export class LoanPenaltiesCron {
                           { userId: refreshedUser._id, loanId: loan._id, reference, type: linkedMethod.type }
                         );
                       }
-                  } catch (fwErr: any) {
-                    logger.error({ loanId: loan._id, error: fwErr.message }, 'Flutterwave auto-debit failed');
-                    await WorkerLogService.log('loan-penalties', 'error',
-                      `Flutterwave auto-debit failed: ${fwErr.message}`,
-                      { loanId: loan._id }
-                    );
+                    } catch (fwErr: any) {
+                      logger.error({ loanId: loan._id, error: fwErr.message }, 'Flutterwave auto-debit failed');
+                      await WorkerLogService.log('loan-penalties', 'error',
+                        `Flutterwave auto-debit failed: ${fwErr.message}`,
+                        { loanId: loan._id }
+                      );
+                    }
                   }
                 }
               }
-            }
             } // close refreshedLoan guard
           }
 

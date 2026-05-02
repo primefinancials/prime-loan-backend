@@ -651,13 +651,11 @@ export class LoanService {
 
       // Ensure user has funds (provider source of truth)
       const userBalance = parseFloat(userAcc.accountBalance || "0");
-      // Cap at outstanding so we never transfer more than what's owed
-      // Round to 2 decimal places to avoid "Invalid amount" errors from VFD
-      let repayAmount = Math.round(Math.min(Number(params.amount), Number(loan.outstanding)) * 100) / 100;
+      let repayAmount = Math.round(Number(loan.outstanding) * 100) / 100;
 
+      // STRICT BALANCE CHECK: If user has less than requested, fail instead of auto-capping
       if (userBalance < repayAmount && !params.skipBalanceCheck) {
-        if (userBalance <= 0) throw new BadRequestError("Insufficient funds to repay loan");
-        else repayAmount = Math.round(Math.min(userBalance, repayAmount) * 100) / 100;
+        throw new BadRequestError(`Insufficient funds. Your balance is ₦${userBalance.toLocaleString()}, but ₦${repayAmount.toLocaleString()} is required for this repayment.`);
       }
 
       // 1) internal transfer record
@@ -701,8 +699,6 @@ export class LoanService {
           providerResponse = await this.vfd.transfer(transferRequest);
         } catch (err: any) {
           const providerData = err.response?.data;
-          // Status 98 means "Transaction Exist". If we get this, it means the transaction
-          // already succeeded or was registered in a previous attempt (e.g. after a 500 timeout).
           if (providerData?.status === "98") {
             providerResponse = providerData;
           } else {
@@ -715,19 +711,18 @@ export class LoanService {
         const ok = providerResponse && (providerResponse.status === "00" || providerResponse.status === "98");
         if (!ok) {
           await TransferService.failTransfer(transferRecord.reference);
-          throw new Error(`Repayment failed: ${JSON.stringify(providerResponse)}`);
+          throw new Error(`Repayment failed at provider: ${JSON.stringify(providerResponse)}`);
         }
       }
 
       // 3) complete internal transfer
       const trxnRes = await TransferService.completeTransfer(transferRecord.reference, "loan-repayment");
 
-      // 4) update loan outstanding & history — use repayAmount (capped), not params.amount
+      // 4) update loan outstanding & history
       let newOutstanding = Math.max(0, Number(loan.outstanding) - repayAmount);
-
       const paidInFull = newOutstanding <= 0;
-
       const now = new Date();
+
       loan.repayment_history = [...(loan.repayment_history || []), {
         amount: repayAmount,
         outstanding: newOutstanding,
@@ -737,6 +732,7 @@ export class LoanService {
 
       loan.outstanding = newOutstanding;
       loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
+
       await loan.save({ session });
 
       console.log({ newOutstanding, paidInFull, loan })
