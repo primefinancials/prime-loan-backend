@@ -471,7 +471,7 @@ export class LoanService {
           repaymentDate.setDate(repaymentDate.getDate() + Number(duration));
 
           // Reload loan to ensure we are in session
-          const sessionLoan = await Loan.findById(lockLoan._id).session(session);
+          const sessionLoan = await Loan.findById(lockLoan._id);
           if (!sessionLoan) throw new Error("Loan not found in session");
 
           sessionLoan.outstanding = total;
@@ -552,7 +552,7 @@ export class LoanService {
       const session = params.session || await DatabaseService.startSession();
 
       const executeInternalRepayment = async () => {
-        const loan = await Loan.findById(params.loanId).session(session);
+        const loan = await Loan.findById(params.loanId);
         if (!loan) throw new NotFoundError("Loan not found");
 
         // Guard: skip if already complete (race condition protection)
@@ -576,7 +576,7 @@ export class LoanService {
 
         loan.outstanding = newOutstanding;
         loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-        await loan.save({ session });
+        await loan.save();
 
         // Ledger double entry: savings_pool -> loan_repayment
         await LedgerService.createDoubleEntry(
@@ -636,7 +636,7 @@ export class LoanService {
     // ───────────────────────────────────────────────
     const session = params.session || await DatabaseService.startSession();
     const executeRepayment = async () => {
-      const loan = await Loan.findById(params.loanId).session(session);
+      const loan = await Loan.findById(params.loanId);
       if (!loan) throw new NotFoundError("Loan not found");
 
       const user = await User.findOne({ _id: params.userId });
@@ -719,7 +719,7 @@ export class LoanService {
       const trxnRes = await TransferService.completeTransfer(transferRecord.reference, "loan-repayment");
 
       // 4) update loan outstanding & history
-      let newOutstanding = Math.max(0, Number(loan.outstanding) - repayAmount);
+      let newOutstanding = Math.max(0, (Number(loan.outstanding) - repayAmount));
       const paidInFull = newOutstanding <= 0;
       const now = new Date();
 
@@ -733,7 +733,7 @@ export class LoanService {
       loan.outstanding = newOutstanding;
       loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
 
-      await loan.save({ session });
+      await loan.save();
 
       console.log({ newOutstanding, paidInFull, loan })
 
