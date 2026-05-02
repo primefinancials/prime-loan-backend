@@ -14,7 +14,7 @@ export class OrderController {
                 // throw new BadRequestError("Shipping address is required");
             }
 
-            const orders = await OrderService.checkout(userId, shippingAddress || "Default Address");
+            const orders = await OrderService.checkout(userId, shippingAddress || "Default Address", referralCode);
 
             res.status(201).json({ status: "success", data: orders });
         } catch (error) {
