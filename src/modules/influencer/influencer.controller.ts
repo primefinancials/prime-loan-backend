@@ -352,7 +352,7 @@ export class InfluencerController {
           // 1. Initiate internal transfer record
           const trxn = await TransferService.initiateTransfer({
             fromAccount: platformAccount.accountNo,
-            userId: String(user._id),
+            userId: (req as any).admin?._id || 'system', // Attributed to admin/system
             toAccount: userAccount.accountNo,
             amount: payoutAmount,
             beneficiaryName: userAccount.client,
@@ -361,6 +361,7 @@ export class InfluencerController {
             remark: `Influencer commission payout`,
             walletBalance: String(platformAccount.accountBalance),
             naration: `Commission payout to ${userName} (${influencer.referralCode || ''})`,
+            skipBalanceCheck: true, // Required for Prime account
           }, 'transfer');
 
           // 2. Execute VFD transfer: Prime → Influencer wallet
@@ -467,7 +468,7 @@ export class InfluencerController {
       // 1. Initiate transfer record
       const trxn = await TransferService.initiateTransfer({
         fromAccount: platformAccount.accountNo,
-        userId: String(user._id),
+        userId: (req as any).admin?._id || 'system', // Attributed to admin/system
         toAccount: userAccount.accountNo,
         amount: payoutAmount,
         beneficiaryName: userAccount.client,
@@ -476,6 +477,7 @@ export class InfluencerController {
         remark: `Influencer commission payout`,
         walletBalance: String(platformAccount.accountBalance),
         naration: `Commission payout to ${user.user_metadata.first_name || ''} (${influencer.referralCode || ''})`,
+        skipBalanceCheck: true, // Required for Prime account
       }, 'transfer');
 
       // 2. Execute VFD transfer
@@ -574,7 +576,7 @@ export class InfluencerController {
       // 1. Initiate transfer record
       const trxn = await TransferService.initiateTransfer({
         fromAccount: platformAccount.accountNo,
-        userId: String(user._id),
+        userId: String(user._id), // Attributed to the user requesting withdrawal
         toAccount: userAccount.accountNo,
         amount: withdrawAmount,
         beneficiaryName: userAccount.client,
@@ -583,6 +585,7 @@ export class InfluencerController {
         remark: `Influencer commission withdrawal`,
         walletBalance: String(platformAccount.accountBalance),
         naration: `Commission withdrawal by ${user.user_metadata.first_name || 'Influencer'}`,
+        skipBalanceCheck: true, // Required for Prime account
       }, 'transfer');
 
       // 2. Execute VFD transfer: Prime → Influencer VFD wallet
