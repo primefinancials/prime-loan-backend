@@ -579,7 +579,8 @@ export class EscrowService {
                 // Influencer commission hook (fire-and-forget, outside session)
                 try {
                   const { InfluencerService } = await import('../influencer/influencer.service');
-                  await InfluencerService.recordCommissionForUser(escrow.buyerId, 'escrow', escrow.amount, undefined, escrow.referralCode);
+                  const commissionType = escrow.type === 'marketplace' ? 'marketplace' : 'escrow';
+                  await InfluencerService.recordCommissionForUser(escrow.buyerId, commissionType, escrow.amount, undefined, escrow.referralCode);
                 } catch (err) {
                   console.warn('Escrow influencer commission failed (non-fatal):', (err as Error).message);
                 }
