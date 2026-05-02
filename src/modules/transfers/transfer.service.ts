@@ -60,7 +60,8 @@ export class TransferService {
     try {
       return await DatabaseService.withTransaction(session, async () => {
         const user = await User.findOne({ "user_metadata.accountNo": request.fromAccount });
-        if (!user && type == "transfer" && !request.skipDbRecord) {
+        if (!user && type == "transfer" && !request.skipDbRecord && !request.skipBalanceCheck) {
+          logger.error({ fromAccount: request.fromAccount, type }, "User not found for transfer - check if this is the Prime account");
           throw new Error("User Not Found");
         }
 
