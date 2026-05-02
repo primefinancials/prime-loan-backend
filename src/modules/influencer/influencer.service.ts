@@ -202,15 +202,18 @@ export class InfluencerService {
       // Per-transaction referral code takes priority
       if (normalizedCode) {
         influencer = await Influencer.findOne({ referralCode: normalizedCode, status: 'approved' });
-        logger.info({ referralCode: normalizedCode, found: !!influencer }, 'Checked explicit referral code');
+        logger.info({ referralCode: normalizedCode, found: !!influencer, influencerId: influencer?._id }, 'Checked explicit referral code');
       }
 
       // Fallback to signup referrer
       if (!influencer) {
         const UserModel = (await import('../users/user.model')).default;
         const user = await UserModel.findById(userId).select('referredBy').lean();
-        logger.info({ userId, hasReferredBy: !!user?.referredBy }, 'Checked user signup referrer');
-        if (!user || !user.referredBy) return;
+        logger.info({ userId, hasReferredBy: !!user?.referredBy, referredBy: user?.referredBy }, 'Checked user signup referrer');
+        if (!user || !user.referredBy) {
+          logger.info({ userId }, 'No influencer attribution found (neither explicit nor signup). Skipping.');
+          return;
+        }
 
         // referredBy may store the Influencer document _id OR the user's userId
         // Try both lookups to handle either case
