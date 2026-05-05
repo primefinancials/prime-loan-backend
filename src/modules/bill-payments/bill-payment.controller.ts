@@ -38,20 +38,25 @@ export class BillPaymentController {
         itemCode,
         idempotencyKey,
         meterType,
-        referralCode
+        referralCode,
       });
 
-      // Background non-critical hooks to improve endpoint speed
-      SettingsService.calculateProfit("bill-payment", "send", amount)
-        .then(profit =>
-          BillPaymentController.profitService.recordProfit({
-            amount: profit,
-            source: "bill-payment",
-            userId,
-            reference: result.traceId,
-            type: "realized",
-          })
-        ).catch(err => console.error('Profit recording failed (non-fatal):', err.message));
+      // FIX: Only record profit for transactions that actually completed.
+      // Previously this fired regardless of result.status, recording profit
+      // even when the payment failed and a refund was issued.
+      if (result.status === "COMPLETED") {
+        SettingsService.calculateProfit("bill-payment", "send", amount)
+          .then(profit =>
+            BillPaymentController.profitService.recordProfit({
+              amount: profit,
+              source: "bill-payment",
+              userId,
+              reference: result.traceId,
+              type: "realized",
+            })
+          )
+          .catch(err => console.error("Profit recording failed (non-fatal):", err.message));
+      }
 
       res.status(200).json({ status: "success", data: result });
     } catch (error) {
@@ -137,7 +142,6 @@ export class BillPaymentController {
       const admin = req.admin;
       const { page = 1, limit = 20, status, type, search } = req.query;
 
-      // Permission Hierarchy
       if (checkPermission(admin, "view_bill_payments")) {
         const result = await BillPaymentService.getBillPayments(
           Number(page),

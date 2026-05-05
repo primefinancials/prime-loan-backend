@@ -62,29 +62,32 @@ export default class BillPaymentService {
       debitAmount = discountResult.discountedAmount;
       discountValue = discountResult.discountValue;
       bonusAmount = discountResult.bonusAmount;
-      logger.info({ userId, original: req.amount, discounted: debitAmount, referralCode: req.referralCode }, "Applied referral discount to bill payment");
+      logger.info(
+        { userId, original: req.amount, discounted: debitAmount, referralCode: req.referralCode },
+        "Applied referral discount to bill payment"
+      );
     }
 
     const result = await processTransaction({
       userId: req.userId,
-      amount: debitAmount, // The amount the user is debited
+      amount: debitAmount,
       serviceType: req.serviceType,
       serviceId: req.serviceId,
       customerReference: req.customerReference,
       idempotencyKey,
       referralCode: req.referralCode,
+
       providerFn: async () => {
-        // Route to provider via normalizer — with automatic failover
-        // NOTE: Provider always gets the ORIGINAL amount (the user gets exactly what they requested)
+        // The bill provider always receives the ORIGINAL requested amount —
+        // discounts are absorbed by us, not passed to the provider.
         return await withFailover(async (provider) => {
-          const providerAmount = req.amount;
           switch (req.serviceType) {
             case 'airtime':
               return await provider.purchaseAirtime({
                 phone: req.customerReference,
                 amount: req.amount,
                 network: req.serviceId,
-                reference: idempotencyKey
+                reference: idempotencyKey,
               });
 
             case 'data':
@@ -93,7 +96,7 @@ export default class BillPaymentService {
                 amount: req.amount,
                 bundleCode: req.itemCode,
                 network: req.serviceId,
-                reference: idempotencyKey
+                reference: idempotencyKey,
               });
 
             case 'tv':
@@ -102,7 +105,7 @@ export default class BillPaymentService {
                 amount: req.amount,
                 bouquetCode: req.itemCode,
                 provider: req.serviceId,
-                reference: idempotencyKey
+                reference: idempotencyKey,
               });
 
             case 'power':
@@ -111,7 +114,7 @@ export default class BillPaymentService {
                 amount: req.amount,
                 meterType: req.meterType || 'prepaid',
                 provider: req.serviceId,
-                reference: idempotencyKey
+                reference: idempotencyKey,
               });
 
             case 'betting':
@@ -119,7 +122,7 @@ export default class BillPaymentService {
                 customerId: req.customerReference,
                 amount: req.amount,
                 provider: req.serviceId,
-                reference: idempotencyKey
+                reference: idempotencyKey,
               });
 
             default:
@@ -127,18 +130,23 @@ export default class BillPaymentService {
           }
         }, `bill-payment-${req.serviceType}`);
       },
+
       txnProvider: async () => {
-        const result = await TransferService.initiateTransfer({
+        // FIX: Both TransferService.initiateTransfer and vfdProvider.transfer must
+        // use `debitAmount` (the discounted amount the user is actually charged).
+        // Previously initiateTransfer used `req.amount` (full price), causing a
+        // bookkeeping mismatch between the DB transfer record and the actual bank transfer.
+        const transferRecord = await TransferService.initiateTransfer({
           fromAccount: from.accountNo,
           userId,
           toAccount: to.accountNo,
           beneficiaryName: to.client,
-          amount: req.amount,
+          amount: debitAmount,           // FIX: was req.amount
           transferType: 'intra',
           bankCode: '999999',
           remark: `${req.serviceType} purchase`,
           walletBalance: String(from.accountBalance),
-          idempotencyKey
+          idempotencyKey,
         }, 'bill-payment');
 
         const transferReq: TransferRequest = {
@@ -157,15 +165,16 @@ export default class BillPaymentService {
           amount: debitAmount,
           remark: `${req.serviceType} purchase`,
           transferType: 'intra',
-          reference: result.reference,
+          reference: transferRecord.reference,
         };
 
         const vfdResult = await vfdProvider.transfer(transferReq);
-        return { ...vfdResult, reference: result.reference };
+        return { ...vfdResult, reference: transferRecord.reference };
       },
+
       refundProvider: async () => {
         const refundKey = `refund_${idempotencyKey}`;
-        const result = await TransferService.initiateTransfer({
+        const transferRecord = await TransferService.initiateTransfer({
           fromAccount: to.accountNo,
           userId,
           toAccount: from.accountNo,
@@ -175,7 +184,7 @@ export default class BillPaymentService {
           bankCode: '999999',
           remark: `${req.serviceType} purchase refund`,
           walletBalance: String(to.accountBalance),
-          idempotencyKey: refundKey
+          idempotencyKey: refundKey,
         }, 'bill-payment');
 
         const transferReq: TransferRequest = {
@@ -194,18 +203,27 @@ export default class BillPaymentService {
           amount: debitAmount,
           remark: `${req.serviceType} purchase refund`,
           transferType: 'intra',
-          reference: result.reference,
+          reference: transferRecord.reference,
         };
 
         const vfdResult = await vfdProvider.transfer(transferReq);
-        return { ...vfdResult, reference: result.reference };
-      }
+        return { ...vfdResult, reference: transferRecord.reference };
+      },
     });
 
-    // Record commission only for successful transactions (fire-and-forget)
+    // Record commission only for successful transactions (fire-and-forget).
+    // This now works correctly because the processor returns COMPLETED
+    // when PayBeta confirms success instead of falling into the FAILED path.
     if (result.status === 'COMPLETED') {
-      InfluencerService.recordCommissionForUser(req.userId, 'bill-payment', debitAmount, undefined, req.referralCode)
-        .catch(err => logger.warn({ err: err.message }, "Bill payment commission failed"));
+      InfluencerService.recordCommissionForUser(
+        req.userId,
+        'bill-payment',
+        debitAmount,
+        undefined,
+        req.referralCode
+      ).catch(err =>
+        logger.warn({ err: err.message, userId: req.userId, referralCode: req.referralCode }, "Bill payment commission recording failed (non-fatal)")
+      );
     }
 
     return result;
@@ -248,11 +266,15 @@ export default class BillPaymentService {
     return data;
   }
 
-  static async validateServiceAccount(itemCode: string, customerReference: string | number, serviceType?: string, providerName?: string) {
+  static async validateServiceAccount(
+    itemCode: string,
+    customerReference: string | number,
+    serviceType?: string,
+    providerName?: string
+  ) {
     const activeProvider = await getBillProvider();
 
     // BP2: Validation Bypass for PayBeta Airtime/Data
-    // We identify these by serviceType OR by itemCode patterns (AT... for Airtime, BIL108+ for Data)
     const isAirtime = serviceType === 'airtime' || itemCode?.startsWith('AT');
     const isData = serviceType === 'data' || ['BIL108', 'BIL109', 'BIL110', 'BIL111'].includes(itemCode);
 
@@ -262,10 +284,10 @@ export default class BillPaymentService {
 
     return await withFailover(async (P) => {
       return await P.validateAccount({
-        serviceType: (serviceType || 'tv') as any, // Default to tv if unknown
+        serviceType: (serviceType || 'tv') as any,
         customerRef: String(customerReference),
         itemCode,
-        provider: providerName
+        provider: providerName,
       });
     }, 'validate-account');
   }
@@ -286,7 +308,7 @@ export default class BillPaymentService {
     return {
       provider: provider.providerName,
       healthy,
-      balance
+      balance,
     };
   }
 
@@ -304,7 +326,14 @@ export default class BillPaymentService {
    * USER / ADMIN BILL PAYMENT QUERIES
    * ───────────────────────────────────────────── */
 
-  static async getUserBillPayments(userId: string, page = 1, limit = 20, status?: string, type?: string, search?: string) {
+  static async getUserBillPayments(
+    userId: string,
+    page = 1,
+    limit = 20,
+    status?: string,
+    type?: string,
+    search?: string
+  ) {
     const skip = (page - 1) * limit;
     const query: any = { userId };
     if (status) query.status = status;
@@ -329,7 +358,13 @@ export default class BillPaymentService {
     return { billPayments, page, pages: Math.ceil(total / limit), total };
   }
 
-  static async getBillPayments(page = 1, limit = 20, status?: string, type?: string, search?: string) {
+  static async getBillPayments(
+    page = 1,
+    limit = 20,
+    status?: string,
+    type?: string,
+    search?: string
+  ) {
     const skip = (page - 1) * limit;
     const query: any = {};
     if (status) query.status = status;
