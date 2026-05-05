@@ -122,6 +122,11 @@ export class InfluencerService {
         // Percentage-based for transactions
         // Support both rates.key and rates['key'] access
         commissionRate = ratesObj[data.transactionType] || (settings.influencer.commissionRates as any)?.[data.transactionType] || 0;
+        
+        // Fallback for bill-payment if rate is missing or 0
+        if (commissionRate <= 0 && data.transactionType === 'bill-payment') {
+          commissionRate = 1.0; // 1% default
+        }
         commissionAmount = Number(((commissionRate / 100) * data.transactionAmount).toFixed(2));
       }
 

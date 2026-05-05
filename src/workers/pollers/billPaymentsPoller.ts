@@ -86,10 +86,9 @@ export class BillPaymentsPoller {
 
   private static async pollPendingBillPayments() {
     const batchSize = parseInt(process.env.POLL_BATCH_SIZE || '100');
-    // Import p-limit for concurrency
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const pLimit = (await import('p-limit')).default;
-    const limit = pLimit(5); // Concurrency limit of 5 to respect rate limits
+    const limit = pLimit(5);
 
     try {
       const pendingPayments = await BillPayment.find({
@@ -99,32 +98,23 @@ export class BillPaymentsPoller {
         .limit(batchSize);
 
       logger.info(`Polling ${pendingPayments.length} pending bill payments`);
-      // Update heartbeat
       await WorkerControlService.reportActivity('bill-payments-poller', `Polling ${pendingPayments.length} payments`);
-      await WorkerLogService.log('bill-payments-poller', 'info', `Polling ${pendingPayments.length} pending bill payments`);
 
       if (pendingPayments.length === 0) return;
+
+      const { PayBetaProvider } = await import('../../shared/providers/paybeta.provider');
+      const { InfluencerService } = await import('../../modules/influencer/influencer.service');
+      const payBeta = new PayBetaProvider();
 
       await Promise.all(
         pendingPayments.map((payment) =>
           limit(async () => {
             try {
-              // Check for stale pending payments (> 24 hours)
               const createdAt = new Date(payment.createdAt);
               const now = new Date();
               const diffHours = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
 
               if (diffHours > 24) {
-                // Optimization: Move to MANUAL_REVIEW instead of auto-refund to prevent fraud
-                payment.status = 'MANUAL_REVIEW';
-                // Note: 'MANUAL_REVIEW' might need to be added to the enum or handled as a special PENDING case if strict enum. 
-                // Assuming enum allows it or strictly string. If strictly enum, we might need 'FAILED' with reason 'MANUAL_CHECK_REQUIRED' or similar. 
-                // Checking codebase... typically status is string but let's be safe. 
-                // If status is strict enum, we'll assume MANUAL_REVIEW is valid or update model later. 
-                // For now, let's just log and skip refunding, effectively leaving it PENDING but we want to flagging it.
-                // Let's set it to FAILED but with a specific reason in meta if MANUAL_REVIEW isn't an option?
-                // Actually, the plan requested "Move to MANUAL_REVIEW". Let's assume we can update the status or just flag it.
-                // Let's go with updating status to 'MANUAL_REVIEW' (will fail if strict enum not updated, but I'll update interface if needed).
                 payment.status = 'MANUAL_REVIEW' as any;
                 payment.meta = { ...payment.meta, reviewReason: 'Stale pending > 24h' };
                 await payment.save();
@@ -132,12 +122,21 @@ export class BillPaymentsPoller {
                 return;
               }
 
-              const resp = await flutterwaveGet(`/v3/bills/${encodeURIComponent(payment?.providerRef || "")}`);
-              const responseData = resp?.data;
+              const provider = payment.meta?.provider || 'flutterwave';
+              let isSuccess = false;
+              let isFailed = false;
 
-              if (resp.status === 'success' && (responseData?.status === 'successful' || responseData?.status === 'success')) {
-                // Optimization: Provider confirmed success. We must mark as COMPLETED.
-                // Do NOT refund.
+              if (provider === 'paybeta') {
+                const pbResp = await payBeta.queryTransaction(payment.providerRef || "");
+                isSuccess = pbResp.status === 'successful';
+                isFailed = pbResp.status === 'failed';
+              } else {
+                const fwResp = await flutterwaveGet(`/v3/bills/${encodeURIComponent(payment?.providerRef || "")}`);
+                isSuccess = fwResp.status === 'success' && (fwResp.data?.status === 'successful' || fwResp.data?.status === 'success');
+                isFailed = fwResp.status === 'error' || fwResp.data?.status === 'failed' || fwResp.data?.status === 'error';
+              }
+
+              if (isSuccess) {
                 const session = await DatabaseService.startSession();
                 try {
                   await DatabaseService.withTransaction(session, async () => {
@@ -147,14 +146,26 @@ export class BillPaymentsPoller {
 
                     await LedgerService.updateStatus(payment.traceId, 'COMPLETED', session);
 
+                    // Trigger Commission on SUCCESSFUL resolution
+                    try {
+                      await InfluencerService.recordCommissionForUser(
+                        payment.userId,
+                        'bill-payment',
+                        payment.amount,
+                        payment.traceId,
+                        payment.referralCode
+                      );
+                    } catch (infErr) {
+                      logger.warn({ billPaymentId: payment._id, error: (infErr as Error).message }, 'Commission recording failed during polling');
+                    }
+
                     logger.info({ billPaymentId: payment._id }, 'Bill payment resolved as COMPLETED via poller');
                   });
                 } finally {
                   await session.endSession();
                 }
 
-              } else if (resp.status === 'error' || responseData?.status === 'failed' || responseData?.status === 'error') {
-                // Provider confirmed failure. Refund.
+              } else if (isFailed) {
                 await this.refundBillPayment(payment);
               }
             } catch (error: unknown) {
@@ -163,16 +174,13 @@ export class BillPaymentsPoller {
                 billPaymentId: payment._id,
                 error: errorMessage
               }, 'Error polling bill payment');
-              await WorkerLogService.log('bill-payments-poller', 'error', `Error polling bill payment: ${errorMessage}`, { billPaymentId: payment._id });
             }
           })
         )
       );
-
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       logger.error({ error: errorMessage }, 'Error in bill payments poller');
-      await WorkerLogService.log('bill-payments-poller', 'error', `Fatal error in bill payments poller: ${errorMessage}`);
     }
   }
 
