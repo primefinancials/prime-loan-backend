@@ -110,39 +110,40 @@ export async function processTransaction({
         const isPending = providerStatus === "pending" || providerStatus === "processing";
 
         if (isSuccess) {
-          // 4️⃣ Complete transaction (mark completed)
-          await TransferService.completeTransfer(
-            txnResponse.reference,
-            "bill-payment"
-          );
-
+          // ✅ 4A. Provider Success - Commit DB status immediately
           billPayment.status = "COMPLETED";
           billPayment.processedAt = new Date();
-          billPayment.meta = {
-            ...billPayment.meta,
-            txnResponse,
-            providerResponse,
-          };
+          billPayment.meta = { ...billPayment.meta, txnResponse, providerResponse };
           await billPayment.save({ session });
 
-          // Ledger update
-          await LedgerService.createDoubleEntry(
-            traceId,
-            `user_wallet:${userId}`,
-            `bill-payment:${serviceType}`,
-            amount,
-            "bill-payment",
-            {
-              userId,
-              subtype: serviceType,
-              idempotencyKey,
-              session,
-              meta: {
-                billPaymentId: billPayment._id,
-                transactionId: txnResponse.reference,
-              },
-            }
-          );
+          // 4B. Run Post-Processing (Ledger, Sync, Notifications) in a separate try/catch
+          // If these fail, we DON'T refund because the bill is already paid.
+          try {
+            await TransferService.completeTransfer(txnResponse.reference, "bill-payment");
+
+            await LedgerService.createDoubleEntry(
+              traceId,
+              `user_wallet:${userId}`,
+              `bill-payment:${serviceType}`,
+              amount,
+              "bill-payment",
+              {
+                userId,
+                subtype: serviceType,
+                idempotencyKey,
+                session,
+                meta: {
+                  billPaymentId: billPayment._id,
+                  transactionId: txnResponse.reference,
+                },
+              }
+            );
+          } catch (postErr: any) {
+            logger.warn({ traceId, error: postErr.message }, "Post-payment processing failed (non-fatal)");
+            // We can add a flag here for background retry if needed
+            billPayment.meta = { ...billPayment.meta, postProcessingError: postErr.message };
+            await billPayment.save({ session });
+          }
 
           return {
             traceId,
@@ -153,14 +154,10 @@ export async function processTransaction({
         } else if (isPending) {
           // 5️⃣ Mark as pending
           billPayment.status = "PENDING";
-          billPayment.meta = {
-            ...billPayment.meta,
-            txnResponse,
-            providerResponse,
-          };
+          billPayment.meta = { ...billPayment.meta, txnResponse, providerResponse };
           await billPayment.save({ session });
 
-          // Ledger update for pending (some systems hold funds)
+          // Ledger update for pending
           await LedgerService.createDoubleEntry(
             traceId,
             `user_wallet:${userId}`,
@@ -187,14 +184,38 @@ export async function processTransaction({
           };
         } else {
           // ❌ Provider explicitly failed or returned unknown status
-          await TransferService.failTransfer(txnResponse?.reference || "");
           throw new Error(providerResponse.message || providerResponse.error || "Provider transaction failed");
         }
       } catch (err: any) {
-        console.log("Provider Error:", err.message);
+        console.log("Provider Interaction Error:", err.message);
 
-        // ❌ Provider failed → trigger refund
-        // Ensure we have a reference to attempt refund/failure
+        // Determine if it's a "maybe successful" error (Timeout, Network)
+        const isMaybeSuccessful = 
+          err.code === 'ECONNRESET' || 
+          err.code === 'ETIMEDOUT' || 
+          err.message?.toLowerCase().includes('timeout') ||
+          err.message?.toLowerCase().includes('network');
+
+        if (isMaybeSuccessful) {
+          // Set to PENDING instead of FAILED/REFUND
+          billPayment.status = "PENDING";
+          billPayment.meta = {
+            ...billPayment.meta,
+            txnResponse,
+            providerError: err.message,
+            reason: "Network timeout - manual re-query required"
+          };
+          await billPayment.save({ session });
+
+          return {
+            traceId,
+            status: "PENDING",
+            billPayment,
+            message: "Transaction is being processed (Pending confirmation)",
+          };
+        }
+
+        // ❌ Definite failure → attempt refund
         const originalRef = txnResponse?.reference || "";
 
         if (originalRef) {
@@ -236,13 +257,11 @@ export async function processTransaction({
               },
             }
           );
-          console.log("Refund Response:", refundResponse);
         } catch (refundErr: any) {
-          console.error("Refund Failed:", refundErr?.response?.data?.message || refundErr.message || refundErr);
+          logger.error({ userId, error: refundErr.message }, "Refund failed for bill payment");
         }
 
         // 6️⃣ Mark failed + save all responses
-        // We DO NOT throw here because we want the transaction to COMMIT the FAILED status and the Refund ledger entry.
         billPayment.status = "FAILED";
         billPayment.meta = {
           ...billPayment.meta,
@@ -253,7 +272,6 @@ export async function processTransaction({
         };
         await billPayment.save({ session });
 
-        // Return a failure object instead of throwing to allow the transaction to commit
         return {
           traceId,
           status: "FAILED",

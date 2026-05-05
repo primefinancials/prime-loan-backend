@@ -168,7 +168,7 @@ export class TermiiVoiceProvider implements IVoiceCallProvider {
     const senderId = this.getRandomSenderId();
 
     try {
-      await axios.post(`${this.baseUrl}/api/sms/send`, {
+      const response = await axios.post(`${this.baseUrl}/api/sms/send`, {
         api_key: this.apiKey,
         to: phone,
         from: senderId,
@@ -178,11 +178,26 @@ export class TermiiVoiceProvider implements IVoiceCallProvider {
       }, {
         headers: { 'Content-Type': 'application/json' }
       });
-      logger.info({ to: phone, senderId }, 'Termii recovery SMS sent');
+      
+      const { message_id, status, balance, user } = response.data || {};
+      logger.info({ 
+        to: phone, 
+        senderId, 
+        messageId: message_id, 
+        termiiStatus: status,
+        channel: this.channel
+      }, 'Termii recovery SMS sent successfully');
     } catch (error) {
       const axErr = error as AxiosError;
-      logger.error({ phone, senderId, status: axErr.response?.status, data: axErr.response?.data }, 'Termii SMS send failed');
-      throw new Error(`Termii SMS failed (${axErr.response?.status}): ${JSON.stringify(axErr.response?.data || axErr.message)}`);
+      const errorData = axErr.response?.data;
+      logger.error({ 
+        phone, 
+        senderId, 
+        status: axErr.response?.status, 
+        errorData,
+        channel: this.channel
+      }, 'Termii SMS send failed');
+      throw new Error(`Termii SMS failed (${axErr.response?.status}): ${JSON.stringify(errorData || axErr.message)}`);
     }
   }
 

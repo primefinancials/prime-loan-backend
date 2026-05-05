@@ -146,6 +146,11 @@ export class SettingsService {
         minPayoutAmount: 1000
       };
       v2Dirty = true;
+    } else if (settings.influencer.commissionRates && !(settings.influencer.commissionRates as any)['bill-payment']) {
+      // Ensure specific key exists if rates object is already present
+      (settings.influencer.commissionRates as any)['bill-payment'] = 1.0;
+      settings.markModified('influencer.commissionRates');
+      v2Dirty = true;
     }
 
     if (!(settings as any).autoDebit) {

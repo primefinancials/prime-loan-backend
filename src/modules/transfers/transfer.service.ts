@@ -183,92 +183,78 @@ export class TransferService {
           await LedgerService.updateStatus(ledger[0]._id as any, 'COMPLETED', session);
         }
 
-        // Credit beneficiary account (for intra-bank)
-        if (transfer.transferType === 'intra') {
-          const user = await User.findOne({ "user_metadata.accountNo": transfer.toAccount }).session(session);
-
-          if (user) {
-            if (type === 'transfer') {
-              // Create credit ledger entry ONLY for basic transfers to avoid double-entry
-              await LedgerService.createEntry({
-                userId: user._id as any,
-                traceId: transfer.traceId,
-                account: `user_wallet:${user._id}`,
-                entryType: 'CREDIT',
-                category: 'transfer',
-                amount: transfer.amount,
-                status: 'COMPLETED',
-                relatedTo: String(transfer._id),
-                meta: { subtype: type }
-              }, session);
-            }
-
-            // Sync wallet balance with VFD source of truth
-            try {
-              const accountInfo = await TransferService.vfdProvider.getAccountInfo(transfer.toAccount);
-              if (accountInfo?.data?.accountBalance) {
-                user.user_metadata.wallet = String(accountInfo.data.accountBalance);
-              } else {
-                user.user_metadata.wallet = String(Number(user?.user_metadata.wallet || 0) + Number(transfer.amount));
-              }
-            } catch (err) {
-              console.error("Failed to sync wallet balance from VFD:", err);
-              user.user_metadata.wallet = String(Number(user?.user_metadata.wallet || 0) + Number(transfer.amount));
-            }
-            await user.save({ session });
-
-            // Clear VFD cache for receiver
-            await TransferService.vfdProvider.clearCache(transfer.toAccount);
-
-            const fromuser = await User.findOne({ "user_metadata.accountNo": transfer.fromAccount }).session(session);
-            const originatorName = fromuser ? `${fromuser.user_metadata.first_name || ""} ${fromuser.user_metadata.surname || ""}`.trim() : "Prime Loan";
-
-            // Send credit alert notification (best-effort, non-blocking)
-            try {
-              await NotificationService.sendCreditAlert(user, transfer.amount, originatorName || "System", transfer.reference);
-            } catch (emailError) {
-              console.warn('Failed to send credit alert email (non-fatal):', emailError);
-            }
-          }
-        }
-
+        // 1. Update transfer status immediately
         transfer.status = 'COMPLETED';
         await transfer.save({ session });
 
-        const result: TransferResult = {
+        // 2. Resolve Users
+        const [toUser, fromUser] = await Promise.all([
+          User.findOne({ "user_metadata.accountNo": transfer.toAccount }).session(session),
+          User.findOne({ "user_metadata.accountNo": transfer.fromAccount }).session(session)
+        ]);
+
+        // 3. Process Receiver (Intra-bank only)
+        if (transfer.transferType === 'intra' && toUser) {
+          if (type === 'transfer') {
+            await LedgerService.createEntry({
+              userId: toUser._id as any,
+              traceId: transfer.traceId,
+              account: `user_wallet:${toUser._id}`,
+              entryType: 'CREDIT',
+              category: 'transfer',
+              amount: transfer.amount,
+              status: 'COMPLETED',
+              relatedTo: String(transfer._id),
+              meta: { subtype: type }
+            }, session);
+          }
+
+          // Sync Receiver Balance (Mandatory VFD call)
+          try {
+            const accountInfo = await TransferService.vfdProvider.getAccountInfo(transfer.toAccount);
+            toUser.user_metadata.wallet = String(accountInfo?.data?.accountBalance || (Number(toUser.user_metadata.wallet || 0) + Number(transfer.amount)));
+          } catch (err) {
+            toUser.user_metadata.wallet = String(Number(toUser.user_metadata.wallet || 0) + Number(transfer.amount));
+          }
+          await toUser.save({ session });
+        }
+
+        // 4. Process Sender
+        if (fromUser) {
+          // Sync Sender Balance (Mandatory VFD call)
+          try {
+            // We only clear cache for the sender to ensure we see the debit
+            await TransferService.vfdProvider.clearCache(transfer.fromAccount);
+            const accountInfo = await TransferService.vfdProvider.getAccountInfo(transfer.fromAccount);
+            if (accountInfo?.data?.accountBalance) {
+              fromUser.user_metadata.wallet = String(accountInfo.data.accountBalance);
+            }
+          } catch (err) {
+            logger.warn({ error: err.message }, 'Failed to sync sender balance from VFD');
+          }
+          await fromUser.save({ session });
+        }
+
+        // 5. Notifications (Awaited as requested, but at the very end of the logic)
+        const originatorName = fromUser ? `${fromUser.user_metadata.first_name || ""} ${fromUser.user_metadata.surname || ""}`.trim() : "Prime Loan";
+        
+        try {
+          if (transfer.transferType === 'intra' && toUser) {
+            await NotificationService.sendCreditAlert(toUser, transfer.amount, originatorName || "System", transfer.reference);
+          }
+          if (fromUser && type === "transfer") {
+            await NotificationService.sendDebitAlert(fromUser, transfer.amount);
+          }
+        } catch (notifErr) {
+          logger.warn({ error: (notifErr as Error).message }, 'Notifications failed (non-fatal)');
+        }
+
+        return {
           traceId: transfer.traceId,
           status: 'COMPLETED',
           transferId: String(transfer._id),
           reference: transfer.reference
         };
-
-        const user = await User.findById(transfer.userId).session(session);
-
-        if (user) {
-          // Sync sender wallet balance with VFD source of truth
-          try {
-            // Clear VFD cache for sender
-            await TransferService.vfdProvider.clearCache(transfer.fromAccount);
-
-            const accountInfo = await TransferService.vfdProvider.getAccountInfo(transfer.fromAccount);
-            if (accountInfo?.data?.accountBalance) {
-              user.user_metadata.wallet = String(accountInfo.data.accountBalance);
-              await user.save({ session });
-            }
-          } catch (err) {
-            console.error("Failed to sync sender wallet balance from VFD:", err);
-          }
-
-          if (type == "transfer") {
-            try {
-              await NotificationService.sendDebitAlert(user, transfer.amount);
-            } catch (emailError) {
-              console.warn('Failed to send debit alert email (non-fatal):', emailError);
-            }
-          }
-        }
-
-        return result;
       });
     } finally {
       await session.endSession();
