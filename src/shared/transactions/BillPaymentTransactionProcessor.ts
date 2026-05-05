@@ -289,38 +289,69 @@ export async function processTransaction({
         }
 
       } catch (err: any) {
-        // This catch now ONLY handles genuine network/infrastructure exceptions
-        // thrown by providerFn() itself (e.g. ECONNRESET, ETIMEDOUT).
-        // It no longer handles provider logic failures — those are returned above.
-        logger.error({ traceId, error: err.message, code: err.code }, "providerFn threw an exception (network/infra error)");
+        // This catch handles exceptions thrown by providerFn() —
+        // both network-level errors (ECONNRESET, timeout) and HTTP errors
+        // where axios throws instead of returning (4xx/5xx responses).
 
-        // Distinguish "maybe already processed" errors (network timeouts) from
-        // definite failures. If we can't confirm, set PENDING for manual review.
+        // Extract the real response body from axios errors so we can
+        // inspect what PayBeta actually said, not just the generic message.
+        const axiosResponseData = err.response?.data;
+        const axiosStatus = err.response?.status;
+        const errorMessage = axiosResponseData?.message || axiosResponseData?.error || err.message || "Unknown provider error";
+
+        logger.error(
+          { traceId, error: errorMessage, code: err.code, httpStatus: axiosStatus, responseBody: axiosResponseData },
+          "providerFn threw an exception"
+        );
+
+        // Determine if the outcome is ambiguous (i.e. the bill may have been
+        // delivered but we can't confirm). In these cases we set PENDING instead
+        // of FAILED + refund, because refunding a delivered service is worse than
+        // leaving it for manual review.
+        //
+        // Ambiguous cases:
+        //   - Network errors: the request may have reached PayBeta but the response was lost
+        //   - HTTP 5xx: PayBeta processed the request but had an internal error responding
+        //   - HTTP 408/429: timeout or rate limit — request may have been queued and processed
+        const httpStatus5xx = axiosStatus >= 500 && axiosStatus <= 599;
+        const httpStatus408or429 = axiosStatus === 408 || axiosStatus === 429;
+
         const isMaybeSuccessful =
           err.code === 'ECONNRESET' ||
           err.code === 'ETIMEDOUT' ||
           err.code === 'ENOTFOUND' ||
+          err.code === 'ECONNABORTED' ||
           err.message?.toLowerCase().includes('timeout') ||
           err.message?.toLowerCase().includes('network') ||
-          err.message?.toLowerCase().includes('socket');
+          err.message?.toLowerCase().includes('socket') ||
+          err.message?.toLowerCase().includes('server error') ||  // catches "Server Error" from PayBeta 500
+          httpStatus5xx ||
+          httpStatus408or429;
 
         if (isMaybeSuccessful) {
           billPayment.status = "PENDING";
           billPayment.meta = {
             ...billPayment.meta,
             txnResponse,
-            providerError: err.message,
-            reason: "Network error — provider call outcome unknown, manual re-query required",
+            providerError: errorMessage,
+            providerHttpStatus: axiosStatus,
+            providerResponseBody: axiosResponseData,
+            reason: axiosStatus
+              ? `Provider returned HTTP ${axiosStatus} — outcome unknown, manual re-query required`
+              : "Network error — provider call outcome unknown, manual re-query required",
           };
           await billPayment.save({ session });
 
-          logger.warn({ traceId, error: err.message }, "Provider network error — marked PENDING for manual review");
+          logger.warn(
+            { traceId, error: errorMessage, httpStatus: axiosStatus },
+            "Provider error is ambiguous (5xx/network) — marked PENDING for manual review instead of refunding"
+          );
 
           return {
             traceId,
             status: "PENDING",
             billPayment,
-            message: "Transaction is being processed (pending confirmation due to network error)",
+            message: "Transaction is being processed (pending confirmation)",
           };
         }
 
@@ -372,7 +403,9 @@ export async function processTransaction({
           txnResponse,
           providerResponse,
           refundResponse,
-          providerError: err.message || "Unknown infrastructure error",
+          providerError: errorMessage,
+          providerHttpStatus: axiosStatus,
+          providerResponseBody: axiosResponseData,
         };
         await billPayment.save({ session });
 
@@ -380,7 +413,7 @@ export async function processTransaction({
           traceId,
           status: "FAILED",
           billPayment,
-          message: err.message || "Transaction failed and refund attempted",
+          message: errorMessage || "Transaction failed and refund attempted",
         };
       }
     }) as any;
