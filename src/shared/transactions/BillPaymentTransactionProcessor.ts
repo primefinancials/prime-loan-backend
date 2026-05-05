@@ -35,7 +35,7 @@ export async function processTransaction({
   refundProvider: () => Promise<TransferResponse & { reference: string }>;
 }): Promise<{
   traceId: string;
-  status: "FAILED" | "COMPLETED";
+  status: "FAILED" | "COMPLETED" | "PENDING";
   billPayment: typeof BillPayment;
   message: string;
 }> {
@@ -71,56 +71,82 @@ export async function processTransaction({
       let providerResponse: any;
       let refundResponse: any;
 
-      // 2️⃣ Call txnProvider first
+      // 2️⃣ Call txnProvider first (debit the user's wallet)
       try {
         txnResponse = await txnProvider();
-        console.log("TxnProvider Response:", txnResponse);
+        logger.info({ traceId, reference: txnResponse?.reference }, "txnProvider response received");
       } catch (err: any) {
         billPayment.status = "FAILED";
         billPayment.meta = { ...billPayment.meta, txnError: err.message };
         await billPayment.save({ session });
-        logger.error(err?.response?.data?.message || err.message);
+        logger.error({ traceId, error: err?.response?.data?.message || err.message }, "txnProvider threw — wallet debit failed");
         if (txnResponse?.reference) {
           await TransferService.failTransfer(txnResponse.reference);
         }
         throw new Error(err?.response?.data?.message || err.message || "Transaction initialization failed");
       }
 
-      console.log({ txnResponse })
-
-      // ✅ Check if transaction succeeded
+      // ✅ Check VFD transfer status — must be "00" to continue
       if (txnResponse.status !== "00") {
         billPayment.status = "FAILED";
         billPayment.meta = { ...billPayment.meta, txnResponse };
         await billPayment.save({ session });
-        console.log(`message: ${txnResponse.message} status: ${txnResponse.statusCode}`)
+        logger.warn({ traceId, txnStatus: txnResponse.status, message: txnResponse.message }, "txnProvider returned non-00 status");
         await TransferService.failTransfer(txnResponse?.reference || "");
         throw new Error(txnResponse.message || "BillPayment failed during initialization");
       }
 
-      // 3️⃣ Proceed to call providerFn
+      // 3️⃣ Call the bill provider (PayBeta / Flutterwave)
+      // IMPORTANT: We do NOT throw inside this try block on provider failure.
+      // Throwing here falls into the outer catch which triggers a refund —
+      // but we may have already successfully delivered the bill. Instead we
+      // return early with the correct status to avoid spurious refunds.
       try {
         providerResponse = await providerFn();
-        console.log("Provider Response:", providerResponse);
+        logger.info({ traceId, providerStatus: providerResponse?.status }, "providerFn response received");
 
-        const providerStatusRaw = providerResponse?.status || "";
-        const providerStatus = providerStatusRaw.toString().toLowerCase();
+        const providerStatusRaw = providerResponse?.status ?? providerResponse?.data?.status ?? "";
+        const providerStatus = providerStatusRaw.toString().toLowerCase().trim();
 
-        const isSuccess = providerStatus === "success" || providerStatus === "successful" || providerStatus === "completed" || providerResponse?.success === true;
-        const isPending = providerStatus === "pending" || providerStatus === "processing";
+        // FIX: Broadened success detection to cover common Nigerian fintech
+        // provider response shapes (PayBeta, Flutterwave, VFD, etc.)
+        const isSuccess =
+          providerStatus === "success" ||
+          providerStatus === "successful" ||
+          providerStatus === "completed" ||
+          providerStatus === "01" ||           // PayBeta numeric success code
+          providerStatus === "200" ||          // HTTP-style success code some providers return
+          providerResponse?.success === true ||
+          providerResponse?.data?.success === true ||
+          providerResponse?.data?.status?.toString().toLowerCase() === "success";
+
+        const isPending =
+          providerStatus === "pending" ||
+          providerStatus === "processing" ||
+          providerStatus === "initiated";
 
         if (isSuccess) {
-          // ✅ 4A. Provider Success - Commit DB status immediately
+          // ✅ 4A. Provider confirmed success — persist COMPLETED status immediately
           billPayment.status = "COMPLETED";
           billPayment.processedAt = new Date();
           billPayment.meta = { ...billPayment.meta, txnResponse, providerResponse };
           await billPayment.save({ session });
 
-          // 4B. Run Post-Processing (Ledger, Sync, Notifications) in a separate try/catch
-          // If these fail, we DON'T refund because the bill is already paid.
+          // 4B. Post-processing: completeTransfer
+          // Split into its own try/catch — a failure here must NOT mark the payment
+          // as FAILED, because the bill has already been delivered to the customer.
           try {
             await TransferService.completeTransfer(txnResponse.reference, "bill-payment");
+          } catch (transferErr: any) {
+            logger.warn({ traceId, error: transferErr.message }, "completeTransfer failed after successful bill payment (non-fatal)");
+            billPayment.meta = { ...billPayment.meta, completeTransferError: transferErr.message };
+            await billPayment.save({ session });
+          }
 
+          // 4C. Post-processing: Ledger double entry
+          // Separate try/catch to prevent a ledger write failure from
+          // corrupting the MongoDB session or masking the COMPLETED status.
+          try {
             await LedgerService.createDoubleEntry(
               traceId,
               `user_wallet:${userId}`,
@@ -138,10 +164,9 @@ export async function processTransaction({
                 },
               }
             );
-          } catch (postErr: any) {
-            logger.warn({ traceId, error: postErr.message }, "Post-payment processing failed (non-fatal)");
-            // We can add a flag here for background retry if needed
-            billPayment.meta = { ...billPayment.meta, postProcessingError: postErr.message };
+          } catch (ledgerErr: any) {
+            logger.warn({ traceId, error: ledgerErr.message }, "Ledger double entry failed after successful bill payment (non-fatal)");
+            billPayment.meta = { ...billPayment.meta, postProcessingError: ledgerErr.message };
             await billPayment.save({ session });
           }
 
@@ -151,30 +176,36 @@ export async function processTransaction({
             billPayment,
             message: "Bill payment completed successfully",
           };
+
         } else if (isPending) {
-          // 5️⃣ Mark as pending
+          // 5️⃣ Provider acknowledged but processing — mark PENDING
           billPayment.status = "PENDING";
           billPayment.meta = { ...billPayment.meta, txnResponse, providerResponse };
           await billPayment.save({ session });
 
-          // Ledger update for pending
-          await LedgerService.createDoubleEntry(
-            traceId,
-            `user_wallet:${userId}`,
-            `bill-payment:${serviceType}`,
-            amount,
-            "bill-payment",
-            {
-              userId,
-              subtype: serviceType,
-              idempotencyKey,
-              session,
-              meta: {
-                billPaymentId: billPayment._id,
-                transactionId: txnResponse.reference,
-              },
-            }
-          );
+          try {
+            await LedgerService.createDoubleEntry(
+              traceId,
+              `user_wallet:${userId}`,
+              `bill-payment:${serviceType}`,
+              amount,
+              "bill-payment",
+              {
+                userId,
+                subtype: serviceType,
+                idempotencyKey,
+                session,
+                meta: {
+                  billPaymentId: billPayment._id,
+                  transactionId: txnResponse.reference,
+                },
+              }
+            );
+          } catch (ledgerErr: any) {
+            logger.warn({ traceId, error: ledgerErr.message }, "Ledger double entry failed for PENDING bill payment (non-fatal)");
+            billPayment.meta = { ...billPayment.meta, postProcessingError: ledgerErr.message };
+            await billPayment.save({ session });
+          }
 
           return {
             traceId,
@@ -182,63 +213,137 @@ export async function processTransaction({
             billPayment,
             message: "Bill payment is pending",
           };
+
         } else {
-          // ❌ Provider explicitly failed or returned unknown status
-          throw new Error(providerResponse.message || providerResponse.error || "Provider transaction failed");
-        }
-      } catch (err: any) {
-        console.log("Provider Interaction Error:", err.message);
+          // ❌ FIX: Provider returned an explicit failure or unrecognised status.
+          // Previously this threw an error, which fell into the outer catch and
+          // triggered a refund even when it wasn't appropriate. Now we:
+          //   1. Log the unrecognised status for debugging
+          //   2. Fail the VFD transfer cleanly
+          //   3. Attempt a refund inline (controlled, not via catch path)
+          //   4. Return FAILED without unwinding the session unexpectedly
+          logger.warn(
+            { traceId, providerStatus: providerStatusRaw, providerResponse },
+            "Provider returned explicit failure or unrecognised status — initiating controlled refund"
+          );
 
-        // Determine if it's a "maybe successful" error (Timeout, Network)
-        const isMaybeSuccessful = 
-          err.code === 'ECONNRESET' || 
-          err.code === 'ETIMEDOUT' || 
-          err.message?.toLowerCase().includes('timeout') ||
-          err.message?.toLowerCase().includes('network');
+          const originalRef = txnResponse?.reference || "";
 
-        if (isMaybeSuccessful) {
-          // Set to PENDING instead of FAILED/REFUND
-          billPayment.status = "PENDING";
+          // Mark the original transfer as failed
+          if (originalRef) {
+            try {
+              await TransferService.failTransfer(originalRef);
+            } catch (failErr: any) {
+              logger.warn({ traceId, error: failErr.message, originalRef }, "failTransfer failed during explicit provider failure path");
+            }
+          }
+
+          // Attempt refund
+          try {
+            refundResponse = await refundProvider();
+
+            if (refundResponse?.status === "00") {
+              await TransferService.completeTransfer(refundResponse.reference, "bill-payment");
+            } else if (refundResponse?.reference) {
+              await TransferService.failTransfer(refundResponse.reference);
+            }
+
+            await LedgerService.createDoubleEntry(
+              UuidService.generate(),
+              `bill-payment:${serviceType}`,
+              `user_wallet:${userId}`,
+              amount,
+              "bill-payment",
+              {
+                userId,
+                subtype: serviceType,
+                idempotencyKey: `refund_ledger_${idempotencyKey}_${Date.now()}`,
+                session,
+                meta: {
+                  billPaymentId: billPayment._id,
+                  transactionId: originalRef,
+                  refundReference: refundResponse?.reference,
+                },
+              }
+            );
+          } catch (refundErr: any) {
+            logger.error({ traceId, userId, error: refundErr.message }, "Refund failed during explicit provider failure path");
+          }
+
+          billPayment.status = "FAILED";
           billPayment.meta = {
             ...billPayment.meta,
             txnResponse,
-            providerError: err.message,
-            reason: "Network timeout - manual re-query required"
+            providerResponse,
+            refundResponse,
+            providerError: providerResponse?.message || providerResponse?.error || `Unrecognised provider status: ${providerStatusRaw}`,
           };
           await billPayment.save({ session });
 
           return {
             traceId,
-            status: "PENDING",
+            status: "FAILED",
             billPayment,
-            message: "Transaction is being processed (Pending confirmation)",
+            message: providerResponse?.message || providerResponse?.error || "Provider transaction failed",
           };
         }
 
-        // ❌ Definite failure → attempt refund
+      } catch (err: any) {
+        // This catch now ONLY handles genuine network/infrastructure exceptions
+        // thrown by providerFn() itself (e.g. ECONNRESET, ETIMEDOUT).
+        // It no longer handles provider logic failures — those are returned above.
+        logger.error({ traceId, error: err.message, code: err.code }, "providerFn threw an exception (network/infra error)");
+
+        // Distinguish "maybe already processed" errors (network timeouts) from
+        // definite failures. If we can't confirm, set PENDING for manual review.
+        const isMaybeSuccessful =
+          err.code === 'ECONNRESET' ||
+          err.code === 'ETIMEDOUT' ||
+          err.code === 'ENOTFOUND' ||
+          err.message?.toLowerCase().includes('timeout') ||
+          err.message?.toLowerCase().includes('network') ||
+          err.message?.toLowerCase().includes('socket');
+
+        if (isMaybeSuccessful) {
+          billPayment.status = "PENDING";
+          billPayment.meta = {
+            ...billPayment.meta,
+            txnResponse,
+            providerError: err.message,
+            reason: "Network error — provider call outcome unknown, manual re-query required",
+          };
+          await billPayment.save({ session });
+
+          logger.warn({ traceId, error: err.message }, "Provider network error — marked PENDING for manual review");
+
+          return {
+            traceId,
+            status: "PENDING",
+            billPayment,
+            message: "Transaction is being processed (pending confirmation due to network error)",
+          };
+        }
+
+        // ❌ Definite infrastructure failure → attempt refund
         const originalRef = txnResponse?.reference || "";
 
         if (originalRef) {
           try {
             await TransferService.failTransfer(originalRef);
-          } catch (failErr) {
-            logger.warn({ error: (failErr as Error).message, originalRef }, "failTransfer failed (pre-refund)");
+          } catch (failErr: any) {
+            logger.warn({ traceId, error: failErr.message, originalRef }, "failTransfer failed (pre-refund on infra error)");
           }
         }
 
-        // 5️⃣ Attempt refund
         try {
           refundResponse = await refundProvider();
 
           if (refundResponse?.status === "00") {
             await TransferService.completeTransfer(refundResponse.reference, "bill-payment");
-          } else {
-            if (refundResponse?.reference) {
-              await TransferService.failTransfer(refundResponse.reference);
-            }
+          } else if (refundResponse?.reference) {
+            await TransferService.failTransfer(refundResponse.reference);
           }
 
-          // Record the refund in the ledger
           await LedgerService.createDoubleEntry(
             UuidService.generate(),
             `bill-payment:${serviceType}`,
@@ -253,22 +358,21 @@ export async function processTransaction({
               meta: {
                 billPaymentId: billPayment._id,
                 transactionId: originalRef,
-                refundReference: refundResponse?.reference
+                refundReference: refundResponse?.reference,
               },
             }
           );
         } catch (refundErr: any) {
-          logger.error({ userId, error: refundErr.message }, "Refund failed for bill payment");
+          logger.error({ traceId, userId, error: refundErr.message }, "Refund failed after infra error");
         }
 
-        // 6️⃣ Mark failed + save all responses
         billPayment.status = "FAILED";
         billPayment.meta = {
           ...billPayment.meta,
           txnResponse,
           providerResponse,
           refundResponse,
-          providerError: err.message || "Unknown Provider Error",
+          providerError: err.message || "Unknown infrastructure error",
         };
         await billPayment.save({ session });
 
