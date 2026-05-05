@@ -213,7 +213,7 @@ export class TransferService {
           try {
             const accountInfo = await TransferService.vfdProvider.getAccountInfo(transfer.toAccount);
             toUser.user_metadata.wallet = String(accountInfo?.data?.accountBalance || (Number(toUser.user_metadata.wallet || 0) + Number(transfer.amount)));
-          } catch (err) {
+          } catch (err: any) {
             toUser.user_metadata.wallet = String(Number(toUser.user_metadata.wallet || 0) + Number(transfer.amount));
           }
           await toUser.save({ session });
@@ -229,7 +229,7 @@ export class TransferService {
             if (accountInfo?.data?.accountBalance) {
               fromUser.user_metadata.wallet = String(accountInfo.data.accountBalance);
             }
-          } catch (err) {
+          } catch (err: any) {
             logger.warn({ error: err.message }, 'Failed to sync sender balance from VFD');
           }
           await fromUser.save({ session });
@@ -245,8 +245,8 @@ export class TransferService {
           if (fromUser && type === "transfer") {
             await NotificationService.sendDebitAlert(fromUser, transfer.amount);
           }
-        } catch (notifErr) {
-          logger.warn({ error: (notifErr as Error).message }, 'Notifications failed (non-fatal)');
+        } catch (notifErr: any) {
+          logger.warn({ error: notifErr.message }, 'Notifications failed (non-fatal)');
         }
 
         return {

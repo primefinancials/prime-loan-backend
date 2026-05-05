@@ -155,8 +155,8 @@ export class BillPaymentsPoller {
                         payment.traceId,
                         payment.referralCode
                       );
-                    } catch (infErr) {
-                      logger.warn({ billPaymentId: payment._id, error: (infErr as Error).message }, 'Commission recording failed during polling');
+                    } catch (infErr: any) {
+                      logger.warn({ billPaymentId: payment._id, error: infErr.message }, 'Commission recording failed during polling');
                     }
 
                     logger.info({ billPaymentId: payment._id }, 'Bill payment resolved as COMPLETED via poller');
