@@ -348,7 +348,11 @@ export class AdminController {
         }
       };
 
-      const printer = new PdfPrinter(fonts);
+      const urlResolver = {
+        resolve: () => {},
+        resolved: async () => {}
+      };
+      const printer = new PdfPrinter(fonts, null, urlResolver);
 
       const docDefinition: any = {
         content: [
