@@ -363,17 +363,17 @@ export class AdminController {
             columns: [
               {
                 text: [
-                  { text: 'Prepared for: ', bold: true },
+                  { text: 'Prepared for: ', bold: true, color: '#1B5E20' },
                   { text: `${targetCompany}\n` },
-                  { text: 'Date Range: ', bold: true },
+                  { text: 'Date Range: ', bold: true, color: '#1B5E20' },
                   { text: `${startDate.toDateString()} - ${endDate.toDateString()}\n` }
                 ]
               },
               {
                 text: [
-                  { text: 'Generated on: ', bold: true },
+                  { text: 'Generated on: ', bold: true, color: '#1B5E20' },
                   { text: `${new Date().toLocaleString()}\n` },
-                  { text: 'Total Users: ', bold: true },
+                  { text: 'Total Users: ', bold: true, color: '#1B5E20' },
                   { text: `${users.length}\n` }
                 ],
                 alignment: 'right'
@@ -381,38 +381,56 @@ export class AdminController {
             ]
           },
           { text: '\n\n' },
-          {
+          ...users.map((u, i) => ({
+            unbreakable: true,
+            margin: [0, 0, 0, 15],
             table: {
-              headerRows: 1,
-              widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto'],
+              widths: ['*'],
               body: [
                 [
-                  { text: 'S/N', style: 'tableHeader' },
-                  { text: 'Full Name', style: 'tableHeader' },
-                  { text: 'Email', style: 'tableHeader' },
-                  { text: 'Phone', style: 'tableHeader' },
-                  { text: 'BVN/NIN', style: 'tableHeader' },
-                  { text: 'Date Joined', style: 'tableHeader' }
-                ],
-                ...users.map((u, i) => [
-                  i + 1,
-                  `${u.user_metadata?.first_name || ''} ${u.user_metadata?.surname || ''}`,
-                  u.email,
-                  u.user_metadata?.phone || 'N/A',
-                  `${u.user_metadata?.bvn || 'N/A'} / ${u.user_metadata?.nin || 'N/A'}`,
-                  new Date(u.created_at).toLocaleDateString()
-                ])
+                  {
+                    fillColor: '#F1F8E9',
+                    stack: [
+                      { text: `${i + 1}. ${u.user_metadata?.first_name || ''} ${u.user_metadata?.surname || ''}`, style: 'cardTitle' },
+                      {
+                        columns: [
+                          { text: [{ text: 'Email:\n', style: 'label' }, u.email] },
+                          { text: [{ text: 'Phone:\n', style: 'label' }, u.user_metadata?.phone || 'N/A'] },
+                          { text: [{ text: 'Date Joined:\n', style: 'label' }, new Date(u.created_at).toLocaleDateString()] }
+                        ],
+                        margin: [0, 0, 0, 8]
+                      },
+                      {
+                        columns: [
+                          { text: [{ text: 'BVN:\n', style: 'label' }, u.user_metadata?.bvn || 'N/A'] },
+                          { text: [{ text: 'NIN:\n', style: 'label' }, u.user_metadata?.nin || 'N/A'] },
+                          { text: '' } // empty column for alignment
+                        ]
+                      }
+                    ]
+                  }
+                ]
               ]
             },
-            layout: 'lightHorizontalLines'
-          },
+            layout: {
+              defaultBorder: false,
+              hLineWidth: () => 1,
+              vLineWidth: () => 1,
+              hLineColor: () => '#C8E6C9',
+              vLineColor: () => '#C8E6C9',
+              paddingLeft: () => 15,
+              paddingRight: () => 15,
+              paddingTop: () => 15,
+              paddingBottom: () => 15
+            }
+          })),
           { text: '\n\n' },
           { text: 'Declaration', style: 'subheader2' },
           {
             text: 'I hereby certify that the above list represents all customers onboarded within the specified period and that all KYC documentation has been verified in accordance with regulatory requirements.',
-            style: 'small'
+            style: 'small',
+            margin: [0, 5, 0, 15]
           },
-          { text: '\n\n' },
           {
             columns: [
               { text: '__________________________\nCompliance Officer Signature', style: 'small' },
@@ -424,15 +442,17 @@ export class AdminController {
           return { text: `Page ${currentPage} of ${pageCount}`, alignment: 'center', style: 'footer' };
         },
         defaultStyle: {
-          font: 'Helvetica'
+          font: 'Helvetica',
+          color: '#333333'
         },
         styles: {
-          header: { fontSize: 22, bold: true, color: '#002147' },
-          subheader: { fontSize: 16, bold: true, color: '#666' },
-          subheader2: { fontSize: 14, bold: true, marginTop: 10 },
-          tableHeader: { bold: true, fontSize: 11, color: 'white', fillColor: '#002147' },
-          small: { fontSize: 9 },
-          footer: { fontSize: 8, color: '#999' }
+          header: { fontSize: 24, bold: true, color: '#1B5E20' },
+          subheader: { fontSize: 16, bold: true, color: '#4CAF50', marginBottom: 10 },
+          subheader2: { fontSize: 14, bold: true, color: '#2E7D32' },
+          cardTitle: { fontSize: 13, bold: true, color: '#2E7D32', marginBottom: 10 },
+          label: { fontSize: 10, bold: true, color: '#388E3C' },
+          small: { fontSize: 10, color: '#555555' },
+          footer: { fontSize: 9, color: '#9E9E9E' }
         }
       };
       const pdfDoc = await printer.createPdfKitDocument(docDefinition);
