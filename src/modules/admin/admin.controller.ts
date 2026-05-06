@@ -320,6 +320,132 @@ export class AdminController {
   }
 
   /**
+   * Generate and download a professional PDF compliance report for VFD
+   */
+  static async downloadComplianceReport(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const admin = req.admin;
+      checkPermission(admin!, 'view_reports', { throwOnFail: true });
+
+      const { from, to, targetCompany = 'VFD Tech' } = req.query;
+      if (!from || !to) {
+        return res.status(400).json({ status: 'failed', message: 'from and to dates are required' });
+      }
+
+      const startDate = new Date(String(from));
+      const endDate = new Date(String(to));
+      const users = await adminService.getComplianceUsers(startDate, endDate);
+
+      // Lazy import pdfmake to avoid startup overhead
+      const PdfPrinter = (await import('pdfmake')).default;
+      
+      const fonts = {
+        Helvetica: {
+          normal: 'Helvetica',
+          bold: 'Helvetica-Bold',
+          italics: 'Helvetica-Oblique',
+          bolditalics: 'Helvetica-BoldOblique'
+        }
+      };
+
+      const printer = new PdfPrinter(fonts);
+
+      const docDefinition: any = {
+        content: [
+          { text: 'PRIME FINANCE', style: 'header' },
+          { text: 'Customer Onboarding Compliance Packet', style: 'subheader' },
+          { text: '\n' },
+          {
+            columns: [
+              {
+                text: [
+                  { text: 'Prepared for: ', bold: true },
+                  { text: `${targetCompany}\n` },
+                  { text: 'Date Range: ', bold: true },
+                  { text: `${startDate.toDateString()} - ${endDate.toDateString()}\n` }
+                ]
+              },
+              {
+                text: [
+                  { text: 'Generated on: ', bold: true },
+                  { text: `${new Date().toLocaleString()}\n` },
+                  { text: 'Total Users: ', bold: true },
+                  { text: `${users.length}\n` }
+                ],
+                alignment: 'right'
+              }
+            ]
+          },
+          { text: '\n\n' },
+          {
+            table: {
+              headerRows: 1,
+              widths: ['auto', '*', 'auto', 'auto', 'auto', 'auto'],
+              body: [
+                [
+                  { text: 'S/N', style: 'tableHeader' },
+                  { text: 'Full Name', style: 'tableHeader' },
+                  { text: 'Email', style: 'tableHeader' },
+                  { text: 'Phone', style: 'tableHeader' },
+                  { text: 'BVN/NIN', style: 'tableHeader' },
+                  { text: 'Date Joined', style: 'tableHeader' }
+                ],
+                ...users.map((u, i) => [
+                  i + 1,
+                  `${u.user_metadata?.first_name || ''} ${u.user_metadata?.surname || ''}`,
+                  u.email,
+                  u.user_metadata?.phone || 'N/A',
+                  `${u.user_metadata?.bvn || 'N/A'} / ${u.user_metadata?.nin || 'N/A'}`,
+                  new Date(u.createdAt).toLocaleDateString()
+                ])
+              ]
+            },
+            layout: 'lightHorizontalLines'
+          },
+          { text: '\n\n' },
+          { text: 'Declaration', style: 'subheader2' },
+          {
+            text: 'I hereby certify that the above list represents all customers onboarded within the specified period and that all KYC documentation has been verified in accordance with regulatory requirements.',
+            style: 'small'
+          },
+          { text: '\n\n' },
+          {
+            columns: [
+              { text: '__________________________\nCompliance Officer Signature', style: 'small' },
+              { text: '__________________________\nDate', style: 'small', alignment: 'right' }
+            ]
+          }
+        ],
+        footer: (currentPage: number, pageCount: number) => {
+          return { text: `Page ${currentPage} of ${pageCount}`, alignment: 'center', style: 'footer' };
+        },
+        defaultStyle: {
+          font: 'Helvetica'
+        },
+        styles: {
+          header: { fontSize: 22, bold: true, color: '#002147' },
+          subheader: { fontSize: 16, bold: true, color: '#666' },
+          subheader2: { fontSize: 14, bold: true, marginTop: 10 },
+          tableHeader: { bold: true, fontSize: 11, color: 'white', fillColor: '#002147' },
+          small: { fontSize: 9 },
+          footer: { fontSize: 8, color: '#999' }
+        }
+      };
+
+      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=Compliance_Report_${startDate.toISOString().split('T')[0]}.pdf`);
+      
+      pdfDoc.pipe(res);
+      pdfDoc.end();
+
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * Generate business / profit report
    */
   static async generateBusinessReport(req: ProtectedRequest, res: Response, next: NextFunction) {
