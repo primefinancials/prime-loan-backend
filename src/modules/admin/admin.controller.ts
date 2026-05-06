@@ -337,7 +337,7 @@ export class AdminController {
       const users = await adminService.getComplianceUsers(startDate, endDate);
 
       // Lazy import pdfmake to avoid startup overhead
-      const PdfPrinter: any = require('pdfmake');
+      const PdfPrinter: any = require('pdfmake/js/Printer.js').default;
       
       const fonts = {
         Helvetica: {
