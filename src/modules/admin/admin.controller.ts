@@ -396,7 +396,7 @@ export class AdminController {
                         columns: [
                           { text: [{ text: 'Email:\n', style: 'label' }, u.email] },
                           { text: [{ text: 'Phone:\n', style: 'label' }, u.user_metadata?.phone || 'N/A'] },
-                          { text: [{ text: 'Date Joined:\n', style: 'label' }, new Date(u.created_at).toLocaleDateString()] }
+                          { text: [{ text: 'Date Joined:\n', style: 'label' }, new Date((u as any).createdAt || u.created_at).toLocaleDateString()] }
                         ],
                         margin: [0, 0, 0, 8]
                       },
@@ -404,7 +404,13 @@ export class AdminController {
                         columns: [
                           { text: [{ text: 'BVN:\n', style: 'label' }, u.user_metadata?.bvn || 'N/A'] },
                           { text: [{ text: 'NIN:\n', style: 'label' }, u.user_metadata?.nin || 'N/A'] },
-                          { text: '' } // empty column for alignment
+                          { text: [{ text: 'Account No:\n', style: 'label' }, u.user_metadata?.accountNo || 'N/A'] }
+                        ],
+                        margin: [0, 0, 0, 8]
+                      },
+                      {
+                        columns: [
+                          { text: [{ text: 'Address:\n', style: 'label' }, u.user_metadata?.address || 'N/A'] }
                         ]
                       }
                     ]
