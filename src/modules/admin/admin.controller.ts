@@ -337,7 +337,7 @@ export class AdminController {
       const users = await adminService.getComplianceUsers(startDate, endDate);
 
       // Lazy import pdfmake to avoid startup overhead
-      const PdfPrinter = (await import('pdfmake')).default;
+      const PdfPrinter: any = require('pdfmake');
       
       const fonts = {
         Helvetica: {
@@ -396,7 +396,7 @@ export class AdminController {
                   u.email,
                   u.user_metadata?.phone || 'N/A',
                   `${u.user_metadata?.bvn || 'N/A'} / ${u.user_metadata?.nin || 'N/A'}`,
-                  new Date(u.createdAt).toLocaleDateString()
+                  new Date(u.created_at).toLocaleDateString()
                 ])
               ]
             },
