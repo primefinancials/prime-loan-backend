@@ -431,8 +431,7 @@ export class AdminController {
           footer: { fontSize: 8, color: '#999' }
         }
       };
-
-      const pdfDoc = printer.createPdfKitDocument(docDefinition);
+      const pdfDoc = await printer.createPdfKitDocument(docDefinition);
       
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename=Compliance_Report_${startDate.toISOString().split('T')[0]}.pdf`);
