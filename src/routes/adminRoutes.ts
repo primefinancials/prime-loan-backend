@@ -115,6 +115,7 @@ router.post("/savings/:planId/withdrawals/:traceId/disburse", verifyJwtRest(), i
 router.get("/dashboard", verifyJwtRest(), AdminController.getDashboardStats as any);
 router.get("/system/health", verifyJwtRest(), AdminController.getSystemHealth as any);
 router.get("/business-report", verifyJwtRest(), validateReqQuery(businessReportQuerySchema), AdminController.generateBusinessReport as any);
+router.get("/compliance/report", verifyJwtRest(), AdminController.downloadComplianceReport as any);
 router.get("/profits", verifyJwtRest(), validateReqQuery(profitReportQuerySchema), AdminController.getProfitReport as any);
 
 /* =============================

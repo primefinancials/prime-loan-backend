@@ -617,5 +617,20 @@ export class AdminService {
     const total = await User.countDocuments(query);
 
     return { users, total, page, pages: Math.ceil(total / limit) };
-  } 
+  }
+
+  /**
+   * Fetch all users within a date range for compliance reporting (no pagination)
+   */
+  async getComplianceUsers(startDate: Date, endDate: Date) {
+    const query = {
+      role: 'user',
+      createdAt: { $gte: startDate, $lte: endDate }
+    };
+
+    return await User.find(query)
+      .select('user_metadata email createdAt')
+      .sort({ createdAt: 1 })
+      .lean();
+  }
 }
