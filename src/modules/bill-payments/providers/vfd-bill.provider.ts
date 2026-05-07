@@ -176,29 +176,27 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
   private mapBillerId(id: string): string {
     const mapping: Record<string, string> = {
-      // Airtime (Flutterwave IDs)
-      'BIL099': 'mtnng',
-      'BIL100': 'airng',
-      'BIL102': 'glong',
-      'BIL103': 'eting',
-      'AT099': 'mtnng',
-      'AT100': 'airng',
-      'AT133': 'glong',
-      'AT134': 'eting',
-      'MTN': 'mtnng',
-      'AIRTEL': 'airng',
-      'GLO': 'glong',
-      '9MOBILE': 'eting',
-
-      // Data (Flutterwave IDs)
-      'BIL108': 'mtnng',
-      'BIL110': 'airng',
-      'BIL109': 'glong',
-      'BIL111': 'eting',
-      'MTN_DATA': 'mtnng',
-      'AIRTEL_DATA': 'airng',
-      'GLO_DATA': 'glong',
-      '9MOBILE_DATA': 'eting',
+      // Airtime & Data (Flutterwave -> VFD)
+      'BIL099': 'mtn',
+      'BIL100': 'airtel',
+      'BIL102': 'glo',
+      'BIL103': '9mobile',
+      'BIL108': 'mtn',
+      'BIL109': 'glo',
+      'BIL110': 'airtel',
+      'BIL111': '9mobile',
+      'AT099': 'mtn',
+      'AT100': 'airtel',
+      'AT133': 'glo',
+      'AT134': '9mobile',
+      'MTN': 'mtn',
+      'AIRTEL': 'airtel',
+      'GLO': 'glo',
+      '9MOBILE': '9mobile',
+      'MTN_DATA': 'mtn',
+      'AIRTEL_DATA': 'airtel',
+      'GLO_DATA': 'glo',
+      '9MOBILE_DATA': '9mobile',
 
       // TV
       'BIL121': 'dstv',
@@ -214,7 +212,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
       'EKEDC': 'ekedc',
       'IKEDC': 'ikedc',
 
-      // Category aliases (for dynamic fetching)
+      // Categories
       'airtime': 'Airtime',
       'data': 'Data',
       'tv': 'Cable TV',
@@ -226,6 +224,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
   }
 
   private normalizeCategoryId(nameOrId: string): string {
+    if (!nameOrId) return '';
     const lower = nameOrId.toLowerCase();
     if (lower.includes('airtime')) return 'airtime';
     if (lower.includes('data')) return 'data';

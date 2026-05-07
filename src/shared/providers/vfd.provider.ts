@@ -345,7 +345,7 @@ export class VfdProvider {
   async getBillerCategories() {
     return this.request<{ status: string; message: string; data: any[] }>({
       method: "GET",
-      url: "/billercategory",
+      url: "billercategory",
       baseURL: this.billsBaseUrl
     });
   }
@@ -353,7 +353,7 @@ export class VfdProvider {
   async getBillerList(categoryName: string) {
     return this.request<{ status: string; message: string; data: any[] }>({
       method: "GET",
-      url: `/billerlist?categoryName=${categoryName}`,
+      url: `billerlist?categoryName=${categoryName}`,
       baseURL: this.billsBaseUrl
     });
   }
@@ -361,14 +361,14 @@ export class VfdProvider {
   async getBillerItems(billerId: string) {
     return this.request<{ status: string; message: string; data: any[] }>({
       method: "GET",
-      url: `/billeritems?billerId=${billerId}`,
+      url: `billeritems?billerId=${billerId}`,
       baseURL: this.billsBaseUrl
     });
   }
 
   async validateBillerCustomer(customerId: string, billerId: string, divisionId?: string, productId?: string) {
     // VFD uses GET for validation with query params
-    let url = `/customervalidate?customerId=${customerId}&billerId=${billerId}`;
+    let url = `customervalidate?customerId=${customerId}&billerId=${billerId}`;
     if (divisionId) url += `&divisionId=${divisionId}`;
     if (productId) url += `&paymentItem=${productId}`; // paymentItem is often used interchangeably with productId in some VFD versions
 
@@ -382,7 +382,7 @@ export class VfdProvider {
   async payBill(payload: VfdBillPayRequest) {
     return this.request<{ status: string; message: string; data: any }>({
       method: "POST",
-      url: "/pay",
+      url: "pay",
       baseURL: this.billsBaseUrl,
       data: payload
     });
