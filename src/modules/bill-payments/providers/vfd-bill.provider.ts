@@ -123,6 +123,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
     // VFD uses categoryName for discovery
     const catName = this.mapBillerId(categoryId);
     const res = await this.vfdApi.getBillerList(catName);
+    console.log(`VFD Billers for ${categoryId} (${catName}):`, JSON.stringify(res.data, null, 2));
     return (res.data || []).map((b: any) => ({
       id: b.id || b.billerId || b.name,
       name: b.name,
@@ -131,8 +132,9 @@ export class VfdBillProvider implements NormalizedBillProvider {
   }
 
   async getProducts(billerId: string): Promise<BillProduct[]> {
-    const vfdBillerId = this.mapBillerId(billerId);
-    const res = await this.vfdApi.getBillerItems(vfdBillerId);
+    const providerId = this.mapBillerId(billerId);
+    const res = await this.vfdApi.getBillerItems(providerId);
+    console.log(`VFD Products for ${billerId} (${providerId}):`, JSON.stringify(res.data, null, 2));
     return (res.data || []).map((p: any) => ({
       id: p.id || p.productId || p.item_code,
       name: p.name || p.productName,
@@ -177,26 +179,26 @@ export class VfdBillProvider implements NormalizedBillProvider {
   private mapBillerId(id: string): string {
     const mapping: Record<string, string> = {
       // Airtime & Data (Flutterwave -> VFD)
-      'BIL099': 'mtn',
-      'BIL100': 'airtel',
-      'BIL102': 'glo',
-      'BIL103': '9mobile',
-      'BIL108': 'mtn',
-      'BIL109': 'glo',
-      'BIL110': 'airtel',
-      'BIL111': '9mobile',
-      'AT099': 'mtn',
-      'AT100': 'airtel',
-      'AT133': 'glo',
-      'AT134': '9mobile',
-      'MTN': 'mtn',
-      'AIRTEL': 'airtel',
-      'GLO': 'glo',
-      '9MOBILE': '9mobile',
-      'MTN_DATA': 'mtn',
-      'AIRTEL_DATA': 'airtel',
-      'GLO_DATA': 'glo',
-      '9MOBILE_DATA': '9mobile',
+      'BIL099': '1', // MTN
+      'BIL100': '2', // Airtel
+      'BIL102': '3', // Glo
+      'BIL103': '4', // 9mobile
+      'BIL108': '1',
+      'BIL109': '3',
+      'BIL110': '2',
+      'BIL111': '4',
+      'AT099': '1',
+      'AT100': '2',
+      'AT133': '3',
+      'AT134': '4',
+      'MTN': '1',
+      'AIRTEL': '2',
+      'GLO': '3',
+      '9MOBILE': '4',
+      'mtn': '1',
+      'airtel': '2',
+      'glo': '3',
+      '9mobile': '4',
 
       // TV
       'BIL121': 'dstv',
