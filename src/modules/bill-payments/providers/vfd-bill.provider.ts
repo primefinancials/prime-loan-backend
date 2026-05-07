@@ -23,50 +23,71 @@ export class VfdBillProvider implements NormalizedBillProvider {
   }
 
   async purchaseAirtime(params: AirtimePurchaseParams): Promise<BillProviderResult> {
+    const billerId = this.mapBillerId(params.network || 'airtime');
     const res = await this.vfdApi.payBill({
       amount: params.amount,
       customerId: params.phone,
-      itemId: this.mapBillerId(params.network || 'airtime'),
+      billerId,
+      productId: billerId,
+      division: 'Airtime',
+      paymentItem: billerId,
       reference: params.reference
     });
     return this.mapResponse(res, params.reference);
   }
 
   async purchaseData(params: DataPurchaseParams): Promise<BillProviderResult> {
+    // bundleCode should contain the VFD productId (captured during getProducts)
+    const billerId = this.mapBillerId(params.network);
     const res = await this.vfdApi.payBill({
       amount: params.amount,
       customerId: params.phone,
-      itemId: this.mapBillerId(params.bundleCode),
+      billerId,
+      productId: params.bundleCode,
+      division: 'Data',
+      paymentItem: params.bundleCode,
       reference: params.reference
     });
     return this.mapResponse(res, params.reference);
   }
 
   async purchaseTV(params: TVPurchaseParams): Promise<BillProviderResult> {
+    const billerId = this.mapBillerId(params.provider);
     const res = await this.vfdApi.payBill({
       amount: params.amount,
       customerId: params.smartcardNo,
-      itemId: this.mapBillerId(params.bouquetCode),
+      billerId,
+      productId: params.bouquetCode,
+      division: 'TV',
+      paymentItem: params.bouquetCode,
       reference: params.reference
     });
     return this.mapResponse(res, params.reference);
   }
 
   async purchasePower(params: PowerPurchaseParams): Promise<BillProviderResult> {
+    const billerId = this.mapBillerId(params.provider);
     const res = await this.vfdApi.payBill({
       amount: params.amount,
       customerId: params.meterNo,
-      itemId: this.mapBillerId(params.provider),
+      billerId,
+      productId: params.meterType === 'prepaid' ? 'prepaid' : 'postpaid',
+      division: 'Electricity',
+      paymentItem: billerId,
       reference: params.reference
     });
     return this.mapResponse(res, params.reference);
   }
 
   async purchaseBetting(params: BettingPurchaseParams): Promise<BillProviderResult> {
+    const billerId = this.mapBillerId(params.provider);
     const res = await this.vfdApi.payBill({
       amount: params.amount,
       customerId: params.customerId,
-      itemId: this.mapBillerId(params.provider),
+      billerId,
+      productId: billerId,
+      division: 'Betting',
+      paymentItem: billerId,
       reference: params.reference
     });
     return this.mapResponse(res, params.reference);
@@ -99,22 +120,26 @@ export class VfdBillProvider implements NormalizedBillProvider {
   }
 
   async getBillers(categoryId: string): Promise<BillBiller[]> {
-    const res = await this.vfdApi.getBillerItems(this.mapBillerId(categoryId));
+    // VFD uses categoryName for discovery
+    const catName = this.mapBillerId(categoryId);
+    const res = await this.vfdApi.getBillerList(catName);
     return (res.data || []).map((b: any) => ({
-      id: b.id,
+      id: b.id || b.billerId || b.name,
       name: b.name,
       categoryId: categoryId
     }));
   }
 
   async getProducts(billerId: string): Promise<BillProduct[]> {
-    const res = await this.vfdApi.getBillerItems(this.mapBillerId(billerId));
+    const vfdBillerId = this.mapBillerId(billerId);
+    const res = await this.vfdApi.getBillerItems(vfdBillerId);
     return (res.data || []).map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      billerId: p.billerId || billerId,
+      id: p.id || p.productId || p.item_code,
+      name: p.name || p.productName,
+      billerId: billerId,
       amount: p.amount || 0,
-      item_code: p.id
+      item_code: p.id || p.productId || p.item_code,
+      meta: p // Keep original VFD product for division/productId lookup
     }));
   }
 
@@ -152,29 +177,42 @@ export class VfdBillProvider implements NormalizedBillProvider {
   private mapBillerId(id: string): string {
     const mapping: Record<string, string> = {
       // Airtime (Flutterwave IDs)
-      'BIL099': 'MTN',
-      'BIL100': 'AIRTEL',
-      'BIL102': 'GLO',
-      'BIL103': '9MOBILE',
-      'AT099': 'MTN',
-      'AT100': 'AIRTEL',
-      'AT133': 'GLO',
-      'AT134': '9MOBILE',
+      'BIL099': 'mtnng',
+      'BIL100': 'airng',
+      'BIL102': 'glong',
+      'BIL103': 'eting',
+      'AT099': 'mtnng',
+      'AT100': 'airng',
+      'AT133': 'glong',
+      'AT134': 'eting',
+      'MTN': 'mtnng',
+      'AIRTEL': 'airng',
+      'GLO': 'glong',
+      '9MOBILE': 'eting',
 
       // Data (Flutterwave IDs)
-      'BIL108': 'MTN_DATA',
-      'BIL110': 'AIRTEL_DATA',
-      'BIL109': 'GLO_DATA',
-      'BIL111': '9MOBILE_DATA',
+      'BIL108': 'mtnng',
+      'BIL110': 'airng',
+      'BIL109': 'glong',
+      'BIL111': 'eting',
+      'MTN_DATA': 'mtnng',
+      'AIRTEL_DATA': 'airng',
+      'GLO_DATA': 'glong',
+      '9MOBILE_DATA': 'eting',
 
       // TV
-      'BIL121': 'DSTV',
-      'BIL122': 'GOTV',
-      'BIL123': 'STARTIMES',
+      'BIL121': 'dstv',
+      'BIL122': 'gotv',
+      'BIL123': 'startimes',
+      'DSTV': 'dstv',
+      'GOTV': 'gotv',
+      'STARTIMES': 'startimes',
 
       // Power
-      'BIL112': 'EKEDC',
-      'BIL113': 'IKEDC',
+      'BIL112': 'ekedc',
+      'BIL113': 'ikedc',
+      'EKEDC': 'ekedc',
+      'IKEDC': 'ikedc',
 
       // Category aliases (for dynamic fetching)
       'airtime': 'Airtime',
