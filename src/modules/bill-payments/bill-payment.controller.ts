@@ -58,6 +58,10 @@ export class BillPaymentController {
           .catch(err => console.error("Profit recording failed (non-fatal):", err.message));
       }
 
+      if (result.status === "FAILED") {
+        return res.status(400).json({ status: "failed", message: result.message, data: result });
+      }
+
       res.status(200).json({ status: "success", data: result });
     } catch (error) {
       next(error);
