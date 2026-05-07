@@ -38,7 +38,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
   async purchaseData(params: DataPurchaseParams): Promise<BillProviderResult> {
     // bundleCode should contain the VFD productId (captured during getProducts)
-    const billerId = this.mapBillerId(params.network);
+    const billerId = this.mapBillerId(params.network || '');
     const res = await this.vfdApi.payBill({
       amount: params.amount,
       customerId: params.phone,
