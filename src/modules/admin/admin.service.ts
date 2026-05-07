@@ -508,7 +508,7 @@ export class AdminService {
       }
     ]);
 
-    const revenueBreakdown = await LedgerEntry.aggregate([
+    const revenueBreakdownRaw = await LedgerEntry.aggregate([
       {
         $match: {
           account: 'platform_revenue',
@@ -519,6 +519,12 @@ export class AdminService {
       },
       { $group: { _id: '$category', total: { $sum: '$amount' }, count: { $sum: 1 } } }
     ]);
+
+    const revenueBreakdown = revenueBreakdownRaw.map((b: any) => ({
+      name: b._id,
+      amount: b.total,
+      count: b.count
+    }));
 
     const [transferVolumes, billPaymentVolumes] = await Promise.all([
       Transfer.aggregate([{ $match: { status: 'COMPLETED', ...dateFilter } }, { $group: { _id: null, volume: { $sum: '$amount' }, count: { $sum: 1 } } }]),
@@ -531,7 +537,7 @@ export class AdminService {
       loanPerformance: loanMetrics[0] || {},
       revenue: {
         breakdown: revenueBreakdown,
-        total: (revenueBreakdown || []).reduce((sum: number, item: any) => sum + (item.total || 0), 0)
+        total: (revenueBreakdown || []).reduce((sum: number, item: any) => sum + (item.amount || 0), 0)
       },
       transactionVolumes: {
         transfers: transferVolumes[0] || { volume: 0, count: 0 },

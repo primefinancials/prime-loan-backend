@@ -127,8 +127,8 @@ export class SettingsService {
     // --- V2 Integration Fields Migration ---
     let v2Dirty = false;
 
-    if (!settings.billPaymentProvider) {
-      settings.billPaymentProvider = 'paybeta';
+    if (!settings.billPaymentProvider || (settings.billPaymentProvider as string) === 'paybeta') {
+      settings.billPaymentProvider = 'vfd';
       v2Dirty = true;
     }
 

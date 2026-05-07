@@ -147,6 +147,12 @@ router.get(
   TransferController.getTransfer as unknown as express.RequestHandler
 );
 
+router.get(
+  "/transfers/statement/download",
+  verifyJwtRest(),
+  TransferController.generateAccountStatement as unknown as express.RequestHandler
+);
+
 router.get("/banks", verifyJwtRest(), TransferController.getBanks as any);
 router.get(
   "/account-info",

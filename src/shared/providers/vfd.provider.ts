@@ -324,4 +324,30 @@ export class VfdProvider {
       data: payload,
     });
   }
+
+  /* ---------- BILL PAYMENTS ---------- */
+
+  async getBillerCategories() {
+    return this.request<{ status: string; message: string; data: any[] }>({ method: "GET", url: "/biller/categories" });
+  }
+
+  async getBillerItems(categoryId: string) {
+    return this.request<{ status: string; message: string; data: any[] }>({ method: "GET", url: `/biller/items?categoryId=${categoryId}` });
+  }
+
+  async validateBillerCustomer(customerId: string, billerId?: string) {
+    return this.request<{ status: string; message: string; data: any }>({
+      method: "POST",
+      url: "/biller/customer/validate",
+      data: { customerId, billerId }
+    });
+  }
+
+  async payBill(payload: { amount: string | number; customerId: string; itemId: string; reference: string }) {
+    return this.request<{ status: string; message: string; data: any }>({
+      method: "POST",
+      url: "/biller/pay",
+      data: payload
+    });
+  }
 }

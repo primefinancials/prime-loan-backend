@@ -408,11 +408,11 @@ export class AdminController {
                         ],
                         margin: [0, 0, 0, 8]
                       },
-                      {
+                      ...(u.user_metadata?.address && u.user_metadata.address.trim() !== '' ? [{
                         columns: [
-                          { text: [{ text: 'Address:\n', style: 'label' }, u.user_metadata?.address || 'N/A'] }
+                          { text: [{ text: 'Address:\n', style: 'label' }, u.user_metadata.address] }
                         ]
-                      }
+                      }] : [])
                     ]
                   }
                 ]
