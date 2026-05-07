@@ -244,8 +244,11 @@ export async function processTransaction({
 
             if (refundResponse?.status === "00") {
               await TransferService.completeTransfer(refundResponse.reference, "bill-payment");
-            } else if (refundResponse?.reference) {
-              await TransferService.failTransfer(refundResponse.reference);
+            } else {
+              if (refundResponse?.reference) {
+                await TransferService.failTransfer(refundResponse.reference);
+              }
+              billPayment.status = "MANUAL_REVIEW";
             }
 
             await LedgerService.createDoubleEntry(
@@ -371,8 +374,11 @@ export async function processTransaction({
 
           if (refundResponse?.status === "00") {
             await TransferService.completeTransfer(refundResponse.reference, "bill-payment");
-          } else if (refundResponse?.reference) {
-            await TransferService.failTransfer(refundResponse.reference);
+          } else {
+            if (refundResponse?.reference) {
+              await TransferService.failTransfer(refundResponse.reference);
+            }
+            billPayment.status = "MANUAL_REVIEW";
           }
 
           await LedgerService.createDoubleEntry(
