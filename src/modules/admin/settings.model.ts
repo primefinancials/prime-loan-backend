@@ -125,7 +125,7 @@ export interface ISettings extends Document {
   // --- V2 Integration Fields ---
 
   // Bill payment provider toggle
-  billPaymentProvider: 'flutterwave' | 'paybeta';
+  billPaymentProvider: 'flutterwave' | 'vfd';
 
   // Influencer commission config
   influencer: {
@@ -413,8 +413,8 @@ const SettingsSchema = new Schema<ISettings>(
     // Bill payment provider toggle
     billPaymentProvider: {
       type: String,
-      enum: ['flutterwave', 'paybeta'],
-      default: 'paybeta'
+      enum: ['flutterwave', 'vfd'],
+      default: 'vfd'
     },
 
     // Influencer commission configuration

@@ -267,4 +267,172 @@ export class TransferController {
       next(error);
     }
   }
+  /**
+   * Generate comprehensive account statement (PDF)
+   */
+  static async generateAccountStatement(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const userId = req.user!._id;
+      const { from, to } = req.query;
+
+      if (!from || !to) {
+        return res.status(400).json({ status: "error", message: "from and to dates are required" });
+      }
+
+      const startDate = new Date(String(from));
+      const endDate = new Date(String(to));
+      endDate.setHours(23, 59, 59, 999);
+
+      const dateQuery = { createdAt: { $gte: startDate, $lte: endDate } };
+
+      const [transfers, billPayments, loans, savings] = await Promise.all([
+        import("./transfer.model").then(m => m.Transfer.find({ userId, status: "COMPLETED", ...dateQuery }).lean()),
+        import("../bill-payments/bill-payment.model").then(m => m.BillPayment.find({ userId, status: "COMPLETED", ...dateQuery }).lean()),
+        import("../loans/loan.model").then(m => m.default.find({ user_id: userId, status: "accepted", ...dateQuery }).lean()),
+        import("../savings/savings.plan.model").then(m => m.SavingsPlan.find({ userId, ...dateQuery }).lean())
+      ]);
+
+      const events: any[] = [];
+
+      const userAccountNo = req.user?.user_metadata?.accountNo || "";
+
+      transfers.forEach((t: any) => {
+        let type = 'DEBIT';
+        if (t.transferType === 'inter') {
+           // Inter transfer to user
+           if (t.toAccount === userAccountNo) type = 'CREDIT';
+        } else if (t.transferType === 'intra') {
+           if (t.toAccount === userAccountNo) type = 'CREDIT';
+        }
+        events.push({
+          date: new Date(t.createdAt),
+          type,
+          category: 'Transfer',
+          amount: Number(t.amount),
+          description: t.remark || 'Bank Transfer',
+          status: t.status
+        });
+      });
+
+      billPayments.forEach((b: any) => events.push({
+        date: new Date(b.createdAt),
+        type: 'DEBIT',
+        category: 'Bill Payment',
+        amount: Number(b.amount),
+        description: `${b.serviceType} - ${b.serviceId}`,
+        status: b.status
+      }));
+
+      loans.forEach((l: any) => events.push({
+        date: new Date(l.createdAt),
+        type: 'CREDIT',
+        category: 'Loan Disbursement',
+        amount: Number(l.amount),
+        description: `Loan Ref: ${l.reference || 'Disbursement'}`,
+        status: l.status
+      }));
+
+      savings.forEach((s: any) => events.push({
+        date: new Date(s.createdAt),
+        type: 'DEBIT',
+        category: 'Savings Plan',
+        amount: Number(s.principal),
+        description: `Savings: ${s.planType}`,
+        status: s.status
+      }));
+
+      events.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+      const PdfPrinter: any = require('pdfmake/js/Printer.js').default;
+      const fonts = {
+        Helvetica: {
+          normal: 'Helvetica',
+          bold: 'Helvetica-Bold',
+          italics: 'Helvetica-Oblique',
+          bolditalics: 'Helvetica-BoldOblique'
+        }
+      };
+
+      const printer = new PdfPrinter(fonts, null, { resolve: () => {}, resolved: async () => {} });
+
+      const name = `${req.user?.user_metadata?.first_name || ''} ${req.user?.user_metadata?.surname || ''}`;
+
+      let runningBalance = 0;
+      const tableBody: any[] = [
+        [{ text: 'Date', bold: true }, { text: 'Description', bold: true }, { text: 'Type', bold: true }, { text: 'Amount (₦)', bold: true }, { text: 'Balance (₦)', bold: true }]
+      ];
+
+      events.forEach(e => {
+        if (e.type === 'CREDIT') runningBalance += e.amount;
+        else runningBalance -= e.amount;
+
+        tableBody.push([
+          e.date.toLocaleDateString(),
+          e.description || e.category,
+          { text: e.type, color: e.type === 'CREDIT' ? '#2E7D32' : '#C62828' },
+          e.amount.toLocaleString(undefined, { minimumFractionDigits: 2 }),
+          runningBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })
+        ]);
+      });
+
+      if (events.length === 0) {
+        tableBody.push([{ text: 'No transactions found for this period.', colSpan: 5, alignment: 'center' }, {}, {}, {}, {}]);
+      }
+
+      const docDefinition: any = {
+        content: [
+          { text: 'PRIME FINANCE', style: 'header' },
+          { text: 'Account Statement', style: 'subheader' },
+          { text: '\n' },
+          {
+            columns: [
+              {
+                text: [
+                  { text: 'Customer Name: ', bold: true, color: '#1B5E20' },
+                  { text: `${name}\n` },
+                  { text: 'Email: ', bold: true, color: '#1B5E20' },
+                  { text: `${req.user?.email}\n` },
+                  { text: 'Phone: ', bold: true, color: '#1B5E20' },
+                  { text: `${req.user?.user_metadata?.phone || 'N/A'}\n` },
+                ]
+              },
+              {
+                text: [
+                  { text: 'Statement Period:\n', bold: true, color: '#1B5E20' },
+                  { text: `${startDate.toLocaleDateString()} to ${endDate.toLocaleDateString()}\n\n` },
+                  { text: 'Generated On:\n', bold: true, color: '#1B5E20' },
+                  { text: `${new Date().toLocaleDateString()}\n` }
+                ],
+                alignment: 'right'
+              }
+            ]
+          },
+          { text: '\n\n' },
+          {
+            table: {
+              headerRows: 1,
+              widths: ['auto', '*', 'auto', 'auto', 'auto'],
+              body: tableBody
+            },
+            layout: 'lightHorizontalLines'
+          }
+        ],
+        defaultStyle: { font: 'Helvetica', color: '#333333', fontSize: 10 },
+        styles: {
+          header: { fontSize: 22, bold: true, color: '#1B5E20' },
+          subheader: { fontSize: 14, bold: true, color: '#4CAF50', marginBottom: 10 },
+        }
+      };
+
+      const pdfDoc = await printer.createPdfKitDocument(docDefinition);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename=Account_Statement_${startDate.toISOString().split('T')[0]}.pdf`);
+
+      pdfDoc.pipe(res);
+      pdfDoc.end();
+    } catch (error) {
+      next(error);
+    }
+  }
 }

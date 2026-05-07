@@ -6,7 +6,7 @@
  */
 import { NormalizedBillProvider } from './bill-provider.interface';
 import { FlutterwaveBillProvider } from './flutterwave-bill.provider';
-import { PayBetaBillProvider } from './paybeta-bill.provider';
+import { VfdBillProvider } from './vfd-bill.provider';
 import { SettingsService } from '../../admin/settings.service';
 import pino from 'pino';
 
@@ -14,16 +14,16 @@ const logger = pino({ name: 'bill-provider-factory' });
 
 /* ---------- Singleton Cache ---------- */
 let flutterwaveInstance: FlutterwaveBillProvider | null = null;
-let paybetaInstance: PayBetaBillProvider | null = null;
+let vfdInstance: VfdBillProvider | null = null;
 
 function getFlutterwave(): FlutterwaveBillProvider {
   if (!flutterwaveInstance) flutterwaveInstance = new FlutterwaveBillProvider();
   return flutterwaveInstance;
 }
 
-function getPayBeta(): PayBetaBillProvider {
-  if (!paybetaInstance) paybetaInstance = new PayBetaBillProvider();
-  return paybetaInstance;
+function getVfd(): VfdBillProvider {
+  if (!vfdInstance) vfdInstance = new VfdBillProvider();
+  return vfdInstance;
 }
 
 /* ---------- Factory ---------- */
@@ -31,8 +31,8 @@ function getPayBeta(): PayBetaBillProvider {
 export async function getBillProvider(): Promise<NormalizedBillProvider> {
   try {
     const settings = await SettingsService.getSettings();
-    const providerName = (settings as any)?.billPaymentProvider || 'paybeta';
-    return providerName === 'paybeta' ? getPayBeta() : getFlutterwave();
+    const providerName = (settings as any)?.billPaymentProvider || 'vfd';
+    return providerName === 'vfd' ? getVfd() : getFlutterwave();
   } catch (err) {
     logger.warn({ error: (err as Error).message }, 'Failed to read settings, defaulting to Flutterwave');
     return getFlutterwave();
@@ -40,7 +40,7 @@ export async function getBillProvider(): Promise<NormalizedBillProvider> {
 }
 
 export function getFallbackProvider(currentProvider: NormalizedBillProvider): NormalizedBillProvider {
-  return currentProvider.providerName === 'flutterwave' ? getPayBeta() : getFlutterwave();
+  return currentProvider.providerName === 'flutterwave' ? getVfd() : getFlutterwave();
 }
 
 /**
