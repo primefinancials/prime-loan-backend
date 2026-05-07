@@ -190,13 +190,31 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
   /* ---------- Internal Biller Code Mappings ---------- */
 
   private getAirtimeBiller(network?: string): string {
-    const map: Record<string, string> = { MTN: 'BIL108', GLO: 'BIL109', AIRTEL: 'BIL110', '9MOBILE': 'BIL111' };
-    return map[(network || 'MTN').toUpperCase()] || 'BIL108';
+    if (!network) return 'BIL108';
+    const up = network.toUpperCase();
+    const map: Record<string, string> = { 
+      MTN: 'BIL108', GLO: 'BIL109', AIRTEL: 'BIL110', '9MOBILE': 'BIL111',
+      // Map frontend IDs to Flutterwave expected biller codes
+      'BIL099': 'BIL108', // MTN
+      'BIL100': 'BIL110', // Airtel
+      'BIL102': 'BIL109', // Glo
+      'BIL103': 'BIL111', // 9mobile
+    };
+    return map[up] || up;
   }
 
   private getAirtimeItem(network?: string): string {
-    const map: Record<string, string> = { MTN: 'AT099', GLO: 'AT100', AIRTEL: 'AT101', '9MOBILE': 'AT102' };
-    return map[(network || 'MTN').toUpperCase()] || 'AT099';
+    if (!network) return 'AT099';
+    const up = network.toUpperCase();
+    const map: Record<string, string> = { 
+      MTN: 'AT099', GLO: 'AT100', AIRTEL: 'AT101', '9MOBILE': 'AT102',
+      // Map frontend IDs to Flutterwave expected item codes
+      'BIL099': 'AT099',
+      'BIL100': 'AT101',
+      'BIL102': 'AT100',
+      'BIL103': 'AT102',
+    };
+    return map[up] || up;
   }
 
   private getDataBiller(network?: string): string {
@@ -204,8 +222,13 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
   }
 
   private getTVBiller(provider?: string): string {
-    const map: Record<string, string> = { dstv: 'BIL121', gotv: 'BIL122', startimes: 'BIL123' };
-    return map[(provider || 'dstv').toLowerCase()] || 'BIL121';
+    if (!provider) return 'BIL121';
+    const low = provider.toLowerCase();
+    const map: Record<string, string> = { 
+      dstv: 'BIL121', gotv: 'BIL122', startimes: 'BIL123',
+      bil121: 'BIL121', bil122: 'BIL122', bil123: 'BIL123'
+    };
+    return map[low] || provider;
   }
 
   private getPowerBiller(provider?: string): string {
