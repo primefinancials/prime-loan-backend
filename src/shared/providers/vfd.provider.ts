@@ -197,7 +197,7 @@ export class VfdProvider {
         clearBearerToken();
         // The URL already has baseUrl prepended from the first attempt, so we strip it or pass a clean config
         // Actually, easier to reconstruct the config to avoid double prepending
-        const retryConfig = { ...config, url: config.url.replace(baseUrl, "") };
+        const retryConfig = { ...config, url: (config.url || "").replace(baseUrl, "") };
         return this.request<T>(retryConfig, true);
       }
       throw error;
