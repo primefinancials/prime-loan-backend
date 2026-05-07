@@ -153,9 +153,22 @@ export interface NameEnquiryResponse {
   };
 }
 
+export interface VfdBillPayRequest {
+  amount: string | number;
+  customerId: string;
+  billerId: string;
+  division: string;
+  productId: string;
+  paymentItem: string;
+  reference: string;
+  phoneNumber?: string;
+}
+
 /* ---------- PROVIDER CLASS ---------- */
 
 export class VfdProvider {
+  private billsBaseUrl = "https://api-apps.vfdbank.systems/vtech-bills/api/v2/billspaymentstore";
+
   constructor() {
     // Circuit breaker removed for faster and more direct VFD requests without premature timeouts
   }
@@ -168,7 +181,9 @@ export class VfdProvider {
       AccessToken: accessToken,
       "Content-Type": "application/json",
     };
-    config.url = `${baseUrl}${config.url}`;
+    if (!config.baseURL) {
+      config.url = `${baseUrl}${config.url}`;
+    }
 
     try {
       const response = await axios(config);
@@ -328,25 +343,47 @@ export class VfdProvider {
   /* ---------- BILL PAYMENTS ---------- */
 
   async getBillerCategories() {
-    return this.request<{ status: string; message: string; data: any[] }>({ method: "GET", url: "/biller/categories" });
-  }
-
-  async getBillerItems(categoryId: string) {
-    return this.request<{ status: string; message: string; data: any[] }>({ method: "GET", url: `/biller/items?categoryId=${categoryId}` });
-  }
-
-  async validateBillerCustomer(customerId: string, billerId?: string) {
-    return this.request<{ status: string; message: string; data: any }>({
-      method: "POST",
-      url: "/biller/customer/validate",
-      data: { customerId, billerId }
+    return this.request<{ status: string; message: string; data: any[] }>({
+      method: "GET",
+      url: "/billercategory",
+      baseURL: this.billsBaseUrl
     });
   }
 
-  async payBill(payload: { amount: string | number; customerId: string; itemId: string; reference: string }) {
+  async getBillerList(categoryName: string) {
+    return this.request<{ status: string; message: string; data: any[] }>({
+      method: "GET",
+      url: `/billerlist?categoryName=${categoryName}`,
+      baseURL: this.billsBaseUrl
+    });
+  }
+
+  async getBillerItems(billerId: string) {
+    return this.request<{ status: string; message: string; data: any[] }>({
+      method: "GET",
+      url: `/billeritems?billerId=${billerId}`,
+      baseURL: this.billsBaseUrl
+    });
+  }
+
+  async validateBillerCustomer(customerId: string, billerId: string, divisionId?: string, productId?: string) {
+    // VFD uses GET for validation with query params
+    let url = `/customervalidate?customerId=${customerId}&billerId=${billerId}`;
+    if (divisionId) url += `&divisionId=${divisionId}`;
+    if (productId) url += `&paymentItem=${productId}`; // paymentItem is often used interchangeably with productId in some VFD versions
+
+    return this.request<{ status: string; message: string; data: any }>({
+      method: "GET",
+      url,
+      baseURL: this.billsBaseUrl
+    });
+  }
+
+  async payBill(payload: VfdBillPayRequest) {
     return this.request<{ status: string; message: string; data: any }>({
       method: "POST",
-      url: "/biller/pay",
+      url: "/pay",
+      baseURL: this.billsBaseUrl,
       data: payload
     });
   }
