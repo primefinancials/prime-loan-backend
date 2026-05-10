@@ -1,11 +1,13 @@
 /**
  * Bill Payment Service — Multi-Provider Orchestrator
  *
- * - Uses NormalizedBillProvider (Flutterwave or PayBeta) based on admin settings
+ * - Uses NormalizedBillProvider (Flutterwave or VFD) based on admin settings
  * - Automatic failover on network errors
  * - Transparent to frontend — unified catalog format
  * - Uses TransferService + VfdProvider for ledger/transfer prefunding
  * - Orchestrates via processTransaction(...) for the debit/refund lifecycle
+ *
+ * PayBeta has been fully removed. Only Flutterwave and VFD are supported.
  */
 import { sha512 } from 'js-sha512';
 import NodeCache from 'node-cache';
@@ -14,12 +16,10 @@ import { VfdProvider, TransferRequest } from '../../shared/providers/vfd.provide
 import { processTransaction } from '../../shared/transactions/BillPaymentTransactionProcessor';
 import User from '../users/user.model';
 import { BillPayment } from './bill-payment.model';
-import { InitiateBillPaymentRequest, ServiceType } from './bill-payment.interface';
-import {
-  getBillProvider, withFailover
-} from './providers/bill-provider.factory';
+import { InitiateBillPaymentRequest } from './bill-payment.interface';
+import { getBillProvider, withFailover } from './providers/bill-provider.factory';
 import { NormalizedBillProvider, BillCategory, BillBiller, BillProduct } from './providers/bill-provider.interface';
-import logger from "../../shared/utils/logger";
+import logger from '../../shared/utils/logger';
 
 const billCache = new NodeCache({ stdTTL: 24 * 60 * 60 }); // 24 hours
 
@@ -51,7 +51,7 @@ export default class BillPaymentService {
 
     // 1️⃣ Handle Referral Discounts / Commissions
     const { InfluencerService } = await import('../influencer/influencer.service');
-    const referral = await InfluencerService.resolveReferralCode(req.referralCode || "");
+    const referral = await InfluencerService.resolveReferralCode(req.referralCode || '');
 
     let debitAmount = req.amount;
     let discountValue = 0;
@@ -64,7 +64,7 @@ export default class BillPaymentService {
       bonusAmount = discountResult.bonusAmount;
       logger.info(
         { userId, original: req.amount, discounted: debitAmount, referralCode: req.referralCode },
-        "Applied referral discount to bill payment"
+        'Applied referral discount to bill payment'
       );
     }
 
@@ -132,16 +132,14 @@ export default class BillPaymentService {
       },
 
       txnProvider: async () => {
-        // FIX: Both TransferService.initiateTransfer and vfdProvider.transfer must
-        // use `debitAmount` (the discounted amount the user is actually charged).
-        // Previously initiateTransfer used `req.amount` (full price), causing a
-        // bookkeeping mismatch between the DB transfer record and the actual bank transfer.
+        // Both TransferService.initiateTransfer and vfdProvider.transfer use
+        // `debitAmount` (the discounted amount the user is actually charged).
         const transferRecord = await TransferService.initiateTransfer({
           fromAccount: from.accountNo,
           userId,
           toAccount: to.accountNo,
           beneficiaryName: to.client,
-          amount: debitAmount,           // FIX: was req.amount
+          amount: debitAmount,
           transferType: 'intra',
           bankCode: '999999',
           remark: `${req.serviceType} purchase`,
@@ -212,8 +210,6 @@ export default class BillPaymentService {
     });
 
     // Record commission only for successful transactions (fire-and-forget).
-    // This now works correctly because the processor returns COMPLETED
-    // when PayBeta confirms success instead of falling into the FAILED path.
     if (result.status === 'COMPLETED') {
       InfluencerService.recordCommissionForUser(
         req.userId,
@@ -222,7 +218,10 @@ export default class BillPaymentService {
         undefined,
         req.referralCode
       ).catch(err =>
-        logger.warn({ err: err.message, userId: req.userId, referralCode: req.referralCode }, "Bill payment commission recording failed (non-fatal)")
+        logger.warn(
+          { err: err.message, userId: req.userId, referralCode: req.referralCode },
+          'Bill payment commission recording failed (non-fatal)'
+        )
       );
     }
 
@@ -274,12 +273,12 @@ export default class BillPaymentService {
   ) {
     const activeProvider = await getBillProvider();
 
-    // BP2: Validation Bypass for PayBeta Airtime/Data
+    // Validation is optional/skippable for airtime and data on both providers
     const isAirtime = serviceType === 'airtime' || itemCode?.startsWith('AT');
-    const isData = serviceType === 'data' || ['BIL108', 'BIL109', 'BIL110', 'BIL111'].includes(itemCode);
+    const isData = serviceType === 'data';
 
-    if (activeProvider.providerName === 'paybeta' && (isAirtime || isData)) {
-      return { name: 'Verified', valid: true, meta: { message: 'Validation skipped for this service' } };
+    if (isAirtime || isData) {
+      return { name: 'Verified', valid: true, meta: { message: 'Validation skipped for airtime/data' } };
     }
 
     return await withFailover(async (P) => {
@@ -318,8 +317,7 @@ export default class BillPaymentService {
 
   static async checkServiceDowntime(billerCode: string): Promise<boolean> {
     const bill = await BillPayment.findOne({ serviceId: billerCode }).lean();
-    if (!bill) return false;
-    return true;
+    return !!bill;
   }
 
   /* ─────────────────────────────────────────────
