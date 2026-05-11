@@ -569,7 +569,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
    * ═══════════════════════════════════════════════ */
 
   async validateAccount(params: ValidationParams): Promise<BillValidationResult> {
-    const biller = await this.resolveBiller(params.serviceType || 'tv', params.provider || params.itemCode || '');
+    const biller = await this.resolveBiller(params.serviceType, params.itemCode || '');
     if (!biller) return { valid: false, name: '' };
 
     const product = await this.resolveProduct(biller, params.itemCode);

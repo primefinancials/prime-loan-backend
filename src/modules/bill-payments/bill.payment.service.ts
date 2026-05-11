@@ -276,7 +276,7 @@ export default class BillPaymentService {
 
     return await withFailover(async (P) => {
       return await P.validateAccount({
-        serviceType: (serviceType || 'tv') as any,
+        serviceType: (serviceType) as any,
         customerRef: String(customerReference),
         itemCode,
         provider: providerName,
