@@ -162,15 +162,30 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
     try {
       const res = await this.vfdApi.getBillerList(vfdCategory);
-      const rawBillers: any[] = res.data || [];
 
-      const billers: VfdBillerEntry[] = rawBillers.map((b: any) => ({
-        billerId: b.billerId || b.id || b.name || '',
-        billerName: b.billerName || b.name || '',
-        division: b.division || b.divisionId || '',
-        categoryName: b.categoryName || vfdCategory,
-        raw: b,
-      }));
+      // VFD wraps billers under different keys: res.data (array), res.data.billers,
+      // res.paymentbillers, res.billers, or just res itself being the array.
+      const rawBillers: any[] = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray((res.data as any)?.billers)
+          ? (res.data as any)?.billers
+          : Array.isArray((res as any)?.paymentbillers)
+            ? (res as any)?.paymentbillers
+            : Array.isArray((res as any).billers)
+              ? (res as any).billers
+              : Array.isArray(res)
+                ? res
+                : [];
+
+      const billers: VfdBillerEntry[] = rawBillers
+        .map((b: any) => ({
+          billerId: b.billerId || b.biller_id || b.id || b.code || '',
+          billerName: b.billerName || b.biller_name || b.name || b.label || '',
+          division: b.division || b.divisionId || b.division_id || '',
+          categoryName: b.categoryName || b.category || vfdCategory,
+          raw: b,
+        }))
+        .filter(b => b.billerId); // drop any that have no usable ID
 
       logger.info(
         { category: vfdCategory, count: billers.length, billers: billers.map(b => ({ id: b.billerId, name: b.billerName })) },
@@ -204,8 +219,17 @@ export class VfdBillProvider implements NormalizedBillProvider {
     try {
       const res = await this.vfdApi.getBillerItems(vfdBillerId);
 
-      // VfdProvider returns { data: any[] } — data is already the flat items array.
-      const rawItems: any[] = res?.data || [];
+      // VFD may return items under: res.data (array), res.data.paymentitems,
+      // res.paymentitems, or just res itself being an array.
+      const rawItems: any[] = Array.isArray(res?.data)
+        ? res.data
+        : Array.isArray((res?.data as any)?.paymentitems)
+          ? (res.data as any).paymentitems
+          : Array.isArray((res as any)?.paymentitems)
+            ? (res as any).paymentitems
+            : Array.isArray(res)
+              ? res
+              : [];
 
       const products: VfdProductEntry[] = rawItems.map((p: any) => ({
         productId: String(p.paymentitemid || p.productId || p.id || ''),
@@ -520,12 +544,33 @@ export class VfdBillProvider implements NormalizedBillProvider {
   async getCategories(): Promise<BillCategory[]> {
     try {
       const res = await this.vfdApi.getBillerCategories();
-      const raw: any[] = res.data || [];
-      return raw.map((c: any) => ({
-        id: this.normalizeCategoryId(c.name || c.id || ''),
-        name: c.name || '',
-        description: c.description || c.name || '',
-      }));
+
+      // VFD may nest the array under different keys depending on API version:
+      // res.data (array), res.data.categories, res.categories, or res itself being the array
+      const raw: any[] = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray((res.data as any)?.categories)
+          ? (res.data as any).categories
+          : Array.isArray((res as any)?.categories)
+            ? (res as any)?.categories
+            : Array.isArray(res)
+              ? res
+              : [];
+
+      logger.info({ count: raw.length, sample: raw.slice(0, 3) }, 'VFD raw categories');
+
+      const mapped = raw.map((c: any) => {
+        // VFD category objects may use: name, categoryName, description, categoryId, id
+        const rawName = c.categoryName || c.name || c.category || c.id || '';
+        const rawId = c.categoryId || c.id || rawName;
+        return {
+          id: this.normalizeCategoryId(String(rawId)),
+          name: rawName,
+          description: c.description || rawName,
+        };
+      }).filter(c => c.id); // drop blanks
+
+      return mapped;
     } catch (err: any) {
       logger.error({ error: err.message }, 'VFD getCategories failed');
       return [];
