@@ -363,7 +363,7 @@ export class VfdProvider {
   }
 
   async getBillerItems(billerId: string, divisionId: string, productId: string) {
-    let url = `billeritems?billerId=${billerId}`;
+    let url = `billerItems?billerId=${billerId}`;
     if (divisionId) url += `&divisionId=${divisionId}`;
     if (productId) url += `&productId=${productId}`;
 

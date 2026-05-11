@@ -312,7 +312,6 @@ export class VfdBillProvider implements NormalizedBillProvider {
     const isSuccess = body.status === '00' || body.status?.toString() === '0' || body.status?.toLowerCase() === 'success';
 
     if (!isSuccess) {
-      logger.error({ vfdBillerId, body }, 'VFD product discovery failed');
       throw new Error(`VFD Product Error: ${JSON.stringify(body)}`);
     }
 
