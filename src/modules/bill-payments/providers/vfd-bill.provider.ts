@@ -47,11 +47,10 @@ const logger = pino({ name: 'vfd-bill-provider' });
 interface VfdBillerEntry {
   billerId: string;
   billerName: string;
-  division: string;
+  divisionId: string;
   /** VFD `product` field from /billerList — required as `productId` in /billerItems */
   productId: string;
   categoryName: string;
-  raw: any;
 }
 
 interface VfdProductEntry {
@@ -169,9 +168,6 @@ export class VfdBillProvider implements NormalizedBillProvider {
    * VFD's /billerItems endpoint requires it as a query param.
    */
   private async fetchBillers(vfdCategory: string): Promise<VfdBillerEntry[]> {
-    const cacheKey = `vfd_billers_${vfdCategory}`;
-    const cached = discoveryCache.get<VfdBillerEntry[]>(cacheKey);
-    if (cached) return cached;
 
     let body: any;
     try {
@@ -204,16 +200,13 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
     const billers: VfdBillerEntry[] = rawBillers
       .map((b: any) => ({
-        billerId: b.id || b.billerId || b.biller_id || b.code || '',
-        billerName: b.name || b.billerName || b.biller_name || b.label || '',
-        division: b.division || b.divisionId || b.division_id || '',
-        productId: b.product || b.productId || b.product_id || '',
-        categoryName: b.category || b.categoryName || vfdCategory,
-        raw: b,
-      }))
-      .filter(b => b.billerId);
+        billerId: b.id,
+        billerName: b.name,
+        divisionId: b.division,
+        productId: b.product,
+        categoryName: b.category,
+      }));
 
-    discoveryCache.set(cacheKey, billers);
     return billers;
   }
 
@@ -224,7 +217,6 @@ export class VfdBillProvider implements NormalizedBillProvider {
       body = this.unwrapBody(res);
     } catch (err) {
       const errorData = (err as any).response?.data || (err as any).message;
-      logger.error({ vfdBillerId, error: errorData }, 'VFD product discovery request failed');
       throw new Error(`VFD Product Request Failed: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`);
     }
 
@@ -252,33 +244,18 @@ export class VfdBillProvider implements NormalizedBillProvider {
   /**
    * Resolve a frontend biller ID to the real VFD biller entry via fuzzy matching.
    */
-  private async resolveBiller(category: string, serviceId: string): Promise<VfdBillerEntry | null> {
+  private async resolveBiller(category: string, serviceId: string): Promise<VfdBillerEntry> {
     const vfdCategory = CATEGORY_TO_VFD[category] || category;
     let billers = await this.fetchBillers(vfdCategory);
 
     // 1. Direct match on mapped name
     const mappedName = FRONTEND_ID_TO_NAME[serviceId] || FRONTEND_ID_TO_NAME[serviceId?.toUpperCase()];
     if (mappedName) {
-      const match = billers.find(b => this.fuzzyMatch(b.billerName, mappedName));
+      const match = billers.find(b => this.fuzzyMatch(b.categoryName, mappedName));
       if (match) return match;
     }
 
-    // 2. Fuzzy match on serviceId itself
-    const serviceMatch = billers.find(b => this.fuzzyMatch(b.billerName, serviceId) || this.fuzzyMatch(b.billerId, serviceId));
-    if (serviceMatch) return serviceMatch;
-
-    // 3. Cross-category fallback
-    if (vfdCategory !== 'all') {
-      const allBillers = await this.fetchBillers('');
-      const globalMatch = allBillers.find(b => 
-        (mappedName && this.fuzzyMatch(b.billerName, mappedName)) ||
-        this.fuzzyMatch(b.billerName, serviceId) ||
-        this.fuzzyMatch(b.billerId, serviceId)
-      );
-      if (globalMatch) return globalMatch;
-    }
-
-    return null;
+    throw new Error(`Could not resolve biller: ${JSON.stringify(billers)}`);
   }
 
   private fuzzyMatch(name: string, target: string): boolean {
@@ -314,8 +291,8 @@ export class VfdBillProvider implements NormalizedBillProvider {
     };
 
     for (const [key, list] of Object.entries(aliases)) {
-      if ((b.includes(key) || list.some(a => b.includes(a))) && 
-          (t.includes(key) || list.some(a => t.includes(a)))) {
+      if ((b.includes(key) || list.some(a => b.includes(a))) &&
+        (t.includes(key) || list.some(a => t.includes(a)))) {
         return true;
       }
     }
@@ -323,7 +300,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
   }
 
   private async resolveProduct(biller: VfdBillerEntry, frontendItemCode?: string): Promise<VfdProductEntry | null> {
-    const products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
+    const products = await this.fetchProducts(biller.billerId, biller.divisionId, biller.productId);
     if (products.length === 0) return null;
 
     if (!frontendItemCode) return products[0];
@@ -355,8 +332,8 @@ export class VfdBillProvider implements NormalizedBillProvider {
       customerId: params.phone,
       billerId: biller.billerId,
       productId: biller.productId,
-      division: biller.division || product.division || '',
-      paymentItem: product.paymentCode || '',
+      division: biller.divisionId,
+      paymentItem: product.paymentCode,
       reference: params.reference,
       phoneNumber: params.phone
     };
@@ -377,8 +354,8 @@ export class VfdBillProvider implements NormalizedBillProvider {
       customerId: params.phone,
       billerId: biller.billerId,
       productId: biller.productId,
-      division: biller.division || product.division || '',
-      paymentItem: product.paymentCode || '',
+      division: biller.divisionId,
+      paymentItem: product.paymentCode,
       reference: params.reference,
       phoneNumber: params.phone
     };
@@ -399,8 +376,8 @@ export class VfdBillProvider implements NormalizedBillProvider {
       customerId: params.smartcardNo,
       billerId: biller.billerId,
       productId: biller.productId,
-      division: biller.division || product.division || '',
-      paymentItem: product.paymentCode || '',
+      division: biller.divisionId,
+      paymentItem: product.paymentCode,
       reference: params.reference
     };
 
@@ -412,7 +389,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
     const biller = await this.resolveBiller('power', params.provider);
     if (!biller) return { success: false, reference: params.reference, status: 'FAILED', message: 'Could not resolve biller' };
 
-    const products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
+    const products = await this.fetchProducts(biller.billerId, biller.divisionId, biller.productId);
     const meterLower = (params.meterType || 'prepaid').toLowerCase();
     const product = products.find(p => p.productName.toLowerCase().includes(meterLower)) || products[0];
 
@@ -423,8 +400,8 @@ export class VfdBillProvider implements NormalizedBillProvider {
       customerId: params.meterNo,
       billerId: biller.billerId,
       productId: biller.productId,
-      division: biller.division || product.division || '',
-      paymentItem: product.paymentCode || '',
+      division: biller.divisionId,
+      paymentItem: product.paymentCode,
       reference: params.reference,
       phoneNumber: params.phone
     };
@@ -443,7 +420,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
       customerId: params.customerId,
       billerId: biller.billerId,
       productId: biller.productId,
-      division: biller.division || product?.division || '',
+      division: biller.divisionId,
       paymentItem: product?.paymentCode || biller.billerId,
       reference: params.reference
     };
@@ -463,9 +440,9 @@ export class VfdBillProvider implements NormalizedBillProvider {
     const product = await this.resolveProduct(biller, params.itemCode);
     try {
       const res = await this.vfdApi.validateBillerCustomer(
-        params.customerRef, 
-        biller.billerId, 
-        biller.division || '', 
+        params.customerRef,
+        biller.billerId,
+        biller.divisionId,
         product?.paymentCode || ''
       );
       const isSuccess = res?.status === '00' || res?.status?.toString() === '0' || res?.status?.toLowerCase() === 'success';
@@ -491,13 +468,11 @@ export class VfdBillProvider implements NormalizedBillProvider {
       body = this.unwrapBody(res);
     } catch (err) {
       const errorData = (err as any).response?.data || (err as any).message;
-      logger.error({ error: errorData }, 'VFD category discovery request failed');
       throw new Error(`VFD Category Request Failed: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`);
     }
 
     const isSuccess = body.status === '00' || body.status?.toString() === '0' || body.status?.toLowerCase() === 'success';
     if (!isSuccess) {
-      logger.error({ body }, 'VFD category discovery failed');
       throw new Error(`VFD Category Error: ${JSON.stringify(body)}`);
     }
 
@@ -545,7 +520,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
     if (categoryId) {
       biller = await this.resolveBiller(categoryId, billerId);
       if (biller) {
-        products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
+        products = await this.fetchProducts(biller.billerId, biller.divisionId, biller.productId);
       }
     }
 
@@ -555,7 +530,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
         if (cat === categoryId) continue; // already tried
         biller = await this.resolveBiller(cat, billerId);
         if (biller) {
-          products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
+          products = await this.fetchProducts(biller.billerId, biller.divisionId, biller.productId);
           if (products.length > 0) break;
         }
       }
