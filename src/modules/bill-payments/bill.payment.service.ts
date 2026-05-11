@@ -266,13 +266,13 @@ export default class BillPaymentService {
     return data;
   }
 
-  static async getBillItems(billerCode: string) {
+  static async getBillItems(billerCode: string, categoryId?: string) {
     const provider = await getBillProvider();
-    const cacheKey = `${provider.providerName}_items_${billerCode}`;
+    const cacheKey = `${provider.providerName}_items_${billerCode}_${categoryId || 'all'}`;
     const cached = billCache.get(cacheKey);
     if (cached) return cached;
 
-    const data = await provider.getProducts(billerCode);
+    const data = await provider.getProducts(billerCode, categoryId);
     billCache.set(cacheKey, data);
     return data;
   }

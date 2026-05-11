@@ -154,7 +154,7 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
     }));
   }
 
-  async getProducts(billerId: string): Promise<BillProduct[]> {
+  async getProducts(billerId: string, categoryId?: string): Promise<BillProduct[]> {
     const resp = await fwGet(`/v3/billers/${encodeURIComponent(billerId)}/items`);
     const items = (resp.data as any[]) || [];
     return items.map((p: any) => ({

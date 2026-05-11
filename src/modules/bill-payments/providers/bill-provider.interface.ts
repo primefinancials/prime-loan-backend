@@ -124,7 +124,7 @@ export interface NormalizedBillProvider {
   getBillers(categoryId: string): Promise<BillBiller[]>;
 
   /** Fetch products for a biller */
-  getProducts(billerId: string): Promise<BillProduct[]>;
+  getProducts(billerId: string, categoryId?: string): Promise<BillProduct[]>;
 
   /** Get provider wallet/balance */
   getBalance(): Promise<{ balance: number }>;
