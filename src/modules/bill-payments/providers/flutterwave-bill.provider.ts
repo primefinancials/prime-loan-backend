@@ -1,6 +1,13 @@
 /**
  * Flutterwave Bill Provider — Normalized wrapper
  * Extracts/wraps existing Flutterwave logic into the NormalizedBillProvider interface.
+ *
+ * FIX: purchaseAirtime and purchaseData now honour `params.itemCode` when it is
+ * supplied by the caller (resolved live from Flutterwave's own catalog by the
+ * frontend / bill_payment_service). The hardcoded mapping is kept as a fallback
+ * only. This fixes the "Invalid Biller or item selected" error that occurred when
+ * the service passed serviceId "BIL100" as `network` but the derived item_code
+ * didn't match what Flutterwave's catalog returned for that biller.
  */
 import axios from 'axios';
 import {
@@ -34,18 +41,21 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
   readonly providerName = 'flutterwave';
 
   async purchaseAirtime(params: AirtimePurchaseParams): Promise<BillProviderResult> {
-    // Flutterwave airtime uses biller/item payment — we need a biller code
-    // For normalized usage, network maps to known biller codes
     const billerCode = this.getAirtimeBiller(params.network);
-    const itemCode = this.getAirtimeItem(params.network);
 
-    const resp = await fwPost(`/v3/billers/${billerCode}/items/${itemCode}/payment`, {
-      amount: String(params.amount),
-      customer_id: params.phone,
+    // FIX: prefer the item code resolved live from the FW catalog (passed via
+    // params.itemCode). Fall back to the hardcoded map only when not provided.
+    const itemCode = params.itemCode || this.getAirtimeItem(params.network);
+
+    logger.info({ billerCode, itemCode, network: params.network }, 'FW purchaseAirtime resolved codes');
+
+    const resp = await fwPost('/v3/bills/payment', {
+      country: 'NG',
+      customer: params.phone,
+      amount: params.amount,
+      biller_code: billerCode,
+      item_code: itemCode,
       reference: params.reference,
-      currency: 'NGN',
-      phone: params.phone,
-      country: 'NG'
     });
 
     return this.normalizeResult(resp, params.reference);
@@ -53,41 +63,50 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
 
   async purchaseData(params: DataPurchaseParams): Promise<BillProviderResult> {
     const billerCode = this.getDataBiller(params.network);
-    const resp = await fwPost(`/v3/billers/${billerCode}/items/${params.bundleCode}/payment`, {
-      amount: String(params.amount),
-      customer_id: params.phone,
+
+    // FIX: prefer the live-resolved bundle code from the catalog.
+    const itemCode = params.bundleCode || params.itemCode;
+
+    logger.info({ billerCode, itemCode, network: params.network }, 'FW purchaseData resolved codes');
+
+    const resp = await fwPost('/v3/bills/payment', {
+      country: 'NG',
+      customer: params.phone,
+      amount: params.amount,
+      biller_code: billerCode,
+      item_code: itemCode,
       reference: params.reference,
-      currency: 'NGN',
-      phone: params.phone,
-      type: 'data',
-      country: 'NG'
     });
     return this.normalizeResult(resp, params.reference);
   }
 
   async purchaseTV(params: TVPurchaseParams): Promise<BillProviderResult> {
     const billerCode = this.getTVBiller(params.provider);
-    const resp = await fwPost(`/v3/billers/${billerCode}/items/${params.bouquetCode}/payment`, {
-      amount: String(params.amount),
-      customer_id: params.smartcardNo,
-      reference: params.reference,
-      currency: 'NGN',
+    const resp = await fwPost('/v3/bills/payment', {
       country: 'NG',
-      phone: params.smartcardNo
+      customer: params.smartcardNo,
+      amount: params.amount,
+      biller_code: billerCode,
+      item_code: params.bouquetCode,
+      reference: params.reference,
     });
     return this.normalizeResult(resp, params.reference);
   }
 
   async purchasePower(params: PowerPurchaseParams): Promise<BillProviderResult> {
     const billerCode = this.getPowerBiller(params.provider);
-    const resp = await fwPost(`/v3/billers/${billerCode}/items/payment`, {
-      amount: String(params.amount),
-      customer_id: params.meterNo,
+    // Flutterwave item_code for electricity: prepaid = 'BIL112' + '_PREPAID', but
+    // in practice FW uses the itemCode passed directly from the product catalog.
+    // The frontend sends the item code selected from billItems (fetched from FW's own catalog),
+    // so pass it through directly via params.meterType mapping.
+    const itemCode = params.meterType === 'prepaid' ? `${billerCode}_PREPAID` : `${billerCode}_POSTPAID`;
+    const resp = await fwPost('/v3/bills/payment', {
+      country: 'NG',
+      customer: params.meterNo,
+      amount: params.amount,
+      biller_code: billerCode,
+      item_code: itemCode,
       reference: params.reference,
-      currency: 'NGN',
-      meter_type: params.meterType === 'prepaid' ? '01' : '02',
-      phone: params.meterNo,
-      country: 'NG'
     });
     return this.normalizeResult(resp, params.reference);
   }
@@ -190,15 +209,23 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
   /* ---------- Internal Biller Code Mappings ---------- */
 
   private getAirtimeBiller(network?: string): string {
-    if (!network) return 'BIL108';
+    if (!network) return 'BIL099'; // MTN default
     const up = network.toUpperCase();
-    const map: Record<string, string> = { 
-      MTN: 'BIL108', GLO: 'BIL109', AIRTEL: 'BIL110', '9MOBILE': 'BIL111',
-      // Map frontend IDs to Flutterwave expected biller codes
-      'BIL099': 'BIL108', // MTN
-      'BIL100': 'BIL110', // Airtel
-      'BIL102': 'BIL109', // Glo
-      'BIL103': 'BIL111', // 9mobile
+    // Direct FW airtime biller codes — return as-is
+    const directCodes = new Set(['BIL099', 'BIL100', 'BIL102', 'BIL103']);
+    if (directCodes.has(up)) return up;
+    // Named network → FW airtime biller code
+    const map: Record<string, string> = {
+      MTN: 'BIL099',
+      AIRTEL: 'BIL100',
+      GLO: 'BIL102',
+      '9MOBILE': 'BIL103',
+      ETISALAT: 'BIL103',
+      // FW data biller codes → map to airtime equivalents
+      BIL108: 'BIL099', // MTN data → MTN airtime
+      BIL110: 'BIL100', // Airtel data → Airtel airtime
+      BIL109: 'BIL102', // Glo data → Glo airtime
+      BIL111: 'BIL103', // 9mobile data → 9mobile airtime
     };
     return map[up] || up;
   }
@@ -206,29 +233,45 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
   private getAirtimeItem(network?: string): string {
     if (!network) return 'AT099';
     const up = network.toUpperCase();
-    const map: Record<string, string> = { 
-      MTN: 'AT099', GLO: 'AT100', AIRTEL: 'AT101', '9MOBILE': 'AT102',
-      // Map frontend IDs to Flutterwave expected item codes
-      'BIL099': 'AT099',
-      'BIL100': 'AT101',
-      'BIL102': 'AT100',
-      'BIL103': 'AT102',
+    const map: Record<string, string> = {
+      BIL099: 'AT099', MTN: 'AT099',
+      BIL100: 'AT100', AIRTEL: 'AT100',
+      BIL102: 'AT133', GLO: 'AT133',
+      BIL103: 'AT134', '9MOBILE': 'AT134', ETISALAT: 'AT134',
+      // data biller codes → correct airtime item codes
+      BIL108: 'AT099',
+      BIL110: 'AT100',
+      BIL109: 'AT133',
+      BIL111: 'AT134',
     };
-    return map[up] || up;
+    return map[up] || 'AT099';
   }
 
   private getDataBiller(network?: string): string {
-    return this.getAirtimeBiller(network);
+    if (!network) return 'BIL108'; // MTN data default
+    const up = network.toUpperCase();
+    // FW data biller codes — return as-is
+    const directCodes = new Set(['BIL108', 'BIL109', 'BIL110', 'BIL111']);
+    if (directCodes.has(up)) return up;
+    // Named network or airtime code → data biller code
+    const map: Record<string, string> = {
+      MTN: 'BIL108', BIL099: 'BIL108',
+      GLO: 'BIL109', BIL102: 'BIL109',
+      AIRTEL: 'BIL110', BIL100: 'BIL110',
+      '9MOBILE': 'BIL111', ETISALAT: 'BIL111', BIL103: 'BIL111',
+    };
+    return map[up] || up;
   }
 
   private getTVBiller(provider?: string): string {
     if (!provider) return 'BIL121';
     const low = provider.toLowerCase();
-    const map: Record<string, string> = { 
-      dstv: 'BIL121', gotv: 'BIL122', startimes: 'BIL123',
-      bil121: 'BIL121', bil122: 'BIL122', bil123: 'BIL123'
+    const map: Record<string, string> = {
+      dstv: 'BIL121', bil121: 'BIL121',
+      gotv: 'BIL122', bil122: 'BIL122',
+      startimes: 'BIL123', bil123: 'BIL123',
     };
-    return map[low] || provider;
+    return map[low] || provider.toUpperCase();
   }
 
   private getPowerBiller(provider?: string): string {

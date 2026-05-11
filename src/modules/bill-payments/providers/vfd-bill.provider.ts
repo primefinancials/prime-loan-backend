@@ -7,18 +7,18 @@
  * VFD bill payment base URL: https://api-apps.vfdbank.systems/vtech-bills/api/v2/billspaymentstore
  *
  * Key fixes vs previous version:
- *  1. fetchProducts: VFD returns `paymentitems` (not `data`), with fields:
- *       paymentitemid  → productId
- *       paymentCode    → paymentItem (the code sent in /pay)
- *       paymentitemname→ productName
- *     The old code read `p.productId`, `p.paymentCode`, `p.paymentItem`, `p.name`
- *     which mostly worked but missed the top-level array key `paymentitems`.
- *  2. fetchBillers: VFD biller list fields normalised correctly.
- *  3. FRONTEND_ID_TO_NAME expanded to cover VBank-style IDs (e.g. AIRTEL_VBANK)
- *     that the frontend currently sends as serviceId.
- *  4. validateAccount: passes paymentCode (not productId) as the paymentItem param.
- *  5. All PayBeta references removed.
- *  6. purchasePower: meter type product now resolved more robustly.
+ *  1. fetchProducts: now accepts divisionId + productId and passes them as required
+ *     query params to VFD's /billerItems endpoint (billerId alone is not enough).
+ *     VfdBillerEntry now stores `productId` from the biller list `product` field.
+ *  2. fetchBillers: maps VFD's `id`/`name`/`product` fields correctly.
+ *     `billerId` ← b.id, `billerName` ← b.name, `productId` ← b.product.
+ *  3. getCategories: VFD returns `{ category: "Airtime" }` objects — `c.category`
+ *     is now checked FIRST in the name chain (was last, causing empty strings).
+ *     Also adds a double-unwrap guard for axios responses where res.data is the
+ *     VFD envelope, not the array.
+ *  4. resolveProduct / all purchase methods: fetchProducts calls now forward
+ *     divisionId + productId so the VFD /billerItems query is complete.
+ *  5. All other previous fixes retained (paymentCode routing, fuzzy matching, etc.)
  */
 import NodeCache from 'node-cache';
 import {
@@ -48,6 +48,8 @@ interface VfdBillerEntry {
   billerId: string;
   billerName: string;
   division: string;
+  /** VFD `product` field from /billerList — required as `productId` in /billerItems */
+  productId: string;
   categoryName: string;
   raw: any;
 }
@@ -126,9 +128,9 @@ const CATEGORY_TO_VFD: Record<string, string> = {
   airtime: 'Airtime',
   data: 'Data',
   tv: 'Cable TV',
-  power: 'Electricity',
+  power: 'Utility',
   betting: 'Betting',
-  internet: 'Internet',
+  internet: 'Internet Subscription',
   insurance: 'Insurance',
 };
 
@@ -152,8 +154,15 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
   /**
    * Fetch and cache the full biller list for a VFD category name.
+   *
    * VFD endpoint: GET /billerList?categoryName={categoryName}
-   * Response: { status: "00", data: [ { billerId, billerName, division, ... } ] }
+   * VFD response shape (from docs):
+   *   { status: "00", data: [ { id, name, division, product, category } ] }
+   *
+   * FIX: VFD uses `id` (not `billerId`), `name` (not `billerName`), and
+   * `product` (not `productId`). All three are now mapped correctly.
+   * The `product` field is stored as `productId` in VfdBillerEntry because
+   * VFD's /billerItems endpoint requires it as a query param.
    */
   private async fetchBillers(vfdCategory: string): Promise<VfdBillerEntry[]> {
     const cacheKey = `vfd_billers_${vfdCategory}`;
@@ -162,18 +171,40 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
     try {
       const res = await this.vfdApi.getBillerList(vfdCategory);
-      const rawBillers: any[] = res.data || [];
 
-      const billers: VfdBillerEntry[] = rawBillers.map((b: any) => ({
-        billerId: b.billerId || b.id || b.name || '',
-        billerName: b.billerName || b.name || '',
-        division: b.division || b.divisionId || '',
-        categoryName: b.categoryName || vfdCategory,
-        raw: b,
-      }));
+      // Unwrap: VFD returns { status, message, data: [...] }
+      // If res is the axios response object, res.data is the VFD body.
+      // If res is already the VFD body, res.data is the billers array.
+      const body = this.unwrapBody(res);
+
+      const rawBillers: any[] = Array.isArray(body.data)
+        ? body.data
+        : Array.isArray((body.data as any)?.billers)
+          ? (body.data as any).billers
+          : Array.isArray((body as any)?.paymentbillers)
+            ? (body as any).paymentbillers
+            : Array.isArray((body as any).billers)
+              ? (body as any).billers
+              : Array.isArray(body)
+                ? body
+                : [];
+
+      const billers: VfdBillerEntry[] = rawBillers
+        .map((b: any) => ({
+          // FIX: VFD biller list uses `id` and `name`, not `billerId`/`billerName`
+          billerId: b.id || b.billerId || b.biller_id || b.code || '',
+          billerName: b.name || b.billerName || b.biller_name || b.label || '',
+          division: b.division || b.divisionId || b.division_id || '',
+          // FIX: VFD biller list carries `product` — this is the productId required
+          // by the /billerItems endpoint as a query param.
+          productId: b.product || b.productId || b.product_id || '',
+          categoryName: b.category || b.categoryName || vfdCategory,
+          raw: b,
+        }))
+        .filter(b => b.billerId); // drop entries with no usable ID
 
       logger.info(
-        { category: vfdCategory, count: billers.length, billers: billers.map(b => ({ id: b.billerId, name: b.billerName })) },
+        { category: vfdCategory, count: billers.length, billers: billers.map(b => ({ id: b.billerId, name: b.billerName, productId: b.productId })) },
         'VFD biller discovery'
       );
       discoveryCache.set(cacheKey, billers);
@@ -187,25 +218,40 @@ export class VfdBillProvider implements NormalizedBillProvider {
   /**
    * Fetch and cache products for a specific VFD billerId.
    *
-   * VfdProvider.getBillerItems(billerId) returns { status, data: any[] }
-   * where data is the flat array of payment items. Each item has:
-   *   paymentitemid   -> our productId
-   *   paymentCode     -> our paymentCode (sent as `paymentItem` in /pay)
-   *   paymentitemname -> our productName
+   * VFD endpoint: GET /billerItems?billerId={billerId}&divisionId={divisionId}&productId={productId}
+   * All three params are MANDATORY per VFD docs.
    *
-   * IMPORTANT: The VFD docs say not to persist these as they are dynamic.
-   * We cache for 24h but the cache can be cleared on demand if needed.
+   * VFD response shape:
+   *   { status: "00", data: { paymentitems: [ { paymentitemid, paymentCode, paymentitemname, ... } ] } }
+   *
+   * FIX: Previously only billerId was passed. divisionId and productId are now
+   * forwarded from the VfdBillerEntry so VFD's /billerItems query is complete.
    */
-  private async fetchProducts(vfdBillerId: string): Promise<VfdProductEntry[]> {
+  private async fetchProducts(
+    vfdBillerId: string,
+    divisionId?: string,
+    productId?: string
+  ): Promise<VfdProductEntry[]> {
     const cacheKey = `vfd_products_${vfdBillerId}`;
     const cached = discoveryCache.get<VfdProductEntry[]>(cacheKey);
     if (cached) return cached;
 
     try {
-      const res = await this.vfdApi.getBillerItems(vfdBillerId);
+      const res = await this.vfdApi.getBillerItems(vfdBillerId, divisionId, productId);
 
-      // VfdProvider returns { data: any[] } — data is already the flat items array.
-      const rawItems: any[] = res?.data || [];
+      // Unwrap body
+      const body = this.unwrapBody(res);
+
+      // VFD nests payment items under data.paymentitems
+      const rawItems: any[] = Array.isArray(body?.data)
+        ? body.data
+        : Array.isArray((body?.data as any)?.paymentitems)
+          ? (body.data as any).paymentitems
+          : Array.isArray((body as any)?.paymentitems)
+            ? (body as any).paymentitems
+            : Array.isArray(body)
+              ? body
+              : [];
 
       const products: VfdProductEntry[] = rawItems.map((p: any) => ({
         productId: String(p.paymentitemid || p.productId || p.id || ''),
@@ -218,13 +264,13 @@ export class VfdBillProvider implements NormalizedBillProvider {
       }));
 
       logger.info(
-        { billerId: vfdBillerId, count: products.length, sample: products.slice(0, 3).map(p => ({ id: p.productId, code: p.paymentCode, name: p.productName })) },
+        { billerId: vfdBillerId, divisionId, productId, count: products.length, sample: products.slice(0, 3).map(p => ({ id: p.productId, code: p.paymentCode, name: p.productName })) },
         'VFD product discovery'
       );
       discoveryCache.set(cacheKey, products);
       return products;
     } catch (err: any) {
-      logger.error({ billerId: vfdBillerId, error: err.message }, 'VFD product discovery failed');
+      logger.error({ billerId: vfdBillerId, divisionId, productId, error: err.message }, 'VFD product discovery failed');
       return [];
     }
   }
@@ -251,7 +297,6 @@ export class VfdBillProvider implements NormalizedBillProvider {
     const fuzzy = billers.find(b => {
       const bName = b.billerName.toLowerCase();
       const bId = b.billerId.toLowerCase();
-      // Match if either side contains the other's first word
       const nameWord = knownName.split(/[\s_]/)[0];
       return (
         bName.includes(knownName) ||
@@ -279,10 +324,11 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
   /**
    * Resolve a frontend item code to a VFD product entry.
-   * Returns null only for data purchases where we must have a specific bundle.
+   * FIX: now forwards divisionId + productId from the biller entry so
+   * fetchProducts can call VFD's /billerItems with all required params.
    */
-  private async resolveProduct(vfdBillerId: string, frontendItemCode?: string): Promise<VfdProductEntry | null> {
-    const products = await this.fetchProducts(vfdBillerId);
+  private async resolveProduct(biller: VfdBillerEntry, frontendItemCode?: string): Promise<VfdProductEntry | null> {
+    const products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
     if (products.length === 0) return null;
 
     if (!frontendItemCode) return products[0];
@@ -316,8 +362,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
       return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD biller for airtime network: ${params.network}` };
     }
 
-    // For airtime there is typically only one product item
-    const product = await this.resolveProduct(biller.billerId);
+    const product = await this.resolveProduct(biller);
     if (!product) {
       return { success: false, reference: params.reference, status: 'FAILED', message: `No VFD products found for airtime biller: ${biller.billerId}` };
     }
@@ -328,7 +373,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
       billerId: biller.billerId,
       productId: product.productId,
       division: biller.division || product.division,
-      paymentItem: product.paymentCode, // VFD /pay requires paymentCode as `paymentItem`
+      paymentItem: product.paymentCode,
       reference: params.reference,
       phoneNumber: params.phone,
     };
@@ -344,7 +389,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
       return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD biller for data network: ${params.network}` };
     }
 
-    const product = await this.resolveProduct(biller.billerId, params.bundleCode);
+    const product = await this.resolveProduct(biller, params.bundleCode);
     if (!product) {
       return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD product for bundle: ${params.bundleCode}` };
     }
@@ -371,7 +416,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
       return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD biller for TV: ${params.provider}` };
     }
 
-    const product = await this.resolveProduct(biller.billerId, params.bouquetCode);
+    const product = await this.resolveProduct(biller, params.bouquetCode);
     if (!product) {
       return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD product for bouquet: ${params.bouquetCode}` };
     }
@@ -397,10 +442,9 @@ export class VfdBillProvider implements NormalizedBillProvider {
       return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD biller for power: ${params.provider}` };
     }
 
-    const products = await this.fetchProducts(biller.billerId);
+    const products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
     const meterLower = (params.meterType || 'prepaid').toLowerCase();
 
-    // Try to match prepaid/postpaid product by name. Fall back to first product.
     const product =
       products.find(p => p.productName.toLowerCase().includes(meterLower)) ||
       products.find(p => p.paymentCode.toLowerCase().includes(meterLower)) ||
@@ -431,14 +475,13 @@ export class VfdBillProvider implements NormalizedBillProvider {
       return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD biller for betting: ${params.provider}` };
     }
 
-    // For betting, get the first (often only) product
-    const product = await this.resolveProduct(biller.billerId);
+    const product = await this.resolveProduct(biller);
 
     const payload = {
       amount: params.amount,
       customerId: params.customerId,
       billerId: biller.billerId,
-      productId: product?.productId || biller.billerId,
+      productId: product?.productId || biller.productId || biller.billerId,
       division: biller.division || product?.division || '',
       paymentItem: product?.paymentCode || biller.billerId,
       reference: params.reference,
@@ -469,8 +512,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
       return { valid: false, name: '' };
     }
 
-    // Resolve the product so we can pass the correct paymentCode
-    const product = await this.resolveProduct(biller.billerId, params.itemCode);
+    const product = await this.resolveProduct(biller, params.itemCode);
 
     // For airtime/data: validation is optional per VFD docs
     const isAirtimeOrData = category === 'airtime' || category === 'data';
@@ -483,7 +525,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
         params.customerRef,
         biller.billerId,
         biller.division,
-        product?.paymentCode  // VFD needs paymentCode as the paymentItem query param
+        product?.paymentCode
       );
 
       logger.info({ customerRef: params.customerRef, billerId: biller.billerId, response: res }, 'VFD validation response');
@@ -517,15 +559,48 @@ export class VfdBillProvider implements NormalizedBillProvider {
    * CATALOG DISCOVERY (exposed to frontend)
    * ═══════════════════════════════════════════════ */
 
+  /**
+   * FIX: VFD /billercategory returns objects with ONLY a `category` key:
+   *   { "category": "Airtime" }
+   * The old code checked `c.categoryName || c.name || c.category` — because
+   * `c.categoryName` and `c.name` are both undefined for VFD objects, the
+   * result was an empty string. `c.category` is now checked FIRST.
+   *
+   * Additionally, a double-unwrap guard is added: if `res` is a raw axios
+   * response, `res.data` is the VFD envelope `{ status, data: [...] }`, so
+   * we need to read `res.data.data` for the actual array.
+   */
   async getCategories(): Promise<BillCategory[]> {
     try {
       const res = await this.vfdApi.getBillerCategories();
-      const raw: any[] = res.data || [];
-      return raw.map((c: any) => ({
-        id: this.normalizeCategoryId(c.name || c.id || ''),
-        name: c.name || '',
-        description: c.description || c.name || '',
-      }));
+
+      // Unwrap one level if needed (axios response vs already-unwrapped body)
+      const body = this.unwrapBody(res);
+
+      const raw: any[] = Array.isArray(body.data)
+        ? body.data
+        : Array.isArray((body.data as any)?.categories)
+          ? (body.data as any).categories
+          : Array.isArray((body as any)?.categories)
+            ? (body as any).categories
+            : Array.isArray(body)
+              ? body
+              : [];
+
+      logger.info({ count: raw.length, sample: raw.slice(0, 3) }, 'VFD raw categories');
+
+      const mapped = raw.map((c: any) => {
+        // FIX: check `c.category` FIRST — that is the only key VFD sends
+        const rawName = c.category || c.categoryName || c.name || c.id || '';
+        const rawId = c.categoryId || c.id || rawName;
+        return {
+          id: this.normalizeCategoryId(String(rawId)),
+          name: rawName,
+          description: c.description || rawName,
+        };
+      }).filter(c => c.id && c.name); // drop blank entries
+
+      return mapped;
     } catch (err: any) {
       logger.error({ error: err.message }, 'VFD getCategories failed');
       return [];
@@ -544,16 +619,17 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
   async getProducts(billerId: string): Promise<BillProduct[]> {
     // billerId here may be a frontend ID or a real VFD billerId.
-    // Try fetching directly first; if empty, try resolving it.
+    // Try fetching directly first (no divisionId/productId — best effort).
+    // If empty, resolve the frontend code to a real VfdBillerEntry which
+    // carries the divisionId and productId needed for a full /billerItems call.
     let biller: VfdBillerEntry | null = null;
     let products = await this.fetchProducts(billerId);
 
     if (products.length === 0) {
-      // The billerId might be a Flutterwave/frontend code — resolve it
       for (const cat of ['airtime', 'data', 'tv', 'power', 'betting', 'internet']) {
         biller = await this.resolveBiller(cat, billerId);
         if (biller) {
-          products = await this.fetchProducts(biller.billerId);
+          products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
           if (products.length > 0) break;
         }
       }
@@ -624,5 +700,20 @@ export class VfdBillProvider implements NormalizedBillProvider {
     if (lower.includes('betting') || lower.includes('gaming') || lower.includes('lottery')) return 'betting';
     if (lower.includes('internet')) return 'internet';
     return nameOrId;
+  }
+
+  /**
+   * Guard against VfdProvider methods returning either:
+   *   (a) the raw axios response  → { data: { status, message, data: [...] } }
+   *   (b) the already-unwrapped VFD body → { status, message, data: [...] }
+   *
+   * If `res.data` looks like a VFD envelope (has its own `status` field) we
+   * return `res.data`; otherwise we return `res` as-is.
+   */
+  private unwrapBody(res: any): any {
+    if (res && res.data && typeof res.data === 'object' && 'status' in res.data) {
+      return res.data;
+    }
+    return res;
   }
 }

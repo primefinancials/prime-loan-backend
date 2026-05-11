@@ -1,6 +1,18 @@
 /**
  * VFD Provider - Banking operations adapter
  * Wraps VFD API calls with retry logic and circuit breaker
+ *
+ * Fixes vs previous version:
+ *  1. All bill-payment URL strings now have a leading "/" so axios concatenates
+ *     them correctly against billsBaseUrl (which has no trailing slash).
+ *     Without the slash, axios would produce URLs like:
+ *       "...billspaymentstorebildercategory" instead of
+ *       ".../billspaymentstore/billercategory"
+ *  2. validateBillerCustomer: 4th parameter renamed from `productId` to
+ *     `paymentItemCode` to reflect that it maps to VFD's `paymentItem` query
+ *     param (the paymentCode value from /billerItems), not a productId.
+ *  3. getBillerItems: already updated to accept divisionId and productId as
+ *     optional params and append them to the query string.
  */
 import axios, { AxiosRequestConfig, AxiosError } from "axios";
 import { generateBearerToken, clearBearerToken } from "../utils/generateBearerToken";
@@ -149,7 +161,7 @@ export interface NameEnquiryResponse {
     status: string;
     currency: string;
     bank: string;
-    accountName: string; // Added field
+    accountName: string;
   };
 }
 
@@ -195,8 +207,6 @@ export class VfdProvider {
       // If unauthorized, clear the token and retry exactly once
       if ((axiosError.response?.status === 401 || axiosError.response?.status === 403) && !isRetry) {
         clearBearerToken();
-        // The URL already has baseUrl prepended from the first attempt, so we strip it or pass a clean config
-        // Actually, easier to reconstruct the config to avoid double prepending
         const retryConfig = { ...config, url: (config.url || "").replace(baseUrl, "") };
         return this.request<T>(retryConfig, true);
       }
@@ -230,14 +240,13 @@ export class VfdProvider {
     const url = accountNumber
       ? `/account/enquiry?accountNumber=${accountNumber}`
       : "/account/enquiry";
-    
+
     const response = await this.request<AccountInfoResponse>({ method: "GET", url });
-    
+
     if (response?.status === "Success" || response?.data) {
-      // Cache for 10 seconds (enough for concurrent requests, but fresh for UI)
       VfdProvider.accountInfoCache.set(cacheKey, { data: response, expires: Date.now() + 10 * 1000 });
     }
-    
+
     return response;
   }
 
@@ -245,9 +254,6 @@ export class VfdProvider {
     return this.getAccountInfo();
   }
 
-  /**
-   * Explicitly clear cache for an account (useful after transfers)
-   */
   async clearCache(accountNumber?: string) {
     const cacheKey = accountNumber || 'prime';
     VfdProvider.accountInfoCache.delete(cacheKey);
@@ -271,17 +277,16 @@ export class VfdProvider {
 
     if (response && response.data) {
       const d = response.data as any;
-      // Try multiple field names known in VFD/Banking APIs
-      const resolvedName = d.accountName || d.name || d.client || d.account_name || 
+      const resolvedName = d.accountName || d.name || d.client || d.account_name ||
         (d.firstname && d.lastname ? `${d.firstname} ${d.lastname}` : null);
-      
+
       return {
         ...response,
         data: {
           ...response.data,
           accountName: resolvedName
         }
-      }
+      };
     }
     return response;
   }
@@ -294,7 +299,7 @@ export class VfdProvider {
       url: "/transfer",
       data: {
         ...request,
-        amount: String(request.amount), // convert kobo → naira
+        amount: String(request.amount),
       },
     });
   }
@@ -345,46 +350,63 @@ export class VfdProvider {
   async getBillerCategories() {
     return this.request<{ status: string; message: string; data: any[] }>({
       method: "GET",
-      url: "billercategory",
-      baseURL: this.billsBaseUrl
+      // FIX: leading slash so axios appends correctly to billsBaseUrl
+      url: "/billercategory",
+      baseURL: this.billsBaseUrl,
     });
   }
 
   async getBillerList(categoryName: string) {
     return this.request<{ status: string; message: string; data: any[] }>({
       method: "GET",
-      url: `billerlist?categoryName=${categoryName}`,
-      baseURL: this.billsBaseUrl
+      // FIX: leading slash
+      url: `/billerlist?categoryName=${encodeURIComponent(categoryName)}`,
+      baseURL: this.billsBaseUrl,
     });
   }
 
-  async getBillerItems(billerId: string) {
+  async getBillerItems(billerId: string, divisionId?: string, productId?: string) {
+    // FIX: leading slash + forward divisionId and productId as required by VFD docs
+    let url = `/billeritems?billerId=${billerId}`;
+    if (divisionId) url += `&divisionId=${divisionId}`;
+    if (productId) url += `&productId=${productId}`;
+
     return this.request<{ status: string; message: string; data: any[] }>({
       method: "GET",
-      url: `billeritems?billerId=${billerId}`,
-      baseURL: this.billsBaseUrl
+      url,
+      baseURL: this.billsBaseUrl,
     });
   }
 
-  async validateBillerCustomer(customerId: string, billerId: string, divisionId?: string, productId?: string) {
-    // VFD uses GET for validation with query params
-    let url = `customervalidate?customerId=${customerId}&billerId=${billerId}`;
+  async validateBillerCustomer(
+    customerId: string,
+    billerId: string,
+    divisionId?: string,
+    // FIX: renamed from `productId` to `paymentItemCode` — this value maps to
+    // VFD's `paymentItem` query param, which must be the paymentCode from
+    // /billerItems, not the productId. The old name caused confusion between
+    // the two distinct VFD concepts.
+    paymentItemCode?: string
+  ) {
+    // FIX: leading slash
+    let url = `/customervalidate?customerId=${customerId}&billerId=${billerId}`;
     if (divisionId) url += `&divisionId=${divisionId}`;
-    if (productId) url += `&paymentItem=${productId}`; // paymentItem is often used interchangeably with productId in some VFD versions
+    if (paymentItemCode) url += `&paymentItem=${paymentItemCode}`;
 
     return this.request<{ status: string; message: string; data: any }>({
       method: "GET",
       url,
-      baseURL: this.billsBaseUrl
+      baseURL: this.billsBaseUrl,
     });
   }
 
   async payBill(payload: VfdBillPayRequest) {
     return this.request<{ status: string; message: string; data: any }>({
       method: "POST",
-      url: "pay",
+      // FIX: leading slash
+      url: "/pay",
       baseURL: this.billsBaseUrl,
-      data: payload
+      data: payload,
     });
   }
 }
