@@ -1,6 +1,13 @@
 /**
  * Flutterwave Bill Provider — Normalized wrapper
  * Extracts/wraps existing Flutterwave logic into the NormalizedBillProvider interface.
+ *
+ * FIX: purchaseAirtime and purchaseData now honour `params.itemCode` when it is
+ * supplied by the caller (resolved live from Flutterwave's own catalog by the
+ * frontend / bill_payment_service). The hardcoded mapping is kept as a fallback
+ * only. This fixes the "Invalid Biller or item selected" error that occurred when
+ * the service passed serviceId "BIL100" as `network` but the derived item_code
+ * didn't match what Flutterwave's catalog returned for that biller.
  */
 import axios from 'axios';
 import {
@@ -35,9 +42,13 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
 
   async purchaseAirtime(params: AirtimePurchaseParams): Promise<BillProviderResult> {
     const billerCode = this.getAirtimeBiller(params.network);
-    const itemCode = this.getAirtimeItem(params.network);
 
-    // Flutterwave Bills Payment: POST /v3/bills/payment
+    // FIX: prefer the item code resolved live from the FW catalog (passed via
+    // params.itemCode). Fall back to the hardcoded map only when not provided.
+    const itemCode = params.itemCode || this.getAirtimeItem(params.network);
+
+    logger.info({ billerCode, itemCode, network: params.network }, 'FW purchaseAirtime resolved codes');
+
     const resp = await fwPost('/v3/bills/payment', {
       country: 'NG',
       customer: params.phone,
@@ -52,12 +63,18 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
 
   async purchaseData(params: DataPurchaseParams): Promise<BillProviderResult> {
     const billerCode = this.getDataBiller(params.network);
+
+    // FIX: prefer the live-resolved bundle code from the catalog.
+    const itemCode = params.bundleCode || params.itemCode;
+
+    logger.info({ billerCode, itemCode, network: params.network }, 'FW purchaseData resolved codes');
+
     const resp = await fwPost('/v3/bills/payment', {
       country: 'NG',
       customer: params.phone,
       amount: params.amount,
       biller_code: billerCode,
-      item_code: params.bundleCode,
+      item_code: itemCode,
       reference: params.reference,
     });
     return this.normalizeResult(resp, params.reference);

@@ -8,6 +8,13 @@
  * - Orchestrates via processTransaction(...) for the debit/refund lifecycle
  *
  * PayBeta has been fully removed. Only Flutterwave and VFD are supported.
+ *
+ * FIX: The `airtime` case in providerFn now passes `itemCode: req.itemCode`
+ * into purchaseAirtime. Previously itemCode was omitted, so Flutterwave's
+ * provider had to re-derive it from its hardcoded map — and if the frontend
+ * had already resolved the correct item code from the live catalog, that
+ * correct code was silently discarded, causing "Invalid Biller or item
+ * selected" errors.
  */
 import { sha512 } from 'js-sha512';
 import NodeCache from 'node-cache';
@@ -88,6 +95,11 @@ export default class BillPaymentService {
                 amount: req.amount,
                 network: req.serviceId,
                 reference: idempotencyKey,
+                // FIX: forward the item code resolved from the live catalog by
+                // the frontend. Without this, Flutterwave re-derives the item
+                // code from a hardcoded map, which can diverge from what the
+                // FW catalog actually returns and causes 400 errors.
+                itemCode: req.itemCode,
               });
 
             case 'data':

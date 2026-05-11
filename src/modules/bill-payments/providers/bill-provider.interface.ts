@@ -51,6 +51,7 @@ export interface AirtimePurchaseParams {
   amount: number;
   network?: string; // e.g., 'MTN', 'Glo', 'Airtel', '9mobile'
   reference: string;
+  itemCode?: string;
 }
 
 export interface DataPurchaseParams {
@@ -59,6 +60,7 @@ export interface DataPurchaseParams {
   bundleCode: string;
   network?: string;
   reference: string;
+  itemCode?: string;
 }
 
 export interface TVPurchaseParams {
