@@ -362,7 +362,7 @@ export class VfdProvider {
     });
   }
 
-  async getBillerItems(billerId: string, divisionId?: string, productId?: string) {
+  async getBillerItems(billerId: string, divisionId: string, productId: string) {
     let url = `billeritems?billerId=${billerId}`;
     if (divisionId) url += `&divisionId=${divisionId}`;
     if (productId) url += `&productId=${productId}`;
@@ -377,8 +377,8 @@ export class VfdProvider {
   async validateBillerCustomer(
     customerId: string,
     billerId: string,
-    divisionId?: string,
-    paymentItemCode?: string
+    divisionId: string,
+    paymentItemCode: string
   ) {
     let url = `customervalidate?customerId=${customerId}&billerId=${billerId}`;
     if (divisionId) url += `&divisionId=${divisionId}`;
