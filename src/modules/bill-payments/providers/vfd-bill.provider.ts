@@ -71,45 +71,134 @@ interface VfdProductEntry {
  * ───────────────────────────────────────────────────────────────────────── */
 
 const FRONTEND_ID_TO_NAME: Record<string, string> = {
-  // ── Airtime ──
-  BIL099: 'MTN', MTN_VBANK: 'MTN', MTN_NIGERIA: 'MTN',
-  BIL100: 'Airtel', AIRTEL_VBANK: 'Airtel', AIRTEL_NIGERIA: 'Airtel',
-  BIL102: 'Glo', GLO_VBANK: 'Glo', GLO_NIGERIA: 'Glo',
-  BIL103: '9mobile', '9MOBILE_VBANK': '9mobile', ETISALAT_VBANK: '9mobile', '9MOBILE_NIGERIA': '9mobile',
+  // ───────────────── Airtime ─────────────────
+  BIL099: 'MTN',
+  MTN: 'MTN',
+  MTN_VBANK: 'MTN',
+  MTN_NIGERIA: 'MTN',
 
-  // ── Data ──
+  BIL100: 'Airtel',
+  AIRTEL: 'Airtel',
+  AIRTEL_VBANK: 'Airtel',
+  AIRTEL_NIGERIA: 'Airtel',
+
+  BIL102: 'Glo',
+  GLO: 'Glo',
+  GLO_VBANK: 'Glo',
+  GLO_NIGERIA: 'Glo',
+
+  BIL103: '9mobile',
+  '9MOBILE': '9mobile',
+  '9MOBILE_VBANK': '9mobile',
+  '9MOBILE_NIGERIA': '9mobile',
+  ETISALAT_VBANK: '9mobile',
+  '9mobile': '9mobile',
+
+  // ───────────────── Data ─────────────────
   BIL108: 'MTN',
+  MTN_DATA: 'MTN',
+  mtn_data: 'MTN',
+
   BIL110: 'Airtel',
+  AIRTEL_DATA: 'Airtel',
+  AIRTEL_NIGERIA_DATA: 'Airtel',
+
   BIL109: 'Glo',
+  GLO_DATA: 'Glo',
+  GLO_VBANK_DATA: 'Glo',
+
   BIL111: '9mobile',
+  ETISALAT_DATA: '9mobile',
+  '9mobile_data': '9mobile',
 
-  // ── TV ──
-  BIL121: 'DSTV', DSTV: 'DSTV', MULTICHOICE: 'DSTV',
-  BIL122: 'GOTV', GOTV: 'GOTV',
-  BIL123: 'Startimes', STARTIMES: 'Startimes',
-  BIL124: 'Showmax', SHOWMAX: 'Showmax',
+  // ───────────────── TV ─────────────────
+  BIL121: 'DSTV',
+  DSTV: 'DSTV',
+  DSTV_CORALPAY: 'DSTV',
+  MULTICHOICE: 'DSTV',
 
-  // ── Power ──
-  BIL112: 'Eko Electric', EKEDC: 'Eko Electric', eko_electric_postpaid: 'Eko Electric', eko_electric_prepaid: 'Eko Electric',
-  BIL113: 'Ikeja Electric', IKEDC: 'Ikeja Electric', ikeja_electric_postpaid: 'Ikeja Electric', ikeja_electric_prepaid: 'Ikeja Electric',
-  BIL114: 'Ibadan Electric', IBEDC: 'Ibadan Electric', ibadan_electric_postpaid: 'Ibadan Electric', ibadan_electric_prepaid: 'Ibadan Electric',
-  BIL115: 'Enugu Electric', EEDC: 'Enugu Electric', enugu_electric_postpaid: 'Enugu Electric', enugu_electric_prepaid: 'Enugu Electric',
-  BIL116: 'Port Harcourt Electric', PHEDC: 'Port Harcourt Electric', port_harcourt_electric_postpaid: 'Port Harcourt Electric', port_harcourt_electric_prepaid: 'Port Harcourt Electric',
-  BIL117: 'Benin Electric', BEDC: 'Benin Electric', benin_electric_postpaid: 'Benin Electric', benin_electric_prepaid: 'Benin Electric',
-  BIL118: 'Yola Electric', YEDC: 'Yola Electric', yola_electric_postpaid: 'Yola Electric', yola_electric_prepaid: 'Yola Electric',
-  BIL119: 'Kaduna Electric', KEDC: 'Kaduna Electric', kaduna_electric_postpaid: 'Kaduna Electric', kaduna_electric_prepaid: 'Kaduna Electric',
-  BIL120: 'Kano Electric', KEDCO: 'Kano Electric', kano_electric_postpaid: 'Kano Electric', kano_electric_prepaid: 'Kano Electric',
-  BIL204: 'Abuja Electric', AEDC: 'Abuja Electric', abuja_electric_postpaid: 'Abuja Electric', abuja_electric_prepaid: 'Abuja Electric',
-  BIL127: 'Lekki Concession', LCC: 'Lekki Concession',
+  BIL122: 'GOTV',
+  GOTV: 'GOTV',
+  GOTV_CORALPAY: 'GOTV',
 
-  // ── Internet ──
-  BIL124_INT: 'Smile', SMILE: 'Smile', // Some overlap with TV BIL124
-  BIL125: 'Spectranet', SPECTRANET: 'Spectranet',
-  BIL126: 'Swift', SWIFT: 'Swift',
-  BIL129: 'ipNX', IPNX: 'ipNX',
-  BIL136: 'MTN Hynet', HYNET: 'MTN Hynet',
+  BIL123: 'Startimes',
+  STARTIMES: 'Startimes',
+  startimes: 'Startimes',
 
-  // ── Betting ──
+  BIL124: 'Showmax',
+  SHOWMAX: 'Showmax',
+  'dstvshowmax-alt': 'Showmax',
+
+  // ───────────────── Power ─────────────────
+  BIL112: 'Eko Electric',
+  EKEDC: 'Eko Electric',
+  eko_electric_postpaid: 'Eko Electric',
+  eko_electric_prepaid: 'Eko Electric',
+
+  BIL113: 'Ikeja Electric',
+  IKEDC: 'Ikeja Electric',
+  ikeja_electric_postpaid: 'Ikeja Electric',
+  ikeja_electric_prepaid: 'Ikeja Electric',
+
+  BIL114: 'Ibadan Electric',
+  IBEDC: 'Ibadan Electric',
+  ibadan_electric_postpaid: 'Ibadan Electric',
+  ibadan_electric_prepaid: 'Ibadan Electric',
+
+  BIL115: 'Enugu Electric',
+  EEDC: 'Enugu Electric',
+  enugu_electric_postpaid: 'Enugu Electric',
+  enugu_electric_prepaid: 'Enugu Electric',
+
+  BIL116: 'Port Harcourt Electric',
+  PHEDC: 'Port Harcourt Electric',
+  portharcourt_electric_postpaid: 'Port Harcourt Electric',
+  portharcourt_electric_prepaid: 'Port Harcourt Electric',
+
+  BIL117: 'Benin Electric',
+  BEDC: 'Benin Electric',
+  benin_electric_postpaid: 'Benin Electric',
+  benin_electric_prepaid: 'Benin Electric',
+
+  BIL118: 'Yola Electric',
+  YEDC: 'Yola Electric',
+  yola_electric_postpaid: 'Yola Electric',
+  yola_electric_prepaid: 'Yola Electric',
+
+  BIL119: 'Kaduna Electric',
+  KEDC: 'Kaduna Electric',
+  KAEDCO: 'Kaduna Electric',
+  kaduna_electric_postpaid: 'Kaduna Electric',
+  kaduna_electric_prepaid: 'Kaduna Electric',
+
+  BIL120: 'Kano Electric',
+  KEDCO: 'Kano Electric',
+  kedco_electric_postpaid: 'Kano Electric',
+  kedco_electric_prepaid: 'Kano Electric',
+
+  BIL204: 'Abuja Electric',
+  AEDC: 'Abuja Electric',
+  abuja_electric_postpaid: 'Abuja Electric',
+  abuja_electric_prepaid: 'Abuja Electric',
+
+  // ───────────────── Internet ─────────────────
+  BIL124_INT: 'Smile',
+  SMILE: 'Smile',
+  smile: 'Smile',
+
+  BIL125: 'Spectranet',
+  SPECTRANET: 'Spectranet',
+
+  BIL126: 'Swift',
+  SWIFT: 'Swift',
+
+  BIL129: 'ipNX',
+  IPNX: 'ipNX',
+
+  BIL136: 'MTN Hynet',
+  HYNET: 'MTN Hynet',
+
+  // ───────────────── Betting ─────────────────
   SPORTYBET: 'SportyBet',
   BET9JA: 'Bet9ja',
   BETWAY: 'Betway',
@@ -244,42 +333,86 @@ export class VfdBillProvider implements NormalizedBillProvider {
   /**
    * Resolve a frontend biller ID to the real VFD biller entry via fuzzy matching.
    */
-  private async resolveBiller(category: string, serviceId: string): Promise<VfdBillerEntry> {
+  private async resolveBiller(
+    category: string,
+    serviceId: string
+  ): Promise<VfdBillerEntry> {
+
     const vfdCategory = CATEGORY_TO_VFD[category] || category;
-    let billers = await this.fetchBillers(vfdCategory);
 
-    // 1. Direct match on mapped name
-    const mappedName = FRONTEND_ID_TO_NAME[serviceId] || FRONTEND_ID_TO_NAME[serviceId?.toUpperCase()];
-    if (mappedName) {
-      const match = billers.find(b => this.fuzzyMatch(b.categoryName, mappedName));
-      if (match) return match;
-    }
+    const billers = await this.fetchBillers(vfdCategory);
 
-    throw new Error(`Could not resolve biller: ${JSON.stringify(billers)}`);
+    const mappedName =
+      FRONTEND_ID_TO_NAME[serviceId] ||
+      FRONTEND_ID_TO_NAME[serviceId?.toUpperCase()] ||
+      serviceId;
+
+    // 1. Exact billerId match
+    let match = billers.find(
+      b =>
+        b.billerId?.toLowerCase() === serviceId?.toLowerCase()
+    );
+
+    if (match) return match;
+
+    // 2. Exact billerName match
+    match = billers.find(
+      b =>
+        b.billerName?.toLowerCase() === mappedName?.toLowerCase()
+    );
+
+    if (match) return match;
+
+    // 3. Fuzzy billerName match
+    match = billers.find(b =>
+      this.fuzzyMatch(b.billerName, mappedName)
+    );
+
+    if (match) return match;
+
+    // 4. Fuzzy billerId match
+    match = billers.find(b =>
+      this.fuzzyMatch(b.billerId, mappedName)
+    );
+
+    if (match) return match;
+
+    throw new Error(
+      `Could not resolve biller for category=${category}, serviceId=${serviceId}, mappedName=${mappedName}. Available billers=${JSON.stringify(billers)}`
+    );
   }
 
-  private fuzzyMatch(name: string, target: string): boolean {
-    const b = name.toLowerCase();
-    const t = target.toLowerCase();
+  private fuzzyMatch(name: string = '', target: string = ''): boolean {
+
+    const normalize = (v: string) =>
+      v
+        .toLowerCase()
+        .replace(/[_-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const b = normalize(name);
+    const t = normalize(target);
+
+    if (b === t) return true;
 
     if (b.includes(t) || t.includes(b)) return true;
 
     const aliases: Record<string, string[]> = {
       mtn: ['mtn', 'hynet'],
       airtel: ['airtel'],
-      glo: ['globacom', 'glo'],
+      glo: ['glo', 'globacom'],
       '9mobile': ['9mobile', 'etisalat'],
-      eko: ['ekedc', 'eko electric'],
-      ikeja: ['ikedc', 'ikeja electric'],
-      ibadan: ['ibedc', 'ibadan electric'],
-      enugu: ['eedc', 'enugu electric'],
-      abuja: ['aedc', 'abuja electric'],
-      benin: ['bedc', 'benin electric'],
-      yola: ['yedc', 'yola electric'],
-      kaduna: ['kedc', 'kaduna electric'],
-      kano: ['kedco', 'kano electric'],
-      'port harcourt': ['phedc', 'port harcourt electric'],
-      lekki: ['lcc', 'lekki concession'],
+      eko: ['eko', 'ekedc'],
+      ikeja: ['ikeja', 'ikedc'],
+      ibadan: ['ibadan', 'ibedc'],
+      enugu: ['enugu', 'eedc'],
+      abuja: ['abuja', 'aedc'],
+      benin: ['benin', 'bedc'],
+      yola: ['yola', 'yedc'],
+      kaduna: ['kaduna', 'kaedco', 'kedc'],
+      kano: ['kano', 'kedco'],
+      'port harcourt': ['port harcourt', 'phedc'],
       dstv: ['dstv', 'multichoice'],
       gotv: ['gotv'],
       startimes: ['startimes'],
@@ -290,12 +423,15 @@ export class VfdBillProvider implements NormalizedBillProvider {
       ipnx: ['ipnx'],
     };
 
-    for (const [key, list] of Object.entries(aliases)) {
-      if ((b.includes(key) || list.some(a => b.includes(a))) &&
-        (t.includes(key) || list.some(a => t.includes(a)))) {
+    for (const list of Object.values(aliases)) {
+      const bMatch = list.some(a => b.includes(a));
+      const tMatch = list.some(a => t.includes(a));
+
+      if (bMatch && tMatch) {
         return true;
       }
     }
+
     return false;
   }
 
