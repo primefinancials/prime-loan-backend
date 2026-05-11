@@ -425,7 +425,8 @@ export class VfdBillProvider implements NormalizedBillProvider {
       productId: biller.productId,
       division: biller.division || product.division || '',
       paymentItem: product.paymentCode || '',
-      reference: params.reference
+      reference: params.reference,
+      phoneNumber: params.phone
     };
 
     const res = await this.vfdApi.payBill(payload);
@@ -461,7 +462,12 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
     const product = await this.resolveProduct(biller, params.itemCode);
     try {
-      const res = await this.vfdApi.validateBillerCustomer(params.customerRef, biller.billerId, biller.division, product?.paymentCode);
+      const res = await this.vfdApi.validateBillerCustomer(
+        params.customerRef, 
+        biller.billerId, 
+        biller.division || '', 
+        product?.paymentCode || ''
+      );
       const isSuccess = res?.status === '00' || res?.status?.toString() === '0' || res?.status?.toLowerCase() === 'success';
       if (!isSuccess) {
         logger.warn({ params, res }, 'VFD customer validation failed');
@@ -560,11 +566,11 @@ export class VfdBillProvider implements NormalizedBillProvider {
     }
 
     return products.map(p => ({
-      id: p.productId,
+      id: p.paymentCode, // Frontend expects paymentCode for the /pay endpoint
       name: p.productName,
       billerId: biller?.billerId || billerId,
       amount: p.amount,
-      item_code: p.productId,
+      item_code: p.paymentCode,
       meta: p.raw,
     }));
   }

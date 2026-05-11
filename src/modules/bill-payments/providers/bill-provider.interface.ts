@@ -69,6 +69,8 @@ export interface TVPurchaseParams {
   bouquetCode: string;
   provider: string; // e.g., 'dstv', 'gotv', 'startimes'
   reference: string;
+  itemCode?: string;
+  phone?: string;
 }
 
 export interface PowerPurchaseParams {
@@ -77,6 +79,8 @@ export interface PowerPurchaseParams {
   meterType: string; // 'prepaid' | 'postpaid'
   provider: string;  // e.g., 'IKEDC', 'EKEDC', etc.
   reference: string;
+  itemCode?: string;
+  phone?: string;
 }
 
 export interface BettingPurchaseParams {

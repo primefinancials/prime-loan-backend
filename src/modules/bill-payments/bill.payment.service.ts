@@ -127,6 +127,8 @@ export default class BillPaymentService {
                 meterType: req.meterType || 'prepaid',
                 provider: req.serviceId,
                 reference: idempotencyKey,
+                itemCode: req.itemCode,
+                phone: user.phone || '',
               });
 
             case 'betting':
