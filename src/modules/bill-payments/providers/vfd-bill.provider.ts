@@ -77,12 +77,13 @@ const FRONTEND_ID_TO_NAME: Record<string, string> = {
   BIL100: 'Airtel',
   BIL102: 'Glo',
   BIL103: '9mobile',
-  // ── Airtime (VBank-style IDs) ──
+  // ── Airtime (VBank/Other aliases) ──
   MTN_VBANK: 'MTN',
   AIRTEL_VBANK: 'Airtel',
   GLO_VBANK: 'Glo',
   '9MOBILE_VBANK': '9mobile',
   ETISALAT_VBANK: '9mobile',
+  MTN_NIGERIA: 'MTN',
   // ── Data (Flutterwave biller codes) ──
   BIL108: 'MTN',
   BIL109: 'Glo',
@@ -97,12 +98,14 @@ const FRONTEND_ID_TO_NAME: Record<string, string> = {
   AT133: 'Glo',
   AT134: '9mobile',
   // ── TV ──
-  BIL119: 'DSTV',
-  BIL120: 'GOTV',
+  BIL121: 'DSTV',
+  BIL122: 'GOTV',
   BIL123: 'Startimes',
+  BIL124: 'Showmax',
   DSTV: 'DSTV',
   GOTV: 'GOTV',
   STARTIMES: 'Startimes',
+  SHOWMAX: 'Showmax',
   // ── Power (corrected to Flutterwave doc codes) ──
   BIL112: 'Eko Electric',
   BIL113: 'Ikeja Electric',
@@ -111,8 +114,14 @@ const FRONTEND_ID_TO_NAME: Record<string, string> = {
   BIL116: 'Port Harcourt Electric',
   BIL117: 'Benin Electric',
   BIL118: 'Yola Electric',
-  // BIL119 already mapped to DSTV above; for power, the provider resolves via category
+  BIL119: 'Kaduna Electric',
+  BIL120: 'Kano Electric',
   BIL204: 'Abuja Electric',
+  // ── Power (VFD direct aliases) ──
+  eko_electric_postpaid: 'Eko Electric',
+  eko_electric_prepaid: 'Eko Electric',
+  ikeja_electric_postpaid: 'Ikeja Electric',
+  ikeja_electric_prepaid: 'Ikeja Electric',
   // ── Betting (common Nigerian providers) ──
   SPORTYBET: 'SportyBet',
   BET9JA: 'Bet9ja',
@@ -201,145 +210,116 @@ export class VfdBillProvider implements NormalizedBillProvider {
       }))
       .filter(b => b.billerId);
 
-    logger.info(
-      { category: vfdCategory, count: billers.length, billers: billers.map(b => ({ id: b.billerId, name: b.billerName, productId: b.productId })) },
-      'VFD biller discovery'
-    );
     discoveryCache.set(cacheKey, billers);
     return billers;
   }
 
-  /**
-   * Fetch and cache products for a specific VFD billerId.
-   *
-   * VFD endpoint: GET /billerItems?billerId={billerId}&divisionId={divisionId}&productId={productId}
-   * All three params are MANDATORY per VFD docs.
-   *
-   * VFD response shape:
-   *   { status: "00", data: { paymentitems: [ { paymentitemid, paymentCode, paymentitemname, ... } ] } }
-   *
-   * FIX: Previously only billerId was passed. divisionId and productId are now
-   * forwarded from the VfdBillerEntry so VFD's /billerItems query is complete.
-   */
-  private async fetchProducts(
-    vfdBillerId: string,
-    divisionId?: string,
-    productId?: string
-  ): Promise<VfdProductEntry[]> {
-    const cacheKey = `vfd_products_${vfdBillerId}`;
-    const cached = discoveryCache.get<VfdProductEntry[]>(cacheKey);
-    if (cached) return cached;
+  private async fetchProducts(vfdBillerId: string, divisionId: string, productId: string): Promise<VfdProductEntry[]> {
+    try {
+      const res = await this.vfdApi.getBillerItems(vfdBillerId, divisionId, productId);
+      const body = this.unwrapBody(res);
 
-    const res = await this.vfdApi.getBillerItems(vfdBillerId, divisionId, productId);
+      if (body.status !== '00') {
+        logger.warn({ vfdBillerId, message: body.message }, 'VFD product discovery returned non-success status');
+        return [];
+      }
 
-    const body = this.unwrapBody(res);
-    if (body.status !== '00' && body.status?.toLowerCase() !== 'success') {
-      throw new Error(body.message || `VFD product discovery failed for biller ${vfdBillerId}`);
+      const items = body.data?.paymentitems || body.data || [];
+      if (!Array.isArray(items)) return [];
+
+      return items.map((item: any) => ({
+        productId: item.paymentitemid || item.id,
+        paymentCode: item.paymentCode || item.itemCode || item.id,
+        productName: item.paymentitemname || item.name,
+        amount: Number(item.amount) || 0,
+        isAmountFixed: item.isAmountFixed === true || item.fixedAmount === true,
+        division: divisionId,
+        raw: item,
+      }));
+    } catch (error: any) {
+      logger.error({ vfdBillerId, error: error.message }, 'VFD product discovery failed hard');
+      return [];
     }
-
-    const rawItems: any[] = Array.isArray(body?.data)
-      ? body.data
-      : Array.isArray((body?.data as any)?.paymentitems)
-        ? (body.data as any).paymentitems
-        : Array.isArray((body as any)?.paymentitems)
-          ? (body as any).paymentitems
-          : Array.isArray(body)
-            ? body
-            : [];
-
-    const products: VfdProductEntry[] = rawItems.map((p: any) => ({
-      productId: String(p.paymentitemid || p.productId || p.id || ''),
-      paymentCode: String(p.paymentCode || p.payDirectitemCode || p.paymentitemid || ''),
-      productName: String(p.paymentitemname || p.name || p.productName || ''),
-      amount: Number(p.amount) || 0,
-      isAmountFixed: String(p.isAmountFixed).toLowerCase() === 'true',
-      division: String(p.division || ''),
-      raw: p,
-    }));
-
-    logger.info(
-      { billerId: vfdBillerId, divisionId, productId, count: products.length, sample: products.slice(0, 3).map(p => ({ id: p.productId, code: p.paymentCode, name: p.productName })) },
-      'VFD product discovery'
-    );
-    discoveryCache.set(cacheKey, products);
-    return products;
   }
 
   /**
    * Resolve a frontend biller ID to the real VFD biller entry via fuzzy matching.
    */
-  private async resolveBiller(category: string, frontendId: string): Promise<VfdBillerEntry | null> {
+  private async resolveBiller(category: string, serviceId: string): Promise<VfdBillerEntry | null> {
     const vfdCategory = CATEGORY_TO_VFD[category] || category;
-    const billers = await this.fetchBillers(vfdCategory);
+    let billers = await this.fetchBillers(vfdCategory);
 
-    if (billers.length === 0) {
-      logger.warn({ category, frontendId, vfdCategory }, 'No billers found from VFD — cannot resolve');
-      return null;
+    // 1. Direct match on mapped name
+    const mappedName = FRONTEND_ID_TO_NAME[serviceId] || FRONTEND_ID_TO_NAME[serviceId?.toUpperCase()];
+    if (mappedName) {
+      const match = billers.find(b => this.fuzzyMatch(b.billerName, mappedName));
+      if (match) return match;
     }
 
-    // 1. Exact match on billerId
-    const exact = billers.find(b => b.billerId === frontendId);
-    if (exact) return exact;
+    // 2. Fuzzy match on serviceId itself
+    const serviceMatch = billers.find(b => this.fuzzyMatch(b.billerName, serviceId) || this.fuzzyMatch(b.billerId, serviceId));
+    if (serviceMatch) return serviceMatch;
 
-    // 2. Map the frontend ID to a human-readable name, then fuzzy-match billerName
-    const knownName = (FRONTEND_ID_TO_NAME[frontendId] || FRONTEND_ID_TO_NAME[frontendId.toUpperCase()] || frontendId).toLowerCase();
-
-    const fuzzy = billers.find(b => {
-      const bName = b.billerName.toLowerCase();
-      const bId = b.billerId.toLowerCase();
-      const nameWord = knownName.split(/[\s_]/)[0];
-      return (
-        bName.includes(knownName) ||
-        bId.includes(knownName) ||
-        knownName.includes(bName.split(' ')[0]) ||
-        bName.includes(nameWord) ||
-        bId.includes(nameWord)
+    // 3. Cross-category fallback
+    if (vfdCategory !== 'all') {
+      const allBillers = await this.fetchBillers('');
+      const globalMatch = allBillers.find(b => 
+        (mappedName && this.fuzzyMatch(b.billerName, mappedName)) ||
+        this.fuzzyMatch(b.billerName, serviceId) ||
+        this.fuzzyMatch(b.billerId, serviceId)
       );
-    });
-
-    if (fuzzy) {
-      logger.info({ frontendId, knownName, resolvedTo: fuzzy.billerId, billerName: fuzzy.billerName }, 'VFD biller resolved via fuzzy match');
-      return fuzzy;
+      if (globalMatch) return globalMatch;
     }
 
-    // 3. If exactly 1 biller in category, use it
-    if (billers.length === 1) {
-      logger.info({ frontendId, resolvedTo: billers[0].billerId }, 'Single biller in VFD category — using it');
-      return billers[0];
-    }
-
-    logger.warn({ frontendId, knownName, vfdCategory, available: billers.map(b => `${b.billerId}(${b.billerName})`) }, 'VFD biller not resolved');
     return null;
   }
 
-  /**
-   * Resolve a frontend item code to a VFD product entry.
-   * FIX: now forwards divisionId + productId from the biller entry so
-   * fetchProducts can call VFD's /billerItems with all required params.
-   */
+  private fuzzyMatch(name: string, target: string): boolean {
+    const b = name.toLowerCase();
+    const t = target.toLowerCase();
+
+    if (b.includes(t) || t.includes(b)) return true;
+
+    const aliases: Record<string, string[]> = {
+      mtn: ['mtn'],
+      airtel: ['airtel'],
+      glo: ['globacom', 'glo'],
+      '9mobile': ['9mobile', 'etisalat'],
+      eko: ['ekedc', 'eko electric'],
+      ikeja: ['ikedc', 'ikeja electric'],
+      ibadan: ['ibedc', 'ibadan electric'],
+      enugu: ['eedc', 'enugu electric'],
+      abuja: ['aedc', 'abuja electric'],
+      benin: ['bedc', 'benin electric'],
+      'port harcourt': ['phedc', 'port harcourt electric'],
+      dstv: ['dstv', 'multichoice'],
+      gotv: ['gotv'],
+    };
+
+    for (const [key, list] of Object.entries(aliases)) {
+      if ((b.includes(key) || list.some(a => b.includes(a))) && 
+          (t.includes(key) || list.some(a => t.includes(a)))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   private async resolveProduct(biller: VfdBillerEntry, frontendItemCode?: string): Promise<VfdProductEntry | null> {
     const products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
     if (products.length === 0) return null;
 
     if (!frontendItemCode) return products[0];
 
-    // Exact match on productId or paymentCode
-    const exact = products.find(
-      p => p.productId === frontendItemCode || p.paymentCode === frontendItemCode
-    );
+    const exact = products.find(p => p.productId === frontendItemCode || p.paymentCode === frontendItemCode);
     if (exact) return exact;
 
-    // Fuzzy name match
     const lower = frontendItemCode.toLowerCase();
-    const fuzzy = products.find(p =>
+    return products.find(p =>
       p.productName.toLowerCase().includes(lower) ||
       p.productId.toLowerCase().includes(lower) ||
       p.paymentCode.toLowerCase().includes(lower)
-    );
-    if (fuzzy) return fuzzy;
-
-    // Fallback: first product (safe for airtime; caller should check for data)
-    return products[0];
+    ) || products[0];
   }
 
   /* ═══════════════════════════════════════════════
@@ -348,222 +328,134 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
   async purchaseAirtime(params: AirtimePurchaseParams): Promise<BillProviderResult> {
     const biller = await this.resolveBiller('airtime', params.network || '');
-    if (!biller) {
-      return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD biller for airtime network: ${params.network}` };
-    }
+    if (!biller) return { success: false, reference: params.reference, status: 'FAILED', message: 'Could not resolve biller' };
 
     const product = await this.resolveProduct(biller);
-    if (!product) {
-      return { success: false, reference: params.reference, status: 'FAILED', message: `No VFD products found for airtime biller: ${biller.billerId}` };
-    }
+    if (!product) return { success: false, reference: params.reference, status: 'FAILED', message: 'No products found for this biller' };
 
-    const payload = {
+    const payload: any = {
       amount: params.amount,
       customerId: params.phone,
       billerId: biller.billerId,
       productId: biller.productId,
-      division: biller.division || product.division,
-      paymentItem: product.paymentCode,
+      division: biller.division || product.division || '',
+      paymentItem: product.paymentCode || '',
       reference: params.reference,
-      phoneNumber: params.phone,
+      phoneNumber: params.phone
     };
 
-    logger.info({ payload }, 'VFD purchaseAirtime payload');
     const res = await this.vfdApi.payBill(payload);
     return this.mapResponse(res, params.reference);
   }
 
   async purchaseData(params: DataPurchaseParams): Promise<BillProviderResult> {
     const biller = await this.resolveBiller('data', params.network || '');
-    if (!biller) {
-      return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD biller for data network: ${params.network}` };
-    }
+    if (!biller) return { success: false, reference: params.reference, status: 'FAILED', message: 'Could not resolve biller' };
 
     const product = await this.resolveProduct(biller, params.bundleCode);
-    if (!product) {
-      return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD product for bundle: ${params.bundleCode}` };
-    }
+    if (!product) return { success: false, reference: params.reference, status: 'FAILED', message: 'Requested data bundle not found' };
 
-    const payload = {
+    const payload: any = {
       amount: params.amount,
       customerId: params.phone,
       billerId: biller.billerId,
       productId: biller.productId,
-      division: biller.division || product.division,
-      paymentItem: product.paymentCode,
+      division: biller.division || product.division || '',
+      paymentItem: product.paymentCode || '',
       reference: params.reference,
-      phoneNumber: params.phone,
+      phoneNumber: params.phone
     };
 
-    logger.info({ payload }, 'VFD purchaseData payload');
     const res = await this.vfdApi.payBill(payload);
     return this.mapResponse(res, params.reference);
   }
 
   async purchaseTV(params: TVPurchaseParams): Promise<BillProviderResult> {
     const biller = await this.resolveBiller('tv', params.provider);
-    if (!biller) {
-      return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD biller for TV: ${params.provider}` };
-    }
+    if (!biller) return { success: false, reference: params.reference, status: 'FAILED', message: 'Could not resolve biller' };
 
     const product = await this.resolveProduct(biller, params.bouquetCode);
-    if (!product) {
-      return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD product for bouquet: ${params.bouquetCode}` };
-    }
+    if (!product) return { success: false, reference: params.reference, status: 'FAILED', message: 'Requested TV package not found' };
 
-    const payload = {
+    const payload: any = {
       amount: params.amount,
       customerId: params.smartcardNo,
       billerId: biller.billerId,
       productId: biller.productId,
-      division: biller.division || product.division,
-      paymentItem: product.paymentCode,
-      reference: params.reference,
+      division: biller.division || product.division || '',
+      paymentItem: product.paymentCode || '',
+      reference: params.reference
     };
 
-    logger.info({ payload }, 'VFD purchaseTV payload');
     const res = await this.vfdApi.payBill(payload);
     return this.mapResponse(res, params.reference);
   }
 
   async purchasePower(params: PowerPurchaseParams): Promise<BillProviderResult> {
     const biller = await this.resolveBiller('power', params.provider);
-    if (!biller) {
-      return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD biller for power: ${params.provider}` };
-    }
+    if (!biller) return { success: false, reference: params.reference, status: 'FAILED', message: 'Could not resolve biller' };
 
     const products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
     const meterLower = (params.meterType || 'prepaid').toLowerCase();
+    const product = products.find(p => p.productName.toLowerCase().includes(meterLower)) || products[0];
 
-    const product =
-      products.find(p => p.productName.toLowerCase().includes(meterLower)) ||
-      products.find(p => p.paymentCode.toLowerCase().includes(meterLower)) ||
-      products[0];
+    if (!product) return { success: false, reference: params.reference, status: 'FAILED', message: 'No products found for this electricity provider' };
 
-    if (!product) {
-      return { success: false, reference: params.reference, status: 'FAILED', message: `No VFD products found for power biller: ${biller.billerId}` };
-    }
-
-    const payload = {
+    const payload: any = {
       amount: params.amount,
       customerId: params.meterNo,
       billerId: biller.billerId,
       productId: biller.productId,
-      division: biller.division || product.division,
-      paymentItem: product.paymentCode,
-      reference: params.reference,
+      division: biller.division || product.division || '',
+      paymentItem: product.paymentCode || '',
+      reference: params.reference
     };
 
-    logger.info({ payload }, 'VFD purchasePower payload');
     const res = await this.vfdApi.payBill(payload);
     return this.mapResponse(res, params.reference);
   }
 
   async purchaseBetting(params: BettingPurchaseParams): Promise<BillProviderResult> {
     const biller = await this.resolveBiller('betting', params.provider);
-    if (!biller) {
-      return { success: false, reference: params.reference, status: 'FAILED', message: `Could not resolve VFD biller for betting: ${params.provider}` };
-    }
+    if (!biller) return { success: false, reference: params.reference, status: 'FAILED', message: 'Could not resolve biller' };
 
     const product = await this.resolveProduct(biller);
-
-    const payload = {
+    const payload: any = {
       amount: params.amount,
       customerId: params.customerId,
       billerId: biller.billerId,
       productId: biller.productId,
       division: biller.division || product?.division || '',
       paymentItem: product?.paymentCode || biller.billerId,
-      reference: params.reference,
+      reference: params.reference
     };
 
-    logger.info({ payload }, 'VFD purchaseBetting payload');
     const res = await this.vfdApi.payBill(payload);
     return this.mapResponse(res, params.reference);
   }
 
   /* ═══════════════════════════════════════════════
    * VALIDATION
-   *
-   * VFD endpoint: GET /customervalidate
-   *   ?divisionId={divisionId}
-   *   &paymentItem={paymentCode}   ← must be the paymentCode, NOT productId
-   *   &customerId={customerId}
-   *   &billerId={billerId}
    * ═══════════════════════════════════════════════ */
 
   async validateAccount(params: ValidationParams): Promise<BillValidationResult> {
-    const category = params.serviceType || 'tv';
-    const frontendId = params.provider || params.itemCode || '';
-
-    const biller = await this.resolveBiller(category, frontendId);
-    if (!biller) {
-      logger.warn({ category, frontendId }, 'Could not resolve VFD biller for validation');
-      return { valid: false, name: '' };
-    }
+    const biller = await this.resolveBiller(params.serviceType || 'tv', params.provider || params.itemCode || '');
+    if (!biller) return { valid: false, name: '' };
 
     const product = await this.resolveProduct(biller, params.itemCode);
-
-    // For airtime/data: validation is optional per VFD docs
-    const isAirtimeOrData = category === 'airtime' || category === 'data';
-    if (isAirtimeOrData && !product) {
-      return { valid: true, name: 'Verified', meta: { message: 'Validation skipped for airtime/data' } };
-    }
-
     try {
-      const res = await this.vfdApi.validateBillerCustomer(
-        params.customerRef,
-        biller.billerId,
-        biller.division,
-        product?.paymentCode
-      );
-
-      logger.info({ customerRef: params.customerRef, billerId: biller.billerId, response: res }, 'VFD validation response');
-
+      const res = await this.vfdApi.validateBillerCustomer(params.customerRef, biller.billerId, biller.division, product?.paymentCode);
       const isSuccess = res?.status === '00' || res?.status?.toLowerCase() === 'success';
-      if (isSuccess) {
-        const name =
-          res.data?.name ||
-          res.data?.customerName ||
-          res.data?.customer ||
-          res.data?.fullName ||
-          'Valid Customer';
-        return {
-          valid: true,
-          name,
-          meta: {
-            ...res.data,
-            address: res.data?.address,
-            customer: res.data?.customerId || params.customerRef,
-          },
-        };
-      }
-      return { valid: false, name: '' };
-    } catch (e: any) {
-      logger.error({ error: e.message, customerRef: params.customerRef, billerId: biller?.billerId }, 'VFD validation error');
-      return { valid: false, name: '' };
-    }
+      return isSuccess ? { valid: true, name: res.data?.name || res.data?.customerName || 'Valid Customer', meta: res.data } : { valid: false, name: '' };
+    } catch { return { valid: false, name: '' }; }
   }
 
   /* ═══════════════════════════════════════════════
-   * CATALOG DISCOVERY (exposed to frontend)
+   * CATALOG DISCOVERY
    * ═══════════════════════════════════════════════ */
 
-  /**
-   * FIX: VFD /billercategory returns objects with ONLY a `category` key:
-   *   { "category": "Airtime" }
-   * The old code checked `c.categoryName || c.name || c.category` — because
-   * `c.categoryName` and `c.name` are both undefined for VFD objects, the
-   * result was an empty string. `c.category` is now checked FIRST.
-   *
-   * Additionally, a double-unwrap guard is added: if `res` is a raw axios
-   * response, `res.data` is the VFD envelope `{ status, data: [...] }`, so
-   * we need to read `res.data.data` for the actual array.
-   */
   async getCategories(): Promise<BillCategory[]> {
     const res = await this.vfdApi.getBillerCategories();
-
-    // Unwrap one level if needed (axios response vs already-unwrapped body)
     const body = this.unwrapBody(res);
     if (body.status !== '00' && body.status?.toLowerCase() !== 'success') {
       throw new Error(body.message || 'VFD category discovery failed');
@@ -621,9 +513,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
     }
 
     if (products.length === 0) {
-      // Fallback: if resolveBiller fails but billerId might be a real VFD billerId,
-      // try fetching directly (though this is unlikely to work due to missing mandatory params).
-      products = await this.fetchProducts(billerId);
+      logger.warn({ billerId }, 'No products found for biller — resolution failed to provide division/productId');
     }
 
     return products.map(p => ({
