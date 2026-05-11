@@ -72,57 +72,45 @@ interface VfdProductEntry {
  * ───────────────────────────────────────────────────────────────────────── */
 
 const FRONTEND_ID_TO_NAME: Record<string, string> = {
-  // ── Airtime (Flutterwave biller codes) ──
-  BIL099: 'MTN',
-  BIL100: 'Airtel',
-  BIL102: 'Glo',
-  BIL103: '9mobile',
-  // ── Airtime (VBank/Other aliases) ──
-  MTN_VBANK: 'MTN',
-  AIRTEL_VBANK: 'Airtel',
-  GLO_VBANK: 'Glo',
-  '9MOBILE_VBANK': '9mobile',
-  ETISALAT_VBANK: '9mobile',
-  MTN_NIGERIA: 'MTN',
-  // ── Data (Flutterwave biller codes) ──
+  // ── Airtime ──
+  BIL099: 'MTN', MTN_VBANK: 'MTN', MTN_NIGERIA: 'MTN',
+  BIL100: 'Airtel', AIRTEL_VBANK: 'Airtel', AIRTEL_NIGERIA: 'Airtel',
+  BIL102: 'Glo', GLO_VBANK: 'Glo', GLO_NIGERIA: 'Glo',
+  BIL103: '9mobile', '9MOBILE_VBANK': '9mobile', ETISALAT_VBANK: '9mobile', '9MOBILE_NIGERIA': '9mobile',
+
+  // ── Data ──
   BIL108: 'MTN',
-  BIL109: 'Glo',
   BIL110: 'Airtel',
+  BIL109: 'Glo',
   BIL111: '9mobile',
-  // ── Airtime item codes ──
-  AT099: 'MTN',
-  AT100: 'Airtel',
-  AT102: 'Airtel',
-  AT104: 'Glo',
-  AT106: '9mobile',
-  AT133: 'Glo',
-  AT134: '9mobile',
+
   // ── TV ──
-  BIL121: 'DSTV',
-  BIL122: 'GOTV',
-  BIL123: 'Startimes',
-  BIL124: 'Showmax',
-  DSTV: 'DSTV',
-  GOTV: 'GOTV',
-  STARTIMES: 'Startimes',
-  SHOWMAX: 'Showmax',
-  // ── Power (corrected to Flutterwave doc codes) ──
-  BIL112: 'Eko Electric',
-  BIL113: 'Ikeja Electric',
-  BIL114: 'Ibadan Electric',
-  BIL115: 'Enugu Electric',
-  BIL116: 'Port Harcourt Electric',
-  BIL117: 'Benin Electric',
-  BIL118: 'Yola Electric',
-  BIL119: 'Kaduna Electric',
-  BIL120: 'Kano Electric',
-  BIL204: 'Abuja Electric',
-  // ── Power (VFD direct aliases) ──
-  eko_electric_postpaid: 'Eko Electric',
-  eko_electric_prepaid: 'Eko Electric',
-  ikeja_electric_postpaid: 'Ikeja Electric',
-  ikeja_electric_prepaid: 'Ikeja Electric',
-  // ── Betting (common Nigerian providers) ──
+  BIL121: 'DSTV', DSTV: 'DSTV', MULTICHOICE: 'DSTV',
+  BIL122: 'GOTV', GOTV: 'GOTV',
+  BIL123: 'Startimes', STARTIMES: 'Startimes',
+  BIL124: 'Showmax', SHOWMAX: 'Showmax',
+
+  // ── Power ──
+  BIL112: 'Eko Electric', EKEDC: 'Eko Electric', eko_electric_postpaid: 'Eko Electric', eko_electric_prepaid: 'Eko Electric',
+  BIL113: 'Ikeja Electric', IKEDC: 'Ikeja Electric', ikeja_electric_postpaid: 'Ikeja Electric', ikeja_electric_prepaid: 'Ikeja Electric',
+  BIL114: 'Ibadan Electric', IBEDC: 'Ibadan Electric', ibadan_electric_postpaid: 'Ibadan Electric', ibadan_electric_prepaid: 'Ibadan Electric',
+  BIL115: 'Enugu Electric', EEDC: 'Enugu Electric', enugu_electric_postpaid: 'Enugu Electric', enugu_electric_prepaid: 'Enugu Electric',
+  BIL116: 'Port Harcourt Electric', PHEDC: 'Port Harcourt Electric', port_harcourt_electric_postpaid: 'Port Harcourt Electric', port_harcourt_electric_prepaid: 'Port Harcourt Electric',
+  BIL117: 'Benin Electric', BEDC: 'Benin Electric', benin_electric_postpaid: 'Benin Electric', benin_electric_prepaid: 'Benin Electric',
+  BIL118: 'Yola Electric', YEDC: 'Yola Electric', yola_electric_postpaid: 'Yola Electric', yola_electric_prepaid: 'Yola Electric',
+  BIL119: 'Kaduna Electric', KEDC: 'Kaduna Electric', kaduna_electric_postpaid: 'Kaduna Electric', kaduna_electric_prepaid: 'Kaduna Electric',
+  BIL120: 'Kano Electric', KEDCO: 'Kano Electric', kano_electric_postpaid: 'Kano Electric', kano_electric_prepaid: 'Kano Electric',
+  BIL204: 'Abuja Electric', AEDC: 'Abuja Electric', abuja_electric_postpaid: 'Abuja Electric', abuja_electric_prepaid: 'Abuja Electric',
+  BIL127: 'Lekki Concession', LCC: 'Lekki Concession',
+
+  // ── Internet ──
+  BIL124_INT: 'Smile', SMILE: 'Smile', // Some overlap with TV BIL124
+  BIL125: 'Spectranet', SPECTRANET: 'Spectranet',
+  BIL126: 'Swift', SWIFT: 'Swift',
+  BIL129: 'ipNX', IPNX: 'ipNX',
+  BIL136: 'MTN Hynet', HYNET: 'MTN Hynet',
+
+  // ── Betting ──
   SPORTYBET: 'SportyBet',
   BET9JA: 'Bet9ja',
   BETWAY: 'Betway',
@@ -184,7 +172,9 @@ export class VfdBillProvider implements NormalizedBillProvider {
     const body = this.unwrapBody(res);
 
     if (body.status !== '00' && body.status?.toLowerCase() !== 'success') {
-      throw new Error(body.message || `VFD biller discovery failed for ${vfdCategory}`);
+      const msg = body.message || `VFD biller discovery failed for category ${vfdCategory}`;
+      logger.error({ vfdCategory, status: body.status, message: msg }, 'VFD biller discovery failed');
+      throw new Error(msg);
     }
 
     const rawBillers: any[] = Array.isArray(body.data)
@@ -215,31 +205,27 @@ export class VfdBillProvider implements NormalizedBillProvider {
   }
 
   private async fetchProducts(vfdBillerId: string, divisionId: string, productId: string): Promise<VfdProductEntry[]> {
-    try {
-      const res = await this.vfdApi.getBillerItems(vfdBillerId, divisionId, productId);
-      const body = this.unwrapBody(res);
+    const res = await this.vfdApi.getBillerItems(vfdBillerId, divisionId, productId);
+    const body = this.unwrapBody(res);
 
-      if (body.status !== '00') {
-        logger.warn({ vfdBillerId, message: body.message }, 'VFD product discovery returned non-success status');
-        return [];
-      }
-
-      const items = body.data?.paymentitems || body.data || [];
-      if (!Array.isArray(items)) return [];
-
-      return items.map((item: any) => ({
-        productId: item.paymentitemid || item.id,
-        paymentCode: item.paymentCode || item.itemCode || item.id,
-        productName: item.paymentitemname || item.name,
-        amount: Number(item.amount) || 0,
-        isAmountFixed: item.isAmountFixed === true || item.fixedAmount === true,
-        division: divisionId,
-        raw: item,
-      }));
-    } catch (error: any) {
-      logger.error({ vfdBillerId, error: error.message }, 'VFD product discovery failed hard');
-      return [];
+    if (body.status !== '00') {
+      const msg = body.message || `VFD product discovery failed for biller ${vfdBillerId}`;
+      logger.error({ vfdBillerId, status: body.status, message: msg }, 'VFD product discovery failed');
+      throw new Error(msg);
     }
+
+    const items = body.data?.paymentitems || body.data || [];
+    if (!Array.isArray(items)) return [];
+
+    return items.map((item: any) => ({
+      productId: item.paymentitemid || item.id,
+      paymentCode: item.paymentCode || item.itemCode || item.id,
+      productName: item.paymentitemname || item.name,
+      amount: Number(item.amount) || 0,
+      isAmountFixed: item.isAmountFixed === true || item.fixedAmount === true,
+      division: divisionId,
+      raw: item,
+    }));
   }
 
   /**
@@ -281,7 +267,7 @@ export class VfdBillProvider implements NormalizedBillProvider {
     if (b.includes(t) || t.includes(b)) return true;
 
     const aliases: Record<string, string[]> = {
-      mtn: ['mtn'],
+      mtn: ['mtn', 'hynet'],
       airtel: ['airtel'],
       glo: ['globacom', 'glo'],
       '9mobile': ['9mobile', 'etisalat'],
@@ -291,9 +277,19 @@ export class VfdBillProvider implements NormalizedBillProvider {
       enugu: ['eedc', 'enugu electric'],
       abuja: ['aedc', 'abuja electric'],
       benin: ['bedc', 'benin electric'],
+      yola: ['yedc', 'yola electric'],
+      kaduna: ['kedc', 'kaduna electric'],
+      kano: ['kedco', 'kano electric'],
       'port harcourt': ['phedc', 'port harcourt electric'],
+      lekki: ['lcc', 'lekki concession'],
       dstv: ['dstv', 'multichoice'],
       gotv: ['gotv'],
+      startimes: ['startimes'],
+      showmax: ['showmax'],
+      smile: ['smile'],
+      spectranet: ['spectranet'],
+      swift: ['swift'],
+      ipnx: ['ipnx'],
     };
 
     for (const [key, list] of Object.entries(aliases)) {
