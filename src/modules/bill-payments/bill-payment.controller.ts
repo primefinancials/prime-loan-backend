@@ -97,7 +97,8 @@ export class BillPaymentController {
   static async getBillItems(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
       const { billerCode } = req.params;
-      const data = await BillPaymentService.getBillItems(billerCode);
+      const { categoryId } = req.query;
+      const data = await BillPaymentService.getBillItems(billerCode, categoryId ? String(categoryId) : undefined);
       res.status(200).json({ status: "success", data });
     } catch (error) {
       next(error);

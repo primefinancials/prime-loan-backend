@@ -170,11 +170,12 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
     // Unwrap: VFD returns { status, message, data: [...] }
     const body = this.unwrapBody(res);
+    const isSuccess = body.status === '00' || body.status?.toLowerCase() === 'success' || body.status === '0';
 
-    if (body.status !== '00' && body.status?.toLowerCase() !== 'success') {
-      const msg = body.message || `VFD biller discovery failed for category ${vfdCategory}`;
-      logger.error({ vfdCategory, status: body.status, message: msg }, 'VFD biller discovery failed');
-      throw new Error(msg);
+    if (!isSuccess) {
+      const msg = body.message || body.statusText || `VFD error (${body.status || 'no-status'})`;
+      logger.error({ vfdCategory, body }, 'VFD biller discovery failed');
+      throw new Error(`VFD Biller Error: ${msg}`);
     }
 
     const rawBillers: any[] = Array.isArray(body.data)
@@ -207,11 +208,12 @@ export class VfdBillProvider implements NormalizedBillProvider {
   private async fetchProducts(vfdBillerId: string, divisionId: string, productId: string): Promise<VfdProductEntry[]> {
     const res = await this.vfdApi.getBillerItems(vfdBillerId, divisionId, productId);
     const body = this.unwrapBody(res);
+    const isSuccess = body.status === '00' || body.status?.toLowerCase() === 'success' || body.status === '0';
 
-    if (body.status !== '00') {
-      const msg = body.message || `VFD product discovery failed for biller ${vfdBillerId}`;
-      logger.error({ vfdBillerId, status: body.status, message: msg }, 'VFD product discovery failed');
-      throw new Error(msg);
+    if (!isSuccess) {
+      const msg = body.message || body.statusText || `VFD error (${body.status || 'no-status'})`;
+      logger.error({ vfdBillerId, body }, 'VFD product discovery failed');
+      throw new Error(`VFD Product Error: ${msg}`);
     }
 
     const items = body.data?.paymentitems || body.data || [];
@@ -493,18 +495,27 @@ export class VfdBillProvider implements NormalizedBillProvider {
     }));
   }
 
-  async getProducts(billerId: string): Promise<BillProduct[]> {
-    // billerId here may be a frontend ID or a real VFD billerId.
-    // ALWAYS resolve the biller first to get the mandatory divisionId and productId
-    // required for the VFD /billerItems call.
+  async getProducts(billerId: string, categoryId?: string): Promise<BillProduct[]> {
     let biller: VfdBillerEntry | null = null;
     let products: VfdProductEntry[] = [];
 
-    for (const cat of ['airtime', 'data', 'tv', 'power', 'betting', 'internet']) {
-      biller = await this.resolveBiller(cat, billerId);
+    // If categoryId is provided, attempt targeted resolution first
+    if (categoryId) {
+      biller = await this.resolveBiller(categoryId, billerId);
       if (biller) {
         products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
-        if (products.length > 0) break;
+      }
+    }
+
+    // Fallback to cross-category loop if no products found yet
+    if (products.length === 0) {
+      for (const cat of ['airtime', 'data', 'tv', 'power', 'betting', 'internet']) {
+        if (cat === categoryId) continue; // already tried
+        biller = await this.resolveBiller(cat, billerId);
+        if (biller) {
+          products = await this.fetchProducts(biller.billerId, biller.division, biller.productId);
+          if (products.length > 0) break;
+        }
       }
     }
 
@@ -588,9 +599,15 @@ export class VfdBillProvider implements NormalizedBillProvider {
    * return `res.data`; otherwise we return `res` as-is.
    */
   private unwrapBody(res: any): any {
-    if (res && res.data && typeof res.data === 'object' && 'status' in res.data) {
+    // If we have an axios-like wrapper
+    if (res && res.data && typeof res.data === 'object') {
       return res.data;
     }
+    // If it's empty
+    if (!res || res === "") {
+      return { status: '99', message: 'VFD returned an empty response (service may be down or rejecting the request)' };
+    }
+    // If it's already the body
     return res;
   }
 }
