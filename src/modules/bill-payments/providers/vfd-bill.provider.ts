@@ -122,13 +122,20 @@ const FRONTEND_ID_TO_NAME: Record<string, string> = {
  * Maps internal category names to VFD's categoryName values.
  */
 const CATEGORY_TO_VFD: Record<string, string> = {
+  // Flutterwave codes -> VFD names
+  AIRTIME: 'Airtime',
+  MOBILEDATA: 'Data',
+  CABLEBILLS: 'Cable TV',
+  UTILITYBILLS: 'Utility',
+  BETTING: 'Betting',
+  INTSERVICE: 'Internet Subscription',
+  // Local aliases for backward compatibility
   airtime: 'Airtime',
   data: 'Data',
   tv: 'Cable TV',
   power: 'Utility',
   betting: 'Betting',
   internet: 'Internet Subscription',
-  insurance: 'Insurance',
 };
 
 /* ─────────────────────────────────────────────────────────────────────────
@@ -171,18 +178,16 @@ export class VfdBillProvider implements NormalizedBillProvider {
       const res = await this.vfdApi.getBillerList(vfdCategory);
       body = this.unwrapBody(res);
     } catch (err) {
-      const errorData = (err as any).response?.data;
-      const errorMsg = errorData?.message || errorData?.statusText || (err as any).message || 'Unknown VFD error';
-      logger.error({ vfdCategory, error: (err as any).message, data: errorData }, 'VFD biller discovery request failed');
-      throw new Error(`VFD Biller Request Failed: ${errorMsg}`);
+      const errorData = (err as any).response?.data || (err as any).message;
+      logger.error({ vfdCategory, error: errorData }, 'VFD biller discovery request failed');
+      throw new Error(`VFD Biller Request Failed: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`);
     }
 
     const isSuccess = body.status === '00' || body.status?.toString() === '0' || body.status?.toLowerCase() === 'success';
 
     if (!isSuccess) {
-      const msg = body.message || body.statusText || `VFD error (${body.status || 'no-status'})`;
       logger.error({ vfdCategory, body }, 'VFD biller discovery failed');
-      throw new Error(`VFD Biller Error: ${msg}`);
+      throw new Error(`VFD Biller Error: ${JSON.stringify(body)}`);
     }
 
     const rawBillers: any[] = Array.isArray(body.data)
@@ -218,18 +223,16 @@ export class VfdBillProvider implements NormalizedBillProvider {
       const res = await this.vfdApi.getBillerItems(vfdBillerId, divisionId, productId);
       body = this.unwrapBody(res);
     } catch (err) {
-      const errorData = (err as any).response?.data;
-      const errorMsg = errorData?.message || errorData?.statusText || (err as any).message || 'Unknown VFD error';
-      logger.error({ vfdBillerId, error: (err as any).message, data: errorData }, 'VFD product discovery request failed');
-      throw new Error(`VFD Product Request Failed: ${errorMsg}`);
+      const errorData = (err as any).response?.data || (err as any).message;
+      logger.error({ vfdBillerId, error: errorData }, 'VFD product discovery request failed');
+      throw new Error(`VFD Product Request Failed: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`);
     }
 
     const isSuccess = body.status === '00' || body.status?.toString() === '0' || body.status?.toLowerCase() === 'success';
 
     if (!isSuccess) {
-      const msg = body.message || body.statusText || `VFD error (${body.status || 'no-status'})`;
       logger.error({ vfdBillerId, body }, 'VFD product discovery failed');
-      throw new Error(`VFD Product Error: ${msg}`);
+      throw new Error(`VFD Product Error: ${JSON.stringify(body)}`);
     }
 
     const items = body.data?.paymentitems || body.data || [];
@@ -465,8 +468,9 @@ export class VfdBillProvider implements NormalizedBillProvider {
       }
       return isSuccess ? { valid: true, name: res.data?.name || res.data?.customerName || 'Valid Customer', meta: res.data } : { valid: false, name: '' };
     } catch (err) {
-      logger.error({ params, error: (err as any).message, data: (err as any).response?.data }, 'VFD customer validation error');
-      return { valid: false, name: '' };
+      const errorData = (err as any).response?.data || (err as any).message;
+      logger.error({ params, error: errorData }, 'VFD customer validation error');
+      return { valid: false, name: '', meta: errorData };
     }
   }
 
@@ -480,17 +484,15 @@ export class VfdBillProvider implements NormalizedBillProvider {
       const res = await this.vfdApi.getBillerCategories();
       body = this.unwrapBody(res);
     } catch (err) {
-      const errorData = (err as any).response?.data;
-      const errorMsg = errorData?.message || errorData?.statusText || (err as any).message || 'Unknown VFD error';
-      logger.error({ error: (err as any).message, data: errorData }, 'VFD category discovery request failed');
-      throw new Error(`VFD Category Request Failed: ${errorMsg}`);
+      const errorData = (err as any).response?.data || (err as any).message;
+      logger.error({ error: errorData }, 'VFD category discovery request failed');
+      throw new Error(`VFD Category Request Failed: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`);
     }
 
     const isSuccess = body.status === '00' || body.status?.toString() === '0' || body.status?.toLowerCase() === 'success';
     if (!isSuccess) {
-      const msg = body.message || 'VFD category discovery failed';
       logger.error({ body }, 'VFD category discovery failed');
-      throw new Error(`VFD Category Error: ${msg}`);
+      throw new Error(`VFD Category Error: ${JSON.stringify(body)}`);
     }
 
     const raw: any[] = Array.isArray(body.data)
@@ -615,30 +617,21 @@ export class VfdBillProvider implements NormalizedBillProvider {
   private normalizeCategoryId(nameOrId: string): string {
     if (!nameOrId) return '';
     const lower = nameOrId.toLowerCase();
-    if (lower.includes('airtime')) return 'airtime';
-    if (lower.includes('data')) return 'data';
-    if (lower.includes('cable') || lower.includes('tv')) return 'tv';
-    if (lower.includes('electric') || lower.includes('power') || lower.includes('utility')) return 'power';
-    if (lower.includes('betting') || lower.includes('gaming') || lower.includes('lottery')) return 'betting';
-    if (lower.includes('internet')) return 'internet';
-    return nameOrId;
+    if (lower.includes('airtime')) return 'AIRTIME';
+    if (lower.includes('data')) return 'MOBILEDATA';
+    if (lower.includes('cable') || lower.includes('tv')) return 'CABLEBILLS';
+    if (lower.includes('electric') || lower.includes('power') || lower.includes('utility')) return 'UTILITYBILLS';
+    if (lower.includes('betting') || lower.includes('gaming') || lower.includes('lottery')) return 'BETTING';
+    if (lower.includes('internet')) return 'INTSERVICE';
+    return nameOrId.toUpperCase();
   }
 
-  /**
-   * Guard against VfdProvider methods returning either:
-   *   (a) the raw axios response  → { data: { status, message, data: [...] } }
-   *   (b) the already-unwrapped VFD body → { status, message, data: [...] }
-   *
-   * If `res.data` looks like a VFD envelope (has its own `status` field) we
-   * return `res.data`; otherwise we return `res` as-is.
-   */
   private unwrapBody(res: any): any {
     if (!res || res === "") {
-      return { status: '99', message: 'VFD returned an empty response (service may be down or rejecting the request)' };
+      return { status: '99', message: 'VFD returned an empty response', raw: res };
     }
 
     // If 'res' already has VFD envelope fields, do NOT unwrap 'data'
-    // VFD status is usually a string like "00" or a number like 0
     if (res.status !== undefined && (res.message !== undefined || res.data !== undefined)) {
       return res;
     }

@@ -122,49 +122,73 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
 
   async validateAccount(params: ValidationParams): Promise<BillValidationResult> {
     const itemCode = params.itemCode || params.provider || '';
-    const resp = await fwGet(`/v3/bill-items/${encodeURIComponent(itemCode)}/validate`, {
-      customer: params.customerRef
-    });
-    const data = resp.data as any;
-    return {
-      name: data?.customer_name || data?.name || '',
-      valid: !!(data?.customer_name && data.customer_name !== 'INVALID_SMARTCARDNO' && data.customer_name !== 'INVALID_METERNO'),
-      meta: data
-    };
+    try {
+      const resp = await fwGet(`/v3/bill-items/${encodeURIComponent(itemCode)}/validate`, {
+        customer: params.customerRef
+      });
+      const data = resp.data as any;
+      return {
+        name: data?.customer_name || data?.name || '',
+        valid: !!(data?.customer_name && data.customer_name !== 'INVALID_SMARTCARDNO' && data.customer_name !== 'INVALID_METERNO'),
+        meta: data
+      };
+    } catch (err) {
+      const errorData = (err as any).response?.data || (err as any).message;
+      logger.error({ params, error: errorData }, 'FW validateAccount failed');
+      return { valid: false, name: '', meta: errorData };
+    }
   }
 
   async getCategories(): Promise<BillCategory[]> {
-    const resp = await fwGet('/v3/top-bill-categories', { country: 'NG' });
-    const items = (resp.data as any[]) || [];
-    return items.map((c: any) => ({
-      id: c.id?.toString() || c.biller_code || c.name,
-      name: c.name || c.description || '',
-      description: c.description || c.name || ''
-    }));
+    try {
+      const resp = await fwGet('/v3/top-bill-categories', { country: 'NG' });
+      const items = (resp.data as any[]) || [];
+      return items.map((c: any) => ({
+        id: c.id?.toString() || c.biller_code || c.name,
+        name: c.name || c.description || '',
+        description: c.description || c.name || ''
+      }));
+    } catch (err) {
+      const errorData = (err as any).response?.data || (err as any).message;
+      logger.error({ error: errorData }, 'FW getCategories failed');
+      throw new Error(`FW Categories Request Failed: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`);
+    }
   }
 
   async getBillers(categoryId: string): Promise<BillBiller[]> {
-    const resp = await fwGet(`/v3/bills/${encodeURIComponent(categoryId)}/billers`, { country: 'NG' });
-    const items = (resp.data as any[]) || [];
-    return items.map((b: any) => ({
-      id: b.biller_code || b.id?.toString() || '',
-      name: b.name || b.biller_name || '',
-      categoryId,
-      logo: b.logo_url || b.logo || undefined
-    }));
+    try {
+      const resp = await fwGet(`/v3/bills/${encodeURIComponent(categoryId)}/billers`, { country: 'NG' });
+      const items = (resp.data as any[]) || [];
+      return items.map((b: any) => ({
+        id: b.biller_code || b.id?.toString() || '',
+        name: b.name || b.biller_name || '',
+        categoryId,
+        logo: b.logo_url || b.logo || undefined
+      }));
+    } catch (err) {
+      const errorData = (err as any).response?.data || (err as any).message;
+      logger.error({ categoryId, error: errorData }, 'FW getBillers failed');
+      throw new Error(`FW Billers Request Failed: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`);
+    }
   }
 
   async getProducts(billerId: string, categoryId?: string): Promise<BillProduct[]> {
-    const resp = await fwGet(`/v3/billers/${encodeURIComponent(billerId)}/items`);
-    const items = (resp.data as any[]) || [];
-    return items.map((p: any) => ({
-      id: p.item_code || p.id?.toString() || '',
-      name: p.name || p.biller_name || '',
-      billerId,
-      amount: Number(p.amount) || 0,
-      description: p.description || p.short_name || '',
-      duration: this.parseDuration(p.name || p.description || p.short_name || '')
-    }));
+    try {
+      const resp = await fwGet(`/v3/billers/${encodeURIComponent(billerId)}/items`);
+      const items = (resp.data as any[]) || [];
+      return items.map((p: any) => ({
+        id: p.item_code || p.id?.toString() || '',
+        name: p.name || p.biller_name || '',
+        billerId,
+        amount: Number(p.amount) || 0,
+        description: p.description || p.short_name || '',
+        duration: this.parseDuration(p.name || p.description || p.short_name || '')
+      }));
+    } catch (err) {
+      const errorData = (err as any).response?.data || (err as any).message;
+      logger.error({ billerId, error: errorData }, 'FW getProducts failed');
+      throw new Error(`FW Products Request Failed: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`);
+    }
   }
 
   /**
@@ -286,7 +310,7 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
       success: isSuccess,
       reference,
       status: isSuccess ? 'success' : isPending ? 'pending' : 'failed',
-      message: resp?.message || '',
+      message: resp?.message || (isSuccess ? 'Payment successful' : 'Payment failed'),
       meta: resp?.data || resp
     };
   }
