@@ -85,8 +85,6 @@ export default class BillPaymentService {
       referralCode: req.referralCode,
 
       providerFn: async () => {
-        // The bill provider always receives the ORIGINAL requested amount —
-        // discounts are absorbed by us, not passed to the provider.
         return await withFailover(async (provider) => {
           switch (req.serviceType) {
             case 'airtime':
@@ -95,10 +93,6 @@ export default class BillPaymentService {
                 amount: req.amount,
                 network: req.serviceId,
                 reference: idempotencyKey,
-                // FIX: forward the item code resolved from the live catalog by
-                // the frontend. Without this, Flutterwave re-derives the item
-                // code from a hardcoded map, which can diverge from what the
-                // FW catalog actually returns and causes 400 errors.
                 itemCode: req.itemCode,
               });
 
@@ -248,34 +242,19 @@ export default class BillPaymentService {
 
   static async getSupportedCategories(country = 'NG') {
     const provider = await getBillProvider();
-    const cacheKey = `${provider.providerName}_categories_${country}`;
-    const cached = billCache.get(cacheKey);
-    if (cached) return cached;
-
     const data = await provider.getCategories();
-    billCache.set(cacheKey, data);
     return data;
   }
 
   static async getBillersByCategory(categoryCode: string, country = 'NG') {
     const provider = await getBillProvider();
-    const cacheKey = `${provider.providerName}_billers_${categoryCode}_${country}`;
-    const cached = billCache.get(cacheKey);
-    if (cached) return cached;
-
     const data = await provider.getBillers(categoryCode);
-    billCache.set(cacheKey, data);
     return data;
   }
 
   static async getBillItems(billerCode: string, categoryId?: string) {
     const provider = await getBillProvider();
-    const cacheKey = `${provider.providerName}_items_${billerCode}_${categoryId || 'all'}`;
-    const cached = billCache.get(cacheKey);
-    if (cached) return cached;
-
     const data = await provider.getProducts(billerCode, categoryId);
-    billCache.set(cacheKey, data);
     return data;
   }
 

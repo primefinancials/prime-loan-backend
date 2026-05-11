@@ -357,7 +357,7 @@ export class VfdProvider {
   async getBillerList(categoryName: string) {
     return this.request<{ status: string; message: string; data: any[] }>({
       method: "GET",
-      url: `billerlist?categoryName=${encodeURIComponent(categoryName)}`,
+      url: `billerlist?categoryName=${categoryName}`,
       baseURL: this.billsBaseUrl,
     });
   }
