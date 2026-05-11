@@ -3,11 +3,10 @@
  * Wraps VFD API calls with retry logic and circuit breaker
  *
  * Fixes vs previous version:
- *  1. All bill-payment URL strings now have a leading "/" so axios concatenates
- *     them correctly against billsBaseUrl (which has no trailing slash).
- *     Without the slash, axios would produce URLs like:
- *       "...billspaymentstorebildercategory" instead of
- *       ".../billspaymentstore/billercategory"
+ *  1. Corrected Axios URL concatenation: billsBaseUrl now has a trailing slash
+ *     and endpoints have no leading slash. Previously, leading slashes on
+ *     endpoints caused Axios to treat them as absolute paths, stripping the
+ *     base path from the URL.
  *  2. validateBillerCustomer: 4th parameter renamed from `productId` to
  *     `paymentItemCode` to reflect that it maps to VFD's `paymentItem` query
  *     param (the paymentCode value from /billerItems), not a productId.
@@ -179,7 +178,7 @@ export interface VfdBillPayRequest {
 /* ---------- PROVIDER CLASS ---------- */
 
 export class VfdProvider {
-  private billsBaseUrl = "https://api-apps.vfdbank.systems/vtech-bills/api/v2/billspaymentstore";
+  private billsBaseUrl = "https://api-apps.vfdbank.systems/vtech-bills/api/v2/billspaymentstore/";
 
   constructor() {
     // Circuit breaker removed for faster and more direct VFD requests without premature timeouts
@@ -350,8 +349,7 @@ export class VfdProvider {
   async getBillerCategories() {
     return this.request<{ status: string; message: string; data: any[] }>({
       method: "GET",
-      // FIX: leading slash so axios appends correctly to billsBaseUrl
-      url: "/billercategory",
+      url: "billercategory",
       baseURL: this.billsBaseUrl,
     });
   }
@@ -359,15 +357,13 @@ export class VfdProvider {
   async getBillerList(categoryName: string) {
     return this.request<{ status: string; message: string; data: any[] }>({
       method: "GET",
-      // FIX: leading slash
-      url: `/billerlist?categoryName=${encodeURIComponent(categoryName)}`,
+      url: `billerlist?categoryName=${encodeURIComponent(categoryName)}`,
       baseURL: this.billsBaseUrl,
     });
   }
 
   async getBillerItems(billerId: string, divisionId?: string, productId?: string) {
-    // FIX: leading slash + forward divisionId and productId as required by VFD docs
-    let url = `/billeritems?billerId=${billerId}`;
+    let url = `billeritems?billerId=${billerId}`;
     if (divisionId) url += `&divisionId=${divisionId}`;
     if (productId) url += `&productId=${productId}`;
 
@@ -382,14 +378,9 @@ export class VfdProvider {
     customerId: string,
     billerId: string,
     divisionId?: string,
-    // FIX: renamed from `productId` to `paymentItemCode` — this value maps to
-    // VFD's `paymentItem` query param, which must be the paymentCode from
-    // /billerItems, not the productId. The old name caused confusion between
-    // the two distinct VFD concepts.
     paymentItemCode?: string
   ) {
-    // FIX: leading slash
-    let url = `/customervalidate?customerId=${customerId}&billerId=${billerId}`;
+    let url = `customervalidate?customerId=${customerId}&billerId=${billerId}`;
     if (divisionId) url += `&divisionId=${divisionId}`;
     if (paymentItemCode) url += `&paymentItem=${paymentItemCode}`;
 
@@ -403,8 +394,7 @@ export class VfdProvider {
   async payBill(payload: VfdBillPayRequest) {
     return this.request<{ status: string; message: string; data: any }>({
       method: "POST",
-      // FIX: leading slash
-      url: "/pay",
+      url: "pay",
       baseURL: this.billsBaseUrl,
       data: payload,
     });
