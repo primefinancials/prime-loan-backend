@@ -166,11 +166,18 @@ export class VfdBillProvider implements NormalizedBillProvider {
     const cached = discoveryCache.get<VfdBillerEntry[]>(cacheKey);
     if (cached) return cached;
 
-    const res = await this.vfdApi.getBillerList(vfdCategory);
+    let body: any;
+    try {
+      const res = await this.vfdApi.getBillerList(vfdCategory);
+      body = this.unwrapBody(res);
+    } catch (err) {
+      const errorData = (err as any).response?.data;
+      const errorMsg = errorData?.message || errorData?.statusText || (err as any).message || 'Unknown VFD error';
+      logger.error({ vfdCategory, error: (err as any).message, data: errorData }, 'VFD biller discovery request failed');
+      throw new Error(`VFD Biller Request Failed: ${errorMsg}`);
+    }
 
-    // Unwrap: VFD returns { status, message, data: [...] }
-    const body = this.unwrapBody(res);
-    const isSuccess = body.status === '00' || body.status?.toLowerCase() === 'success' || body.status === '0';
+    const isSuccess = body.status === '00' || body.status?.toString() === '0' || body.status?.toLowerCase() === 'success';
 
     if (!isSuccess) {
       const msg = body.message || body.statusText || `VFD error (${body.status || 'no-status'})`;
@@ -206,9 +213,18 @@ export class VfdBillProvider implements NormalizedBillProvider {
   }
 
   private async fetchProducts(vfdBillerId: string, divisionId: string, productId: string): Promise<VfdProductEntry[]> {
-    const res = await this.vfdApi.getBillerItems(vfdBillerId, divisionId, productId);
-    const body = this.unwrapBody(res);
-    const isSuccess = body.status === '00' || body.status?.toLowerCase() === 'success' || body.status === '0';
+    let body: any;
+    try {
+      const res = await this.vfdApi.getBillerItems(vfdBillerId, divisionId, productId);
+      body = this.unwrapBody(res);
+    } catch (err) {
+      const errorData = (err as any).response?.data;
+      const errorMsg = errorData?.message || errorData?.statusText || (err as any).message || 'Unknown VFD error';
+      logger.error({ vfdBillerId, error: (err as any).message, data: errorData }, 'VFD product discovery request failed');
+      throw new Error(`VFD Product Request Failed: ${errorMsg}`);
+    }
+
+    const isSuccess = body.status === '00' || body.status?.toString() === '0' || body.status?.toLowerCase() === 'success';
 
     if (!isSuccess) {
       const msg = body.message || body.statusText || `VFD error (${body.status || 'no-status'})`;
@@ -443,9 +459,15 @@ export class VfdBillProvider implements NormalizedBillProvider {
     const product = await this.resolveProduct(biller, params.itemCode);
     try {
       const res = await this.vfdApi.validateBillerCustomer(params.customerRef, biller.billerId, biller.division, product?.paymentCode);
-      const isSuccess = res?.status === '00' || res?.status?.toLowerCase() === 'success';
+      const isSuccess = res?.status === '00' || res?.status?.toString() === '0' || res?.status?.toLowerCase() === 'success';
+      if (!isSuccess) {
+        logger.warn({ params, res }, 'VFD customer validation failed');
+      }
       return isSuccess ? { valid: true, name: res.data?.name || res.data?.customerName || 'Valid Customer', meta: res.data } : { valid: false, name: '' };
-    } catch { return { valid: false, name: '' }; }
+    } catch (err) {
+      logger.error({ params, error: (err as any).message, data: (err as any).response?.data }, 'VFD customer validation error');
+      return { valid: false, name: '' };
+    }
   }
 
   /* ═══════════════════════════════════════════════
@@ -453,10 +475,22 @@ export class VfdBillProvider implements NormalizedBillProvider {
    * ═══════════════════════════════════════════════ */
 
   async getCategories(): Promise<BillCategory[]> {
-    const res = await this.vfdApi.getBillerCategories();
-    const body = this.unwrapBody(res);
-    if (body.status !== '00' && body.status?.toLowerCase() !== 'success') {
-      throw new Error(body.message || 'VFD category discovery failed');
+    let body: any;
+    try {
+      const res = await this.vfdApi.getBillerCategories();
+      body = this.unwrapBody(res);
+    } catch (err) {
+      const errorData = (err as any).response?.data;
+      const errorMsg = errorData?.message || errorData?.statusText || (err as any).message || 'Unknown VFD error';
+      logger.error({ error: (err as any).message, data: errorData }, 'VFD category discovery request failed');
+      throw new Error(`VFD Category Request Failed: ${errorMsg}`);
+    }
+
+    const isSuccess = body.status === '00' || body.status?.toString() === '0' || body.status?.toLowerCase() === 'success';
+    if (!isSuccess) {
+      const msg = body.message || 'VFD category discovery failed';
+      logger.error({ body }, 'VFD category discovery failed');
+      throw new Error(`VFD Category Error: ${msg}`);
     }
 
     const raw: any[] = Array.isArray(body.data)
@@ -599,15 +633,21 @@ export class VfdBillProvider implements NormalizedBillProvider {
    * return `res.data`; otherwise we return `res` as-is.
    */
   private unwrapBody(res: any): any {
-    // If we have an axios-like wrapper
-    if (res && res.data && typeof res.data === 'object') {
-      return res.data;
-    }
-    // If it's empty
     if (!res || res === "") {
       return { status: '99', message: 'VFD returned an empty response (service may be down or rejecting the request)' };
     }
-    // If it's already the body
+
+    // If 'res' already has VFD envelope fields, do NOT unwrap 'data'
+    // VFD status is usually a string like "00" or a number like 0
+    if (res.status !== undefined && (res.message !== undefined || res.data !== undefined)) {
+      return res;
+    }
+
+    // If 'res.data' exists and 'res' lacks VFD fields, it's likely an Axios wrapper
+    if (res && res.data && typeof res.data === 'object' && res.status === undefined) {
+      return res.data;
+    }
+
     return res;
   }
 }
