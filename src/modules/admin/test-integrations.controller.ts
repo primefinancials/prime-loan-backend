@@ -412,4 +412,166 @@ export class TestIntegrationsController {
       return res.status(500).json({ status: 'failed', message: err.message });
     }
   }
+
+  /**
+   * GET /backoffice/test-integrations/paybeta/wallet
+   * Retrieves PayBeta wallet balance
+   */
+  static async getPaybetaWallet(req: Request, res: Response) {
+    try {
+      const { PayBetaProvider } = await import('../../shared/providers/paybeta.provider');
+      const provider = new PayBetaProvider();
+      const balance = await provider.getWalletBalance();
+      return res.status(200).json({
+        status: 'success',
+        data: balance.data,
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'PayBeta wallet query failed');
+      return res.status(err.status || 500).json({
+        status: 'failed',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * GET /backoffice/test-integrations/paybeta/providers
+   * query: { type: 'airtime' | 'data' }
+   */
+  static async getPaybetaProviders(req: Request, res: Response) {
+    try {
+      const { type } = req.query;
+      const { PayBetaProvider } = await import('../../shared/providers/paybeta.provider');
+      const provider = new PayBetaProvider();
+      let result;
+      if (type === 'data') {
+        result = await provider.getDataProviders();
+      } else {
+        result = await provider.getAirtimeProviders();
+      }
+      return res.status(200).json({
+        status: 'success',
+        data: result.data,
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'PayBeta providers query failed');
+      return res.status(err.status || 500).json({
+        status: 'failed',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * GET /backoffice/test-integrations/paybeta/data-bundles
+   * query: { service: string }
+   */
+  static async getPaybetaDataBundles(req: Request, res: Response) {
+    try {
+      const { service } = req.query;
+      if (!service) {
+        return res.status(400).json({ status: 'failed', message: 'service parameter is required' });
+      }
+      const { PayBetaProvider } = await import('../../shared/providers/paybeta.provider');
+      const provider = new PayBetaProvider();
+      const result = await provider.getDataBundles(String(service));
+      return res.status(200).json({
+        status: 'success',
+        data: result.data || result,
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'PayBeta data bundles query failed');
+      return res.status(err.status || 500).json({
+        status: 'failed',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * POST /backoffice/test-integrations/paybeta/airtime
+   * body: { service, phoneNumber, amount }
+   */
+  static async buyPaybetaAirtime(req: Request, res: Response) {
+    try {
+      const { service, phoneNumber, amount } = req.body;
+      if (!service || !phoneNumber || !amount) {
+        return res.status(400).json({
+          status: 'failed',
+          message: 'service, phoneNumber, and amount are required',
+        });
+      }
+      const { PayBetaProvider } = await import('../../shared/providers/paybeta.provider');
+      const provider = new PayBetaProvider();
+      // Generate a numeric reference to be absolutely safe with PayBeta validation
+      const reference = `${Date.now()}`;
+
+      logger.info({ service, phoneNumber, amount, reference }, 'Admin PayBeta console airtime purchase initiated');
+      const result = await provider.buyAirtime({
+        service: String(service),
+        phoneNumber: String(phoneNumber),
+        amount: Number(amount),
+        reference,
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          ...result,
+          consoleReference: reference,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'PayBeta console airtime purchase failed');
+      return res.status(err.status || 500).json({
+        status: 'failed',
+        message: err.message,
+      });
+    }
+  }
+
+  /**
+   * POST /backoffice/test-integrations/paybeta/data
+   * body: { service, code, phoneNumber, amount }
+   */
+  static async buyPaybetaData(req: Request, res: Response) {
+    try {
+      const { service, code, phoneNumber, amount } = req.body;
+      if (!service || !code || !phoneNumber || !amount) {
+        return res.status(400).json({
+          status: 'failed',
+          message: 'service, code, phoneNumber, and amount are required',
+        });
+      }
+      const { PayBetaProvider } = await import('../../shared/providers/paybeta.provider');
+      const provider = new PayBetaProvider();
+      const reference = `${Date.now()}`;
+
+      logger.info({ service, code, phoneNumber, amount, reference }, 'Admin PayBeta console data bundle purchase initiated');
+      const result = await provider.buyData({
+        service: String(service),
+        code: String(code),
+        phoneNumber: String(phoneNumber),
+        amount: Number(amount),
+        reference,
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          ...result,
+          consoleReference: reference,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'PayBeta console data bundle purchase failed');
+      return res.status(err.status || 500).json({
+        status: 'failed',
+        message: err.message,
+      });
+    }
+  }
 }

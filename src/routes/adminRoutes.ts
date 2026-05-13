@@ -316,6 +316,12 @@ router.post("/test-integrations/transfer", verifyJwtRest(), TestIntegrationsCont
 router.get("/test-integrations/banks", verifyJwtRest(), TestIntegrationsController.getBanks as any);
 router.get("/test-integrations/verify-beneficiary", verifyJwtRest(), TestIntegrationsController.nameEnquiry as any);
 
+router.get("/test-integrations/paybeta/wallet", verifyJwtRest(), TestIntegrationsController.getPaybetaWallet as any);
+router.get("/test-integrations/paybeta/providers", verifyJwtRest(), TestIntegrationsController.getPaybetaProviders as any);
+router.get("/test-integrations/paybeta/data-bundles", verifyJwtRest(), TestIntegrationsController.getPaybetaDataBundles as any);
+router.post("/test-integrations/paybeta/airtime", verifyJwtRest(), TestIntegrationsController.buyPaybetaAirtime as any);
+router.post("/test-integrations/paybeta/data", verifyJwtRest(), TestIntegrationsController.buyPaybetaData as any);
+
 /* =============================
    ADMIN TRANSFERS (ACTUAL)
 ============================= */
