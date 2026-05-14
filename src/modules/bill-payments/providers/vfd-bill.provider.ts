@@ -312,7 +312,8 @@ export class VfdBillProvider implements NormalizedBillProvider {
     const isSuccess = body.status === '00' || body.status?.toString() === '0' || body.status?.toLowerCase() === 'success';
 
     if (!isSuccess) {
-      throw new Error(`VFD Product Error: ${JSON.stringify(body)}`);
+      logger.warn({ body }, 'VFD Product fetch returned non-success status, returning empty array');
+      return [];
     }
 
     const items = body.data?.paymentitems || body.data || [];
@@ -673,6 +674,18 @@ export class VfdBillProvider implements NormalizedBillProvider {
 
     if (products.length === 0) {
       logger.warn({ billerId }, 'No products found for biller — resolution failed to provide division/productId');
+      // Synthesize a generic product for dynamic billers (like Betting) or when products fail to load (Showmax)
+      if (biller) {
+        products = [{
+          productId: biller.billerId,
+          paymentCode: biller.productId || biller.billerId,
+          productName: biller.billerName || 'Topup',
+          amount: 0,
+          isAmountFixed: false,
+          division: biller.divisionId,
+          raw: biller
+        }];
+      }
     }
 
     return products.map(p => ({

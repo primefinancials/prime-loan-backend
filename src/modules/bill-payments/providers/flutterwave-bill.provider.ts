@@ -49,12 +49,10 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
 
     logger.info({ billerCode, itemCode, network: params.network }, 'FW purchaseAirtime resolved codes');
 
-    const resp = await fwPost('/v3/bills/payment', {
+    const resp = await fwPost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(itemCode)}/payment`, {
       country: 'NG',
-      customer: params.phone,
+      customer_id: params.phone,
       amount: params.amount,
-      biller_code: billerCode,
-      item_code: itemCode,
       reference: params.reference,
     });
 
@@ -65,16 +63,14 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
     const billerCode = this.getDataBiller(params.network);
 
     // FIX: prefer the live-resolved bundle code from the catalog.
-    const itemCode = params.bundleCode || params.itemCode;
+    const itemCode = params.bundleCode || params.itemCode || '';
 
     logger.info({ billerCode, itemCode, network: params.network }, 'FW purchaseData resolved codes');
 
-    const resp = await fwPost('/v3/bills/payment', {
+    const resp = await fwPost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(itemCode)}/payment`, {
       country: 'NG',
-      customer: params.phone,
+      customer_id: params.phone,
       amount: params.amount,
-      biller_code: billerCode,
-      item_code: itemCode,
       reference: params.reference,
     });
     return this.normalizeResult(resp, params.reference);
@@ -82,12 +78,10 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
 
   async purchaseTV(params: TVPurchaseParams): Promise<BillProviderResult> {
     const billerCode = this.getTVBiller(params.provider);
-    const resp = await fwPost('/v3/bills/payment', {
+    const resp = await fwPost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(params.bouquetCode)}/payment`, {
       country: 'NG',
-      customer: params.smartcardNo,
+      customer_id: params.smartcardNo,
       amount: params.amount,
-      biller_code: billerCode,
-      item_code: params.bouquetCode,
       reference: params.reference,
     });
     return this.normalizeResult(resp, params.reference);
@@ -99,13 +93,11 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
     // in practice FW uses the itemCode passed directly from the product catalog.
     // The frontend sends the item code selected from billItems (fetched from FW's own catalog),
     // so pass it through directly via params.meterType mapping.
-    const itemCode = params.meterType === 'prepaid' ? `${billerCode}_PREPAID` : `${billerCode}_POSTPAID`;
-    const resp = await fwPost('/v3/bills/payment', {
+    const itemCode = params.itemCode || (params.meterType === 'prepaid' ? `${billerCode}_PREPAID` : `${billerCode}_POSTPAID`);
+    const resp = await fwPost(`/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(itemCode)}/payment`, {
       country: 'NG',
-      customer: params.meterNo,
+      customer_id: params.meterNo,
       amount: params.amount,
-      biller_code: billerCode,
-      item_code: itemCode,
       reference: params.reference,
     });
     return this.normalizeResult(resp, params.reference);
@@ -122,8 +114,16 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
 
   async validateAccount(params: ValidationParams): Promise<BillValidationResult> {
     const itemCode = params.itemCode || params.provider || '';
+    
+    let billerCode = '';
+    if (params.serviceType === 'tv') billerCode = this.getTVBiller(params.provider);
+    else if (params.serviceType === 'power') billerCode = this.getPowerBiller(params.provider);
+    else if (params.serviceType === 'data') billerCode = this.getDataBiller(params.provider);
+    else if (params.serviceType === 'airtime') billerCode = this.getAirtimeBiller(params.provider);
+
     try {
       const resp = await fwGet(`/v3/bill-items/${encodeURIComponent(itemCode)}/validate`, {
+        code: billerCode,
         customer: params.customerRef
       });
       const data = resp.data as any;
@@ -198,14 +198,14 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
     if (!text) return undefined;
     const lower = text.toLowerCase();
 
-    const durationMatch = lower.match(/(\d+)\s*(day|days|week|weeks|month|months|hour|hours|hr|hrs)/i);
+    const durationMatch = lower.match(/(\d+)\s*(days?|weeks?|months?|hours?|hrs?|d|w|m)(?:\b|$)/i);
     if (durationMatch) {
       const num = durationMatch[1];
       const unit = durationMatch[2].toLowerCase();
-      if (unit.startsWith('day')) return `${num} day${num === '1' ? '' : 's'}`;
-      if (unit.startsWith('week')) return `${num} week${num === '1' ? '' : 's'}`;
-      if (unit.startsWith('month')) return `${num} month${num === '1' ? '' : 's'}`;
-      if (unit.startsWith('hour') || unit.startsWith('hr')) return `${num} hour${num === '1' ? '' : 's'}`;
+      if (unit === 'd' || unit.startsWith('day')) return `${num} day${num === '1' ? '' : 's'}`;
+      if (unit === 'w' || unit.startsWith('week')) return `${num} week${num === '1' ? '' : 's'}`;
+      if (unit === 'm' || unit.startsWith('month')) return `${num} month${num === '1' ? '' : 's'}`;
+      if (unit === 'h' || unit.startsWith('hour') || unit.startsWith('hr')) return `${num} hour${num === '1' ? '' : 's'}`;
     }
 
     if (lower.includes('daily')) return '1 day';

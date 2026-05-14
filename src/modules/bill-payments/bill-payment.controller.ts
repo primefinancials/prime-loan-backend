@@ -110,6 +110,16 @@ export class BillPaymentController {
     try {
       const { itemCode, customerReference, serviceType, provider } = req.body;
       const data = await BillPaymentService.validateServiceAccount(itemCode, customerReference, serviceType, provider);
+      
+      if (!data.valid) {
+        const errorMsg = data.meta?.data?.message || data.meta?.message || data.meta?.error || "Validation failed";
+        return res.status(400).json({ 
+          status: "failed", 
+          message: errorMsg, 
+          data 
+        });
+      }
+      
       res.status(200).json({ status: "success", data });
     } catch (error) {
       next(error);
