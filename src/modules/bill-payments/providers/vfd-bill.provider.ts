@@ -306,7 +306,11 @@ export class VfdBillProvider implements NormalizedBillProvider {
       body = this.unwrapBody(res);
     } catch (err) {
       const errorData = (err as any).response?.data || (err as any).message;
-      throw new Error(`VFD Product Request Failed: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`);
+      if (errorData && errorData.status === '99') {
+        body = errorData;
+      } else {
+        throw new Error(`VFD Product Request Failed: ${typeof errorData === 'object' ? JSON.stringify(errorData) : errorData}`);
+      }
     }
 
     const isSuccess = body.status === '00' || body.status?.toString() === '0' || body.status?.toLowerCase() === 'success';

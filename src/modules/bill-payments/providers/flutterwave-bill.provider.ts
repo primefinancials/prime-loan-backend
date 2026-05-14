@@ -113,10 +113,16 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
   }
 
   async validateAccount(params: ValidationParams): Promise<BillValidationResult> {
-    const itemCode = params.itemCode || params.provider || '';
+    let itemCode = params.itemCode || params.provider || '';
     
     let billerCode = '';
-    if (params.serviceType === 'tv') billerCode = this.getTVBiller(params.provider);
+    if (params.serviceType === 'tv') {
+      billerCode = this.getTVBiller(params.provider);
+      // Fallback for TV validation when specific plan is not yet selected
+      if (!params.itemCode || params.itemCode === params.provider) {
+        itemCode = this.getTVItem(params.provider || '');
+      }
+    }
     else if (params.serviceType === 'power') billerCode = this.getPowerBiller(params.provider);
     else if (params.serviceType === 'data') billerCode = this.getDataBiller(params.provider);
     else if (params.serviceType === 'airtime') billerCode = this.getAirtimeBiller(params.provider);
@@ -214,6 +220,14 @@ export class FlutterwaveBillProvider implements NormalizedBillProvider {
     if (lower.includes('yearly') || lower.includes('annual')) return '1 year';
 
     return undefined;
+  }
+
+  private getTVItem(provider: string): string {
+    const low = provider.toLowerCase();
+    if (low.includes('dstv') || low.includes('bil121')) return 'CB177';
+    if (low.includes('gotv') || low.includes('bil122')) return 'CB188';
+    if (low.includes('startimes') || low.includes('bil123')) return 'CB189';
+    return '';
   }
 
   async getBalance(): Promise<{ balance: number }> {
