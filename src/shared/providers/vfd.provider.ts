@@ -185,7 +185,8 @@ export class VfdProvider {
   }
 
   private async request<T>(config: AxiosRequestConfig, isRetry = false): Promise<T> {
-    const accessToken = await generateBearerToken(customerKey, customerSecret);
+    // const accessToken = await generateBearerToken(customerKey, customerSecret);
+    const accessToken = await generateBearerToken("", customerSecret);
 
     config.headers = {
       ...(config.headers || {}),
