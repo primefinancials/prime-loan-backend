@@ -79,6 +79,7 @@ export interface RepayParams {
   mandatory?: number;
   idempotencyKey?: string;
   internalOnly?: boolean;
+  autoDeduct?: boolean;
   skipBalanceCheck?: boolean;
   session?: any;
 }
@@ -576,11 +577,32 @@ export class LoanService {
 
         loan.outstanding = newOutstanding;
         loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-        await loan.save();
+        await loan.save({ session });
+
+        // Create a Transfer record for transaction history visibility (FIX #3.1)
+        // This ensures internal auto-deductions appear in user's transaction history
+        const traceId = UuidService.generateTraceId();
+        const transferRef = `internal-repay-${traceId}`;
+
+        const internalTransfer = new Transfer({
+          userId: String(params.userId),
+          traceId,
+          fromAccount: params.autoDeduct ? "bank_account" : "savings",
+          toAccount: "loan_repayment",
+          amount: repayAmount,
+          transferType: "inter",
+          status: "COMPLETED",
+          reference: transferRef,
+          remark: `Automatic loan repayment from ${params.autoDeduct ? "bank_account" : "savings"}`,
+          processedAt: now,
+          idempotencyKey: params.idempotencyKey || `auto-deduct-${loan._id}-${now.getTime()}`
+        });
+
+        await internalTransfer.save({ session });
 
         // Ledger double entry: savings_pool -> loan_repayment
         await LedgerService.createDoubleEntry(
-          UuidService.generateTraceId(),
+          traceId,
           `user_wallet:${params.userId}`,
           "loan_repayment",
           repayAmount,
@@ -588,7 +610,7 @@ export class LoanService {
           {
             userId: params.userId,
             subtype: "auto_deduction",
-            idempotencyKey: params.idempotencyKey || `auto-deduct-${loan._id}-${Date.now()}`,
+            idempotencyKey: params.idempotencyKey || `auto-deduct-${loan._id}-${now.getTime()}`,
             session
           }
         );
@@ -599,9 +621,11 @@ export class LoanService {
           repayAmount,
           newOutstanding: loan.outstanding,
           paidInFull,
-        }, "Internal-only loan repayment completed (auto-deduction from savings)");
+          traceId,
+          transferRef
+        }, "Internal-only loan repayment completed (auto-deduction from savings) with Transfer record created");
 
-        return { loan, providerResponse: { status: "00", internal: true }, trxnRes: null, repayAmount };
+        return { loan, providerResponse: { status: "00", internal: true }, trxnRes: internalTransfer, repayAmount };
       };
 
       if (params.session) {

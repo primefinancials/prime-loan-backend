@@ -30,6 +30,11 @@ export interface IInfluencer extends Document {
   applicationDate: Date;
   approvalDate?: Date;
   rejectionReason?: string;
+  applicationHistory?: {
+    status: InfluencerStatus;
+    date: Date;
+    reason?: string;
+  }[];
   totalEarnings: number;
   pendingPayout: number;
   payoutHistory: {
@@ -83,6 +88,14 @@ export interface InfluencerDashboard {
   totalReferred: number;
   totalEarnings: number;
   pendingPayout: number;
+  /** Sum of all payout entries that have status === 'completed' */
+  completedPayouts: number;
+  payoutHistory: {
+    amount: number;
+    date: Date;
+    reference: string;
+    status: PayoutStatus;
+  }[];
   totalVolumeGenerated?: number;
   earningsByService: Record<CommissionTransactionType, { total: number; count: number }>;
 }

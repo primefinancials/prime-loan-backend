@@ -94,77 +94,108 @@ export class SavingsMaturitiesWorker {
   }
 
   private static async processMaturedPlan(plan: any, settings: any) {
-    const session = await DatabaseService.startSession();
+    // ─────────────────────────────────────────────────────────────────────────
+    // TWO-PHASE ORCHESTRATION PATTERN (FIX #5.1)
+    // 
+    // Problem: VFD transfer inside DB transaction can cause status to get stuck
+    // in PENDING if transfer times out or DB commit fails.
+    //
+    // Solution:
+    //   Phase 1 — DB Prepare: Write PENDING record outside transaction
+    //   Phase 2 — External Call: Call VFD transfer outside any DB context
+    //   Phase 3 — DB Commit: Update status based on transfer result
+    //
+    // This guarantees status always transitions out of PENDING regardless of
+    // external call outcome or DB timing issues.
+    // ─────────────────────────────────────────────────────────────────────────
 
     try {
-      await DatabaseService.withTransaction(session, async () => {
-        // Enforce Delay period logic before completion
-        let delayMs = 0;
-        if (plan.planType === 'LOCKED') {
-          const config = settings.savings?.fixed?.earlyWithdrawal;
-          if (config?.type === 'delayed') {
-            delayMs = (config.delayDays || 0) * 24 * 60 * 60 * 1000;
-          }
-        } else if (plan.planType === 'FLEXIBLE' && plan.subType === 'STANDARD') {
-          const delayHours = settings.savings?.flexible?.standard?.withdrawalDelayHours || 24;
-          delayMs = delayHours * 60 * 60 * 1000;
+      // ─ Phase 1: Validation & Delay Period Check ─
+      let delayMs = 0;
+      if (plan.planType === 'LOCKED') {
+        const config = settings.savings?.fixed?.earlyWithdrawal;
+        if (config?.type === 'delayed') {
+          delayMs = (config.delayDays || 0) * 24 * 60 * 60 * 1000;
         }
+      } else if (plan.planType === 'FLEXIBLE' && plan.subType === 'STANDARD') {
+        const delayHours = settings.savings?.flexible?.standard?.withdrawalDelayHours || 24;
+        delayMs = delayHours * 60 * 60 * 1000;
+      }
 
-        const maturityWithDelay = new Date(plan.maturityDate).getTime() + delayMs;
+      const maturityWithDelay = new Date(plan.maturityDate).getTime() + delayMs;
 
-        if (new Date().getTime() < maturityWithDelay) {
-          // Keep as PROCESSING, but it stayed as processing because of the lock above.
-          // We just exit and it will be picked up again only if we revert to ACTIVE or if we change the worker to pick up PROCESSING (not recommended without timeout).
-          // Actually, if it's in the delay period, it SHOULD be ACTIVE or a different state like 'MATURED_WAITING'.
-          // For now, let's revert to ACTIVE so it can be checked again later.
-          await SavingsPlan.findByIdAndUpdate(plan._id, { status: 'ACTIVE' }, { session });
-          logger.info({ planId: plan._id }, 'Plan matured but in delay period, reverted to ACTIVE');
-          return;
+      if (new Date().getTime() < maturityWithDelay) {
+        // Still in delay period, revert to ACTIVE for later retry
+        await SavingsPlan.findByIdAndUpdate(plan._id, { status: 'ACTIVE' });
+        logger.info({ planId: plan._id }, 'Plan matured but in delay period, reverted to ACTIVE');
+        return;
+      }
+
+      // Calculate interest (duration is strictly maturityDate - createdAt for every plan)
+      let daysActive = 30; // fallback
+      if (plan.maturityDate && plan.createdAt) {
+        daysActive = Math.ceil((new Date(plan.maturityDate).getTime() - new Date(plan.createdAt).getTime()) / (1000 * 3600 * 24));
+      }
+      daysActive = Math.max(1, daysActive);
+
+      const annualRate = plan.interestRate || 0;
+      const dailyRate = annualRate / 365;
+      const interestAmount = Math.floor(plan.principal * dailyRate * daysActive);
+      const totalAmount = plan.principal + interestAmount;
+
+      if (totalAmount <= 0) {
+        // Zero-amount payout, complete immediately
+        const session = await DatabaseService.startSession();
+        try {
+          await DatabaseService.withTransaction(session, async () => {
+            plan.status = 'COMPLETED';
+            plan.completedAt = new Date();
+            plan.interestEarned = 0;
+            await plan.save({ session });
+          });
+        } finally {
+          await session.endSession();
         }
+        logger.info({ planId: plan._id }, 'Completed zero-amount savings plan');
+        await WorkerLogService.log('savings-maturities', 'info', 'Completed zero-amount savings plan', { planId: plan._id });
+        return;
+      }
 
-        // Calculate interest (duration is strictly maturityDate - createdAt for every plan)
-        let daysActive = 30; // fallback
-        if (plan.maturityDate && plan.createdAt) {
-          daysActive = Math.ceil((new Date(plan.maturityDate).getTime() - new Date(plan.createdAt).getTime()) / (1000 * 3600 * 24));
-        }
-        daysActive = Math.max(1, daysActive);
+      // ─ Phase 1: DB Prepare - Create PENDING transfer record outside session ─
+      const vfdProvider = new VfdProvider();
+      const user = await User.findById(plan.userId);
+      if (!user) throw new Error(`User not found for plan ${plan._id}`);
 
-        const annualRate = plan.interestRate || 0;
-        const dailyRate = annualRate / 365;
-        const interestAmount = Math.floor(plan.principal * dailyRate * daysActive);
-        const totalAmount = plan.principal + interestAmount;
+      const to = (await vfdProvider.getAccountInfo(user.user_metadata.accountNo)).data;
+      const from = (await vfdProvider.getPrimeAccountInfo()).data;
 
-        if (totalAmount <= 0) {
-          plan.status = 'COMPLETED';
-          plan.completedAt = new Date();
-          plan.interestEarned = 0;
-          await plan.save({ session });
-          logger.info({ planId: plan._id }, 'Completed zero-amount savings plan');
-          await WorkerLogService.log('savings-maturities', 'info', 'Completed zero-amount savings plan', { planId: plan._id });
-          return;
-        }
+      const remark = `Savings maturity payout for ${plan.planName}`;
 
-        const vfdProvider = new VfdProvider();
-        const user = await User.findById(plan.userId);
-        if (!user) throw new Error(`User not found for plan ${plan._id}`);
+      const trxn = await TransferService.initiateTransfer({
+        fromAccount: from.accountNo,
+        toAccount: to.accountNo,
+        amount: totalAmount,
+        userId: plan.userId,
+        beneficiaryName: to.client,
+        transferType: "intra",
+        bankCode: "999999",
+        remark,
+        walletBalance: String(to.accountBalance)
+      }, "savings-withdrawal");
 
-        const to = (await vfdProvider.getAccountInfo(user.user_metadata.accountNo)).data;
-        const from = (await vfdProvider.getPrimeAccountInfo()).data;
+      const traceId = UuidService.generateTraceId();
 
-        const remark = `Savings maturity payout for ${plan.planName}`;
+      logger.info({
+        planId: plan._id,
+        transferRef: trxn.reference,
+        totalAmount
+      }, 'Phase 1 complete: PENDING transfer record created');
 
-        const trxn = await TransferService.initiateTransfer({
-          fromAccount: from.accountNo,
-          toAccount: to.accountNo,
-          amount: totalAmount,
-          userId: plan.userId,
-          beneficiaryName: to.client,
-          transferType: "intra",
-          bankCode: "999999",
-          remark,
-          walletBalance: String(to.accountBalance)
-        }, "savings-withdrawal");
+      // ─ Phase 2: External Call - VFD transfer OUTSIDE any DB context ─
+      let transferSuccess = false;
+      let providerErrorMsg = '';
 
+      try {
         const transferReq: TransferRequest = {
           uniqueSenderAccountId: from.accountId,
           fromAccount: from.accountNo,
@@ -185,76 +216,124 @@ export class SavingsMaturitiesWorker {
         };
 
         const providerRes = await vfdProvider.transfer(transferReq);
-
-        if (providerRes.status == "00") {
-          await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
-
-          const traceId = UuidService.generateTraceId();
-
-          // Create interest ledger entries
-          await LedgerService.createDoubleEntry(
-            traceId,
-            'interest_pool',
-            `user_wallet:${plan.userId}`,
-            interestAmount,
-            'savings',
-            {
-              userId: plan.userId,
-              subtype: 'interest',
-              session,
-              meta: { planId: plan._id, principal: plan.principal, interestRate: plan.interestRate, daysActive }
-            }
-          );
-
-          // Return principal to user
-          await LedgerService.createDoubleEntry(
-            traceId,
-            'savings_pool',
-            `user_wallet:${plan.userId}`,
-            plan.principal,
-            'savings',
-            {
-              userId: plan.userId,
-              subtype: 'principal_return',
-              session,
-              meta: { planId: plan._id }
-            }
-          );
-
-          // Update plan status
-          plan.status = 'COMPLETED';
-          plan.completedAt = new Date();
-          plan.interestEarned = interestAmount;
-
-          if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
-          plan.withdrawalHistory.push({
-            amount: plan.principal,
-            penalty: 0,
-            netAmount: totalAmount,
-            initiated: new Date(),
-            completed: new Date(),
-            earlyWithdrawal: false,
-            processed: true,
-            traceId,
-            transactionId: trxn.reference
-          });
-
-          await plan.save({ session });
-
-          logger.info({
-            planId: plan._id,
-            userId: plan.userId,
-            principal: plan.principal,
-            interestEarned: interestAmount
-          }, 'Savings plan matured and processed');
-          await WorkerLogService.log('savings-maturities', 'info', 'Savings plan matured and processed', { planId: plan._id, interestEarned: interestAmount });
-        } else {
-          await TransferService.failTransfer(trxn.reference);
-          throw new Error(`Transfer failed: ${providerRes.message}`);
+        transferSuccess = providerRes.status === "00";
+        if (!transferSuccess) {
+          providerErrorMsg = providerRes.message || JSON.stringify(providerRes);
         }
-      });
-    } finally {
-      await session.endSession();
+
+        logger.info({
+          planId: plan._id,
+          transferRef: trxn.reference,
+          providerStatus: providerRes.status
+        }, `Phase 2 complete: VFD transfer ${transferSuccess ? 'succeeded' : 'failed'}`);
+      } catch (err: any) {
+        providerErrorMsg = err.message || String(err);
+        logger.error({
+          planId: plan._id,
+          transferRef: trxn.reference,
+          error: providerErrorMsg
+        }, 'Phase 2 error: VFD transfer threw exception');
+      }
+
+      // ─ Phase 3: DB Commit - Update status based on transfer result ─
+      const session = await DatabaseService.startSession();
+      try {
+        await DatabaseService.withTransaction(session, async () => {
+          if (transferSuccess) {
+            // Mark transfer as completed
+            await TransferService.completeTransfer(trxn.reference, "savings-withdrawal");
+
+            // Create interest ledger entries
+            await LedgerService.createDoubleEntry(
+              traceId,
+              'interest_pool',
+              `user_wallet:${plan.userId}`,
+              interestAmount,
+              'savings',
+              {
+                userId: plan.userId,
+                subtype: 'interest',
+                session,
+                meta: { planId: plan._id, principal: plan.principal, interestRate: plan.interestRate, daysActive }
+              }
+            );
+
+            // Return principal to user
+            await LedgerService.createDoubleEntry(
+              traceId,
+              'savings_pool',
+              `user_wallet:${plan.userId}`,
+              plan.principal,
+              'savings',
+              {
+                userId: plan.userId,
+                subtype: 'principal_return',
+                session,
+                meta: { planId: plan._id }
+              }
+            );
+
+            // Update plan status
+            plan.status = 'COMPLETED';
+            plan.completedAt = new Date();
+            plan.interestEarned = interestAmount;
+
+            if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
+            plan.withdrawalHistory.push({
+              amount: plan.principal,
+              penalty: 0,
+              netAmount: totalAmount,
+              initiated: new Date(),
+              completed: new Date(),
+              earlyWithdrawal: false,
+              processed: true,
+              traceId,
+              transactionId: trxn.reference
+            });
+
+            await plan.save({ session });
+
+            logger.info({
+              planId: plan._id,
+              userId: plan.userId,
+              principal: plan.principal,
+              interestEarned: interestAmount,
+              traceId
+            }, 'Phase 3 complete: Savings plan matured and fully processed');
+            await WorkerLogService.log('savings-maturities', 'info', 'Savings plan matured and processed', { planId: plan._id, interestEarned: interestAmount });
+          } else {
+            // Transfer failed, mark as FAILED and log error
+            await TransferService.failTransfer(trxn.reference);
+            plan.status = 'ACTIVE'; // Revert to ACTIVE for retry
+            await plan.save({ session });
+
+            logger.error({
+              planId: plan._id,
+              transferRef: trxn.reference,
+              providerError: providerErrorMsg
+            }, 'Phase 3 complete: Transfer failed, plan reverted to ACTIVE for retry');
+            await WorkerLogService.log('savings-maturities', 'error', `Transfer failed: ${providerErrorMsg}`, { planId: plan._id });
+          }
+        });
+      } finally {
+        await session.endSession();
+      }
+    } catch (error: any) {
+      logger.error({
+        planId: plan._id,
+        error: error.message
+      }, 'Error in processMaturedPlan (Phase 3 or earlier)');
+      // Ensure plan is reverted to ACTIVE for retry if still in PROCESSING
+      const updated = await SavingsPlan.findByIdAndUpdate(
+        plan._id,
+        { status: 'ACTIVE' },
+        { new: true }
+      );
+      if (updated?.status === 'ACTIVE') {
+        logger.info({ planId: plan._id }, 'Plan reverted to ACTIVE for retry after error');
+      }
+      await WorkerLogService.log('savings-maturities', 'error', `Error processing plan: ${error.message}`, { planId: plan._id });
+      throw error; // Re-throw so parent catch block logs it
     }
   }
 }

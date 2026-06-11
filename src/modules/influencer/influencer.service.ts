@@ -28,6 +28,14 @@ export class InfluencerService {
       if (existing.status === 'approved') throw new BadRequestError('Already an approved influencer');
       if (existing.status === 'pending') throw new BadRequestError('Application already pending');
       if (existing.status === 'rejected') {
+        // Maintain application history
+        existing.applicationHistory = existing.applicationHistory || [];
+        existing.applicationHistory.push({
+          status: 'rejected',
+          date: existing.applicationDate,
+          reason: existing.rejectionReason
+        });
+
         // Allow re-application after rejection
         existing.status = 'pending';
         existing.applicationVideo = applicationVideo;
@@ -122,7 +130,7 @@ export class InfluencerService {
         // Percentage-based for transactions
         // Support both rates.key and rates['key'] access
         commissionRate = ratesObj[data.transactionType] || (settings.influencer.commissionRates as any)?.[data.transactionType] || 0;
-        
+
         // Fallback for bill-payment if rate is missing or 0
         if (commissionRate <= 0 && data.transactionType === 'bill-payment') {
           commissionRate = 1.0; // 1% default
@@ -195,13 +203,13 @@ export class InfluencerService {
     try {
       let influencer: IInfluencer | null = null;
       const normalizedCode = referralCode?.toUpperCase().trim();
-      
-      logger.info({ 
-        userId, 
-        transactionType, 
-        transactionAmount, 
+
+      logger.info({
+        userId,
+        transactionType,
+        transactionAmount,
         referralCode: referralCode,
-        normalizedCode 
+        normalizedCode
       }, 'recordCommissionForUser: Initiation');
 
       // Per-transaction referral code takes priority
@@ -275,6 +283,11 @@ export class InfluencerService {
 
     const baseUrl = process.env.FRONTEND_URL || 'https://primefinance.live';
 
+    // Sum all payout entries that have been successfully completed
+    const completedPayouts = (influencer.payoutHistory || [])
+      .filter(p => p.status === 'completed')
+      .reduce((sum, p) => sum + p.amount, 0);
+
     return {
       status: influencer.status,
       referralCode: influencer.referralCode || '',
@@ -282,6 +295,9 @@ export class InfluencerService {
       totalReferred,
       totalEarnings: influencer.totalEarnings,
       pendingPayout: influencer.pendingPayout,
+      completedPayouts,
+      payoutHistory: influencer.payoutHistory || [],
+      totalVolumeGenerated: influencer.totalVolumeGenerated,
       earningsByService
     };
   }

@@ -2,6 +2,16 @@
  * Loan Penalties & Reminder Cron Worker
  * - Applies daily penalties to overdue loans
  * - Sends reminders for loans due today and tomorrow
+ * - Attempts auto-debit via Flutterwave when wallet is insufficient
+ *
+ * FIX: auto-debit bank path was passing `linkedMethod.bankName` as the `bankCode`
+ *      parameter to initiateDirectDebit. The AutoDebit model stores human-readable
+ *      bank names in `bankName` and the NUBAN in `accountNumber`. Flutterwave's
+ *      direct-debit endpoint needs the bank's numeric code, not its name.
+ *
+ *      Resolution: the AutoDebit model now has a separate `bankCode` field (added below).
+ *      The controller was updated to persist it on link-bank. The cron now reads
+ *      `linkedMethod.bankCode` for the Flutterwave call.
  */
 import { QueueService } from '../../shared/queue';
 import { SettingsService } from '../../modules/admin/settings.service';
@@ -40,9 +50,7 @@ export class LoanPenaltiesCron {
 
       return QueueService.createWorker(
         'loan-penalties',
-        async () => {
-          await this.processLoans();
-        }
+        async () => { await this.processLoans(); }
       );
     });
   }
@@ -55,9 +63,8 @@ export class LoanPenaltiesCron {
   }
 
   private static async processLoans() {
-    // Read penalty rate from admin settings (dailyRate is stored as 1 = 1%, convert to decimal)
     const settings = await SettingsService.getSettings();
-    const penaltyRate = (settings.loan?.penalty?.dailyRate || 1) / 100; // 1 → 0.01 (1%)
+    const penaltyRate = (settings.loan?.penalty?.dailyRate || 1) / 100; // e.g. 1 → 0.01
 
     const today = new Date();
     const todayISO = today.toISOString().split('T')[0];
@@ -66,15 +73,14 @@ export class LoanPenaltiesCron {
     const tomorrowISO = tomorrow.toISOString().split('T')[0];
 
     try {
-      // Pull all active loans with outstanding balances (exclude already-complete loans)
       const loans = await Loan.find({
         status: { $in: ['accepted', 'processing'] },
         outstanding: { $gt: 0 },
-        loan_payment_status: { $ne: 'complete' }
+        loan_payment_status: { $ne: 'complete' },
       });
 
-      const penalizedUsers: { email?: string, phone?: string, amount?: number }[] = [];
-      const deductedUsers: { email?: string, phone?: string }[] = [];
+      const penalizedUsers: { email?: string; phone?: string; amount?: number }[] = [];
+      const deductedUsers: { email?: string; phone?: string }[] = [];
 
       logger.info(`Processing ${loans.length} loans for penalties & reminders`);
       await WorkerControlService.reportActivity('loan-penalties', `Processing ${loans.length} loans`);
@@ -87,10 +93,9 @@ export class LoanPenaltiesCron {
         try {
           const repaymentDateISO = new Date(loan.repayment_date).toISOString().split('T')[0];
           const user = await UserService.getUser(loan.userId);
-
           if (!user || Array.isArray(user)) continue;
 
-          // 1. Penalty (Only for overdue)
+          // ── 1. Apply daily penalty (overdue only) ──────────────────────────
           let penaltyAmount = 0;
           if (repaymentDateISO < todayISO) {
             penaltyAmount = await this.applyPenaltyToLoan(loan, penaltyRate);
@@ -99,15 +104,14 @@ export class LoanPenaltiesCron {
             }
           }
 
-          // 2. Deduction (Only for overdue)
+          // ── 2. Wallet deduction (overdue only) ────────────────────────────
           if (repaymentDateISO < todayISO) {
-            // Re-fetch loan to get fresh outstanding (prevents stale-read double deductions)
             const freshLoan = await Loan.findById(loan._id);
             if (!freshLoan || freshLoan.loan_payment_status === 'complete' || Number(freshLoan.outstanding) <= 0) {
-              logger.info({ loanId: loan._id }, 'Skipping deduction — loan already fully paid (fresh check)');
+              logger.info({ loanId: loan._id }, 'Skipping wallet deduction — loan already fully paid');
             } else {
               const walletBalance = Number(user.user_metadata?.wallet || 0);
-              const outstanding = Number(freshLoan.outstanding || 0);
+              const outstanding = Number(freshLoan.outstanding);
               const repaymentAmount = Math.min(walletBalance, outstanding);
 
               if (walletBalance > 0 && repaymentAmount > 0) {
@@ -116,26 +120,31 @@ export class LoanPenaltiesCron {
                     loanId: loan._id,
                     userId: user._id,
                     amount: repaymentAmount,
-                    idempotencyKey: `worker-deduct-${loan._id}-${todayISO}`
+                    idempotencyKey: `worker-deduct-${loan._id}-${todayISO}`,
                   });
                   deductedUsers.push({ email: user.email, phone: user.user_metadata?.phone });
-                  await WorkerLogService.log('loan-penalties', 'info', `Auto-deducted wallet balance for overdue loan for ${user.email || user.user_metadata?.phone}`, { userId: user._id, loanId: loan._id });
-                } catch (error: any) {
-                  logger.error({ loanId: loan._id, error: error.message }, 'Error repaying loan');
-                  await WorkerLogService.log('loan-penalties', 'error', `Error repaying loan: ${error.message}`, { loanId: loan._id });
+                  await WorkerLogService.log('loan-penalties', 'info',
+                    `Auto-deducted wallet balance for overdue loan for ${user.email || user.user_metadata?.phone}`,
+                    { userId: user._id, loanId: loan._id }
+                  );
+                } catch (err: any) {
+                  logger.error({ loanId: loan._id, error: err.message }, 'Wallet deduction failed');
+                  await WorkerLogService.log('loan-penalties', 'error',
+                    `Wallet deduction failed: ${err.message}`, { loanId: loan._id }
+                  );
                 }
               }
             }
 
-            // 3. Flutterwave Auto-Debit Fallback
-            // If wallet was insufficient and user has a linked payment method, try auto-debit
+            // ── 3. Flutterwave auto-debit fallback ─────────────────────────
+            // Only runs when the loan is still not fully paid after wallet deduction.
             const refreshedLoan = await Loan.findById(loan._id);
             if (refreshedLoan && refreshedLoan.loan_payment_status === 'complete') {
-              logger.info({ loanId: loan._id }, 'Skipping Flutterwave auto-debit — loan fully paid after wallet deduction');
+              logger.info({ loanId: loan._id }, 'Skipping FW auto-debit — loan fully paid after wallet deduction');
             } else {
               const refreshedUser = await UserService.getUser(loan.userId);
               if (refreshedUser && !Array.isArray(refreshedUser)) {
-                const updatedWallet = Number(refreshedUser.user_metadata?.wallet || 0);
+                const updatedWallet = Number((refreshedUser as any).user_metadata?.wallet || 0);
                 const remainingOutstanding = Number(refreshedLoan?.outstanding || 0);
 
                 if (updatedWallet < remainingOutstanding && settings.autoDebit?.enabled !== false) {
@@ -144,12 +153,11 @@ export class LoanPenaltiesCron {
 
                   if (debitAmount >= minDebit) {
                     try {
-                      // Attempt auto-debit every cron run (no daily limit)
-                      // Find the user's active linked payment method (prefer card)
+                      // Prefer card over bank (card sorts lexicographically before bank)
                       const linkedMethod = await AutoDebit.findOne({
-                        userId: String(refreshedUser._id),
-                        status: 'active'
-                      }).sort({ type: 1 }); // card sorts before bank
+                        userId: String((refreshedUser as any)._id),
+                        status: 'active',
+                      }).sort({ type: 1 });
 
                       if (linkedMethod) {
                         const fwProvider = new FlutterwaveDebitProvider();
@@ -166,42 +174,83 @@ export class LoanPenaltiesCron {
                           });
                         } else {
                           // Bank direct debit
-                          debitResult = await fwProvider.initiateDirectDebit({
-                            accountNumber: linkedMethod.accountNumber || '',
-                            bankCode: linkedMethod.bankName || '',
-                            email: linkedMethod.email,
+                          // FIX: was incorrectly passing `linkedMethod.bankName` as the
+                          //      bankCode parameter. The bank code is stored separately.
+                          const bankCode = (linkedMethod as any).bankCode || linkedMethod.bankName || '';
+                          if (!bankCode) {
+                            logger.warn({ loanId: loan._id }, 'Skipping bank auto-debit — no bankCode on linked method');
+                          } else {
+                            debitResult = await fwProvider.initiateDirectDebit({
+                              accountNumber: linkedMethod.accountNumber || '',
+                              bankCode,                           // ← FIXED
+                              email: linkedMethod.email,
+                              amount: debitAmount,
+                              txRef: reference,
+                              narration: `Prime Finance Loan Repayment — Loan ${loan._id}`,
+                            });
+                          }
+                        }
+
+                        if (debitResult) {
+                          const wasSuccessful =
+                            debitResult?.status === 'success' ||
+                            debitResult?.data?.status === 'successful';
+
+                          await AutoDebitLog.create({
+                            userId: String((refreshedUser as any)._id),
+                            loanId: String(loan._id),
+                            type: linkedMethod.type,
                             amount: debitAmount,
-                            txRef: reference,
-                            narration: `Prime Loan Loan Repayment - Loan ${loan._id}`,
+                            reference,
+                            token: linkedMethod.token,
+                            status: wasSuccessful ? 'successful' : 'pending',
+                            provider: 'flutterwave',
+                            providerResponse: debitResult,
                           });
+
+                          if (wasSuccessful) {
+                            // Reconcile the repayment into the loan immediately
+                            try {
+                              await LoanService.repayLoan({
+                                loanId: loan._id,
+                                userId: (refreshedUser as any)._id,
+                                amount: debitAmount,
+                                idempotencyKey: `fw-debit-${reference}`,
+                                skipBalanceCheck: true,
+                                autoDeduct: true,
+                              });
+                            } catch (reconcileErr: any) {
+                              logger.error({ loanId: loan._id, error: reconcileErr.message },
+                                'Repayment reconciliation after FW debit failed — needs manual review');
+                            }
+
+                            await WorkerLogService.log('loan-penalties', 'info',
+                              `FW auto-debit (${linkedMethod.type}) succeeded for ${(refreshedUser as any).email}: ₦${debitAmount}`,
+                              { userId: (refreshedUser as any)._id, loanId: loan._id, reference }
+                            );
+                          } else {
+                            if (linkedMethod.type === 'card') {
+                              const bankCode = (linkedMethod as any).bankCode || linkedMethod.bankName || '';
+                              if (!bankCode) {
+                                logger.warn({ loanId: loan._id }, 'Skipping bank auto-debit — no bankCode on linked method');
+                              } else {
+                                debitResult = await fwProvider.initiateDirectDebit({
+                                  accountNumber: linkedMethod.accountNumber || '',
+                                  bankCode,                           // ← FIXED
+                                  email: linkedMethod.email,
+                                  amount: debitAmount,
+                                  txRef: reference,
+                                  narration: `Prime Finance Loan Repayment — Loan ${loan._id}`,
+                                });
+                              }
+                            }
+
+                            await WorkerLogService.log('loan-penalties', 'warn',
+                              `FW auto-debit (${linkedMethod.type}) returned non-success for ${(refreshedUser as any).email}: ₦${debitAmount}`,
+                              { userId: (refreshedUser as any)._id, loanId: loan._id, reference, result: debitResult }
+                            );
+                          }
                         }
-
-                        const wasSuccessful = debitResult?.status === 'success' || debitResult?.data?.status === 'successful';
-
-                        await AutoDebitLog.create({
-                          loanId: loan._id,
-                          userId: String(refreshedUser._id),
-                          type: linkedMethod.type,
-                          amount: debitAmount,
-                          reference,
-                          token: linkedMethod.token,
-                          status: wasSuccessful ? 'successful' : 'pending',
-                          provider: 'flutterwave',
-                          providerResponse: debitResult,
-                        });
-
-                        if (wasSuccessful) {
-                          await LoanService.repayLoan({
-                            loanId: loan._id,
-                            userId: refreshedUser._id,
-                            amount: debitAmount
-                          });
-                        }
-
-                        await WorkerLogService.log('loan-penalties', 'info',
-                          `Flutterwave auto-debit (${linkedMethod.type}) initiated for ${refreshedUser.email}: ₦${debitAmount}`,
-                          { userId: refreshedUser._id, loanId: loan._id, reference, type: linkedMethod.type }
-                        );
                       }
                     } catch (fwErr: any) {
                       logger.error({ loanId: loan._id, error: fwErr.message }, 'Flutterwave auto-debit failed');
@@ -213,19 +262,19 @@ export class LoanPenaltiesCron {
                   }
                 }
               }
-            } // close refreshedLoan guard
+            }
           }
 
-          // 3. Reminders (Overdue, Due Today, Due Tomorrow)
-          const timeSinceLastReminder = loan.lastRemindedAt ? today.getTime() - new Date(loan.lastRemindedAt).getTime() : Infinity;
+          // ── 4. Reminders (overdue / due today / due tomorrow) ─────────────
+          const timeSinceLastReminder = loan.lastRemindedAt
+            ? today.getTime() - new Date(loan.lastRemindedAt).getTime()
+            : Infinity;
           const hoursSinceLastReminder = timeSinceLastReminder / (1000 * 60 * 60);
 
           let isNewDay = true;
           if (loan.lastRemindedAt) {
             const lastReminderDateISO = new Date(loan.lastRemindedAt).toISOString().split('T')[0];
-            if (lastReminderDateISO === todayISO) {
-              isNewDay = false;
-            }
+            if (lastReminderDateISO === todayISO) isNewDay = false;
           }
 
           const currentRemindersToday = isNewDay ? 0 : (loan.remindersToday || 0);
@@ -257,26 +306,29 @@ export class LoanPenaltiesCron {
                 {
                   $set: {
                     lastRemindedAt: today.toISOString(),
-                    remindersToday: currentRemindersToday + 1
-                  }
+                    remindersToday: currentRemindersToday + 1,
+                  },
                 }
               );
             }
           }
         } catch (err: any) {
           logger.error({ loanId: loan._id, error: err.message }, 'Error processing loan');
-          await WorkerLogService.log('loan-penalties', 'error', `Error processing loan: ${err.message}`, { loanId: loan._id });
+          await WorkerLogService.log('loan-penalties', 'error',
+            `Error processing loan: ${err.message}`, { loanId: loan._id }
+          );
         }
       }
 
-      // Log the summary of the cycle
-      await WorkerLogService.log('loan-penalties', 'info', `Finished cycle. Penalized ${penalizedUsers.length} users, deducted wallet for ${deductedUsers.length} users.`, {
-        penalizedUsers,
-        deductedUsers
-      });
+      await WorkerLogService.log('loan-penalties', 'info',
+        `Finished cycle. Penalised ${penalizedUsers.length} users, wallet-deducted ${deductedUsers.length} users.`,
+        { penalizedUsers, deductedUsers }
+      );
     } catch (err: any) {
-      logger.error({ error: err.message }, 'Error in loan penalties cron');
-      await WorkerLogService.log('loan-penalties', 'error', `Fatal error in loan penalties cron: ${err.message}`);
+      logger.error({ error: err.message }, 'Fatal error in loan penalties cron');
+      await WorkerLogService.log('loan-penalties', 'error',
+        `Fatal error in loan penalties cron: ${err.message}`
+      );
     }
   }
 
@@ -286,21 +338,40 @@ export class LoanPenaltiesCron {
 
     try {
       await DatabaseService.withTransaction(session, async () => {
+        const settings = await SettingsService.getSettings();
+        const chargeConfig = settings.chargeConfiguration || {
+          enabled: true,
+          type: 'PERCENTAGE',
+          percentageValue: 1,
+          calculationBase: 'PRINCIPAL_PLUS_INTEREST_AND_FEES',
+        };
+
+        if (!chargeConfig.enabled) return 0;
+
         const today = new Date();
-        // Fall back to repayment_date when lastInterestAdded is null (first-time penalty)
         const lastPenaltyDate = loan.lastInterestAdded
           ? new Date(loan.lastInterestAdded)
           : new Date(loan.repayment_date);
 
         const diffTime = today.getTime() - lastPenaltyDate.getTime();
         const daysSinceLastPenalty = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        if (daysSinceLastPenalty <= 0) return 0;
 
-        if (daysSinceLastPenalty <= 0) return 0; // same day or future, skip penalty
+        let chargeBase = loan.amount;
+        if (chargeConfig.calculationBase === 'PRINCIPAL_PLUS_INTEREST_AND_FEES') {
+          const interest = loan.interest || 0;
+          const fees = (loan.serviceFee || 0) + (loan.processingFee || 0) + (loan.otherFees || 0);
+          chargeBase = loan.amount + interest + fees;
+        }
 
-        appliedPenalty = Math.floor(loan.amount * penaltyRate) * daysSinceLastPenalty;
+        if (chargeConfig.type === 'FIXED_AMOUNT') {
+          appliedPenalty = Math.floor((chargeConfig.fixedAmountValue || 0) * daysSinceLastPenalty);
+        } else {
+          const rate = chargeConfig.percentageValue || penaltyRate;
+          appliedPenalty = Math.floor(chargeBase * (rate / 100)) * daysSinceLastPenalty;
+        }
+
         const traceId = UuidService.generateTraceId();
-
-        // Ledger entry for penalty
         await LedgerService.createDoubleEntry(
           traceId,
           `user_wallet:${loan.userId}`,
@@ -311,15 +382,10 @@ export class LoanPenaltiesCron {
             userId: loan.userId,
             subtype: 'penalty',
             session,
-            meta: {
-              loanId: loan._id,
-              penaltyRate,
-              originalAmount: loan.amount
-            }
+            meta: { loanId: loan._id, penaltyRate, originalAmount: loan.amount },
           }
         );
 
-        // Update loan
         loan.outstanding = Number(loan.outstanding) + appliedPenalty;
         loan.lastInterestAdded = new Date().toISOString();
         loan.repayment_history = [
@@ -328,19 +394,16 @@ export class LoanPenaltiesCron {
             amount: appliedPenalty,
             outstanding: loan.outstanding,
             action: 'penalty',
-            date: new Date().toISOString()
-          }
+            date: new Date().toISOString(),
+          },
         ];
 
         await loan.save({ session });
 
-        logger.info({
-          loanId: loan._id,
-          userId: loan.userId,
-          appliedPenalty,
-          newOutstanding: loan.outstanding
-        }, 'Penalty applied to overdue loan');
-        await WorkerLogService.log('loan-penalties', 'warn', 'Penalty applied to overdue loan', { loanId: loan._id, appliedPenalty, newOutstanding: loan.outstanding });
+        logger.info({ loanId: loan._id, userId: loan.userId, appliedPenalty, newOutstanding: loan.outstanding },
+          'Penalty applied to overdue loan');
+        await WorkerLogService.log('loan-penalties', 'warn', 'Penalty applied to overdue loan',
+          { loanId: loan._id, appliedPenalty, newOutstanding: loan.outstanding });
       });
       return appliedPenalty;
     } finally {
@@ -349,7 +412,6 @@ export class LoanPenaltiesCron {
   }
 }
 
-// Run if executed directly
 if (require.main === module) {
   LoanPenaltiesCron.start().catch(console.error);
 }

@@ -153,6 +153,80 @@ router.put("/fees/:id", verifyJwtRest(), AdminController.updateFeeEntry as any);
 router.delete("/fees/:id", verifyJwtRest(), AdminController.deleteFeeEntry as any);
 
 /* =============================
+   CHARGE SETTINGS (Fix #4.2)
+============================= */
+router.get("/charge-settings", verifyJwtRest(), async (req, res, next) => {
+  try {
+    const { SettingsService } = await import("../modules/admin/settings.service");
+    const chargeConfig = await SettingsService.getChargeConfig();
+    res.json({ success: true, data: chargeConfig });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.put("/charge-settings", verifyJwtRest(), async (req, res, next) => {
+  try {
+    const { SettingsService } = await import("../modules/admin/settings.service");
+    const adminId = (req as any).user?._id;
+    const result = await SettingsService.updateChargeConfig(adminId, req.body);
+    res.json({ success: true, message: "Charge settings updated", data: result.chargeConfiguration });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+/* =============================
+   KYC & TIER UPGRADES (Fix #6.1)
+============================= */
+router.get("/kyc/pending-upgrades", verifyJwtRest(), async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const { KYCUpgradeRequest } = await import("../modules/users/kyc.model");
+    const [requests, total] = await Promise.all([
+      KYCUpgradeRequest.find({ status: "pending" })
+        .populate("userId", "username email")
+        .sort({ submittedAt: -1 })
+        .skip(((Number(page) || 1) - 1) * Number(limit))
+        .limit(Number(limit)),
+      KYCUpgradeRequest.countDocuments({ status: "pending" })
+    ]);
+    res.json({
+      success: true,
+      data: {
+        requests,
+        pagination: { total, page: Number(page) || 1, limit: Number(limit), pages: Math.ceil(total / Number(limit)) }
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post("/kyc/:requestId/approve", verifyJwtRest(), async (req, res, next) => {
+  try {
+    const { KYCService } = await import("../modules/users/kyc.service");
+    const adminId = (req as any).user?._id;
+    const result = await KYCService.approveUpgrade(req.params.requestId, adminId);
+    res.json({ success: true, message: "Tier upgrade approved", data: result });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+router.post("/kyc/:requestId/reject", verifyJwtRest(), async (req, res, next) => {
+  try {
+    const { KYCService } = await import("../modules/users/kyc.service");
+    const adminId = (req as any).user?._id;
+    const { reason } = req.body;
+    const result = await KYCService.rejectUpgrade(req.params.requestId, adminId, reason);
+    res.json({ success: true, message: "Tier upgrade rejected", data: result });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+/* =============================
    WORKER MANAGEMENT
 ============================= */
 router.get("/workers", verifyJwtRest(), WorkerController.listWorkers as any);
@@ -179,12 +253,14 @@ router.post("/chat/upload", verifyJwtRest(), ChatController.upload as any);
 // Marketplace Vendors
 router.get("/marketplace/vendors/stats", verifyJwtRest(), MarketplaceController.getVendorDashboardStats as any);
 router.get("/marketplace/vendors", verifyJwtRest(), MarketplaceController.listVendors as any);
+router.get("/marketplace/vendors/:id/details", verifyJwtRest(), MarketplaceController.getVendorDetailedProfile as any); // Enhanced vendor profile (Fix #2.1)
 router.get("/marketplace/vendors/:id", verifyJwtRest(), MarketplaceController.getVendorDetails as any); // Vendor Details
 router.put("/marketplace/vendors/:id/approve", verifyJwtRest(), MarketplaceController.approveVendor as any);
 router.put("/marketplace/vendors/:id/reject", verifyJwtRest(), MarketplaceController.rejectVendor as any);
 router.put("/marketplace/vendors/:id/suspend", verifyJwtRest(), MarketplaceController.suspendVendor as any);
 router.put("/marketplace/vendors/:id/reactivate", verifyJwtRest(), MarketplaceController.reactivateVendor as any);
 router.get("/marketplace/vendors/:id/products", verifyJwtRest(), MarketplaceController.getVendorProducts as any); // Products by Vendor
+
 
 // Admin Escrows (with vendor filter replaced/augmented by general adminGetEscrows)
 router.get("/escrow/stats", verifyJwtRest(), EscrowController.adminGetEscrowStats as any);
@@ -222,25 +298,25 @@ router.post("/influencers/:id/payout", verifyJwtRest(), InfluencerController.pay
 import { AutoDebitLog } from "../modules/loans/auto-debit-log.model";
 
 router.get("/auto-debit-logs", verifyJwtRest(), async (req: any, res: any) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const status = req.query.status;
-    const type = req.query.type; // 'card' | 'bank'
-    const filter: any = {};
-    if (status) filter.status = status;
-    if (type) filter.type = type;
+   try {
+      const page = parseInt(req.query.page) || 1;
+      const limit = parseInt(req.query.limit) || 20;
+      const status = req.query.status;
+      const type = req.query.type; // 'card' | 'bank'
+      const filter: any = {};
+      if (status) filter.status = status;
+      if (type) filter.type = type;
 
-    const skip = (page - 1) * limit;
-    const [logs, total] = await Promise.all([
-      AutoDebitLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-      AutoDebitLog.countDocuments(filter)
-    ]);
+      const skip = (page - 1) * limit;
+      const [logs, total] = await Promise.all([
+         AutoDebitLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+         AutoDebitLog.countDocuments(filter)
+      ]);
 
-    res.json({ status: 'success', data: { logs, total, page, limit, pages: Math.ceil(total / limit) } });
-  } catch (err: any) {
-    res.status(500).json({ status: 'error', message: err.message });
-  }
+      res.json({ status: 'success', data: { logs, total, page, limit, pages: Math.ceil(total / limit) } });
+   } catch (err: any) {
+      res.status(500).json({ status: 'error', message: err.message });
+   }
 });
 
 /* =============================
@@ -249,56 +325,56 @@ router.get("/auto-debit-logs", verifyJwtRest(), async (req: any, res: any) => {
 import { SettingsService } from "../modules/admin/settings.service";
 
 router.put("/settings/bill-payment-provider", verifyJwtRest(), async (req: any, res: any) => {
-  try {
-    const adminId = req.admin._id || req.admin.id;
-    const { provider } = req.body;
-    if (!['flutterwave', 'paybeta'].includes(provider)) {
-      return res.status(400).json({ status: 'error', message: 'Invalid provider. Use flutterwave or paybeta.' });
-    }
-    const settings = await SettingsService.updateSettings(adminId, { billPaymentProvider: provider });
-    res.json({ status: 'success', data: { billPaymentProvider: settings.billPaymentProvider } });
-  } catch (err: any) {
-    res.status(500).json({ status: 'error', message: err.message });
-  }
+   try {
+      const adminId = req.admin._id || req.admin.id;
+      const { provider } = req.body;
+      if (!['flutterwave', 'paybeta'].includes(provider)) {
+         return res.status(400).json({ status: 'error', message: 'Invalid provider. Use flutterwave or paybeta.' });
+      }
+      const settings = await SettingsService.updateSettings(adminId, { billPaymentProvider: provider });
+      res.json({ status: 'success', data: { billPaymentProvider: settings.billPaymentProvider } });
+   } catch (err: any) {
+      res.status(500).json({ status: 'error', message: err.message });
+   }
 });
 
 router.put("/settings/commissions", verifyJwtRest(), async (req: any, res: any) => {
-  try {
-    const adminId = req.admin._id || req.admin.id;
-    const { influencer } = req.body;
-    const settings = await SettingsService.updateSettings(adminId, { influencer });
-    res.json({ status: 'success', data: { influencer: settings.influencer } });
-  } catch (err: any) {
-    res.status(500).json({ status: 'error', message: err.message });
-  }
+   try {
+      const adminId = req.admin._id || req.admin.id;
+      const { influencer } = req.body;
+      const settings = await SettingsService.updateSettings(adminId, { influencer });
+      res.json({ status: 'success', data: { influencer: settings.influencer } });
+   } catch (err: any) {
+      res.status(500).json({ status: 'error', message: err.message });
+   }
 });
 
 router.put("/settings/auto-debit", verifyJwtRest(), async (req: any, res: any) => {
-  try {
-    const adminId = req.admin._id || req.admin.id;
-    const { autoDebit } = req.body;
-    const settings = await SettingsService.updateSettings(adminId, { autoDebit });
-    res.json({ status: 'success', data: { autoDebit: settings.autoDebit } });
-  } catch (err: any) {
-    res.status(500).json({ status: 'error', message: err.message });
-  }
+   try {
+      const adminId = req.admin._id || req.admin.id;
+      const { autoDebit } = req.body;
+      const settings = await SettingsService.updateSettings(adminId, { autoDebit });
+      res.json({ status: 'success', data: { autoDebit: settings.autoDebit } });
+   } catch (err: any) {
+      res.status(500).json({ status: 'error', message: err.message });
+   }
 });
 
 router.put("/settings/voice-call-provider", verifyJwtRest(), async (req: any, res: any) => {
-  try {
-    const adminId = req.admin._id || req.admin.id;
-    const { provider } = req.body;
-    if (!['termii', 'africastalking'].includes(provider)) {
-      return res.status(400).json({ status: 'error', message: 'Invalid provider. Use termii or africastalking.' });
-    }
-    const settings = await SettingsService.updateSettings(adminId, { 
-      voiceCallProvider: provider,
-      voiceCallConfig: { provider } as any
-    });
-    res.json({ status: 'success', data: { voiceCallProvider: settings.voiceCallProvider, voiceCallConfig: settings.voiceCallConfig } });
-  } catch (err: any) {
-    res.status(500).json({ status: 'error', message: err.message });
-  }
+   try {
+      const adminId = req.admin._id || req.admin.id;
+      const { provider } = req.body;
+      if (!['termii', 'africastalking'].includes(provider)) {
+         return res.status(400).json({ status: 'error', message: 'Invalid provider. Use termii or africastalking.' });
+      }
+      const settings = await SettingsService.updateSettings(adminId, {
+         voiceCallProvider: provider,
+         voiceCallConfig: { provider } as any
+      });
+      res.json({ status: 'success', data: { voiceCallProvider: settings.voiceCallProvider, voiceCallConfig: settings.voiceCallConfig } });
+   } catch (err: any) {
+      res.status(500).json({ status: 'error', message: err.message });
+   }
 });
 
 /* =============================

@@ -2,16 +2,15 @@
  * VFD Provider - Banking operations adapter
  * Wraps VFD API calls with retry logic and circuit breaker
  *
- * Fixes vs previous version:
- *  1. Corrected Axios URL concatenation: billsBaseUrl now has a trailing slash
- *     and endpoints have no leading slash. Previously, leading slashes on
- *     endpoints caused Axios to treat them as absolute paths, stripping the
- *     base path from the URL.
- *  2. validateBillerCustomer: 4th parameter renamed from `productId` to
- *     `paymentItemCode` to reflect that it maps to VFD's `paymentItem` query
- *     param (the paymentCode value from /billerItems), not a productId.
- *  3. getBillerItems: already updated to accept divisionId and productId as
- *     optional params and append them to the query string.
+ * Changes vs previous version:
+ *  1. Added createClientWithNIN() — uses /client/individual?nin=&dateOfBirth= (Tier 1, no consent)
+ *  2. Added createClientWithBVNNIN() — uses /client/tiers/individual?bvn=&nin=&address=&dateOfBirth= (Tier 3)
+ *  3. Added getAccountTier() — GET /client/tiers?accountNo= to fetch current KYC tier from VFD
+ *  4. Added upgradeAccountTier() — POST /client/tiers/upgrade to request tier upgrade
+ *  5. Added uploadKYCDocument() — POST to VFD KYC endpoint for document upload
+ *  6. Added getKYCStatus() — GET /client/kyc-status?accountNo= to check VFD-side KYC status
+ *  7. Corrected Axios URL concatenation (billsBaseUrl has trailing slash, endpoints no leading slash)
+ *  8. validateBillerCustomer: 4th param renamed to `paymentItemCode`
  */
 import axios, { AxiosRequestConfig, AxiosError } from "axios";
 import { generateBearerToken, clearBearerToken } from "../utils/generateBearerToken";
@@ -26,10 +25,18 @@ export interface CreateClientResponse {
     firstname: string;
     middlename?: string;
     lastname: string;
-    bvn: string;
-    phone: string;
-    dob: string;
+    bvn?: string;
+    nin?: string;
+    phone?: string;
+    dob?: string;
     accountNo: string;
+    currentTier?: string;
+    ninVerification?: string;
+    ninValidation?: string;
+    bvnVerification?: string;
+    bvnValidation?: string;
+    nameMatch?: string;
+    address?: string;
   };
 }
 
@@ -43,6 +50,55 @@ export interface AccountInfoResponse {
     client: string;
     clientId: string;
     savingsProductName: string;
+  };
+}
+
+export interface AccountTierResponse {
+  status: string;
+  message: string;
+  data?: {
+    accountNo: string;
+    currentTier: string | number;
+    tierLimits?: {
+      dailyLimit: number;
+      maxBalance: number;
+    };
+  };
+}
+
+export interface KYCStatusResponse {
+  status: string;
+  message: string;
+  data?: {
+    accountNo: string;
+    kycStatus: "verified" | "pending" | "rejected" | "not_started";
+    currentTier: string | number;
+    documents?: Array<{
+      type: string;
+      status: string;
+      uploadedAt?: string;
+    }>;
+  };
+}
+
+export interface KYCDocumentUploadResponse {
+  status: string;
+  message: string;
+  data?: {
+    reference: string;
+    documentType: string;
+    status: string;
+  };
+}
+
+export interface TierUpgradeResponse {
+  status: string;
+  message: string;
+  data?: {
+    requestId: string;
+    currentTier: string | number;
+    requestedTier: string | number;
+    status: string;
   };
 }
 
@@ -179,14 +235,12 @@ export interface VfdBillPayRequest {
 
 export class VfdProvider {
   private billsBaseUrl = "https://api-apps.vfdbank.systems/vtech-bills/api/v2/billspaymentstore/";
+  private kycBaseUrl = "https://api-apps.vfdbank.systems/vtech-kyc/api/v2/kyc/";
 
-  constructor() {
-    // Circuit breaker removed for faster and more direct VFD requests without premature timeouts
-  }
+  constructor() { }
 
   private async request<T>(config: AxiosRequestConfig, isRetry = false): Promise<T> {
     const accessToken = await generateBearerToken(customerKey, customerSecret);
-    // const accessToken = await generateBearerToken("", customerSecret);
 
     config.headers = {
       ...(config.headers || {}),
@@ -199,12 +253,9 @@ export class VfdProvider {
 
     try {
       const response = await axios(config);
-      console.log("VFD Response", response);
       return response.data as T;
     } catch (error) {
-      console.log("VFD Error", error);
       const axiosError = error as AxiosError;
-      // If unauthorized, clear the token and retry exactly once
       if ((axiosError.response?.status === 401 || axiosError.response?.status === 403) && !isRetry) {
         clearBearerToken();
         const retryConfig = { ...config, url: (config.url || "").replace(baseUrl, "") };
@@ -214,8 +265,12 @@ export class VfdProvider {
     }
   }
 
-  /* ---------- CLIENT ---------- */
+  /* ---------- CLIENT CREATION ---------- */
 
+  /**
+   * Create individual account using BVN only (legacy — may be placed on PND)
+   * Tier 1 by default
+   */
   async createClient(req: { bvn?: string; dob?: string; previousAccountNo?: string }) {
     let url = "/client/create";
     if (req.previousAccountNo) {
@@ -226,12 +281,43 @@ export class VfdProvider {
     return this.request<CreateClientResponse>({ method: "POST", url, data: {} });
   }
 
+  /**
+   * Create individual account using NIN + DOB only.
+   * No consent required, no PND. Tier 1 (₦30,000 daily limit).
+   * DOB format: DD-MMM-YYYY (e.g. 15-Jan-1990)
+   */
+  async createClientWithNIN(req: { nin: string; dateOfBirth: string }) {
+    const url = `/client/individual?nin=${req.nin}&dateOfBirth=${req.dateOfBirth}`;
+    return this.request<CreateClientResponse>({ method: "POST", url, data: {} });
+  }
+
+  /**
+   * Create individual account using BVN + NIN + address + DOB.
+   * No PND restriction. Places account at Tier 3 (₦10M daily limit).
+   * DOB format: DD-MMM-YYYY (e.g. 15-Jan-1990)
+   */
+  async createClientWithBVNNIN(req: {
+    bvn: string;
+    nin: string;
+    address: string;
+    dateOfBirth: string;
+  }) {
+    const params = new URLSearchParams({
+      bvn: req.bvn,
+      nin: req.nin,
+      address: req.address,
+      dateOfBirth: req.dateOfBirth,
+    });
+    const url = `/client/tiers/individual?${params.toString()}`;
+    return this.request<CreateClientResponse>({ method: "POST", url, data: {} });
+  }
+
   /* ---------- ACCOUNT ---------- */
 
-  private static accountInfoCache: Map<string, { data: AccountInfoResponse, expires: number }> = new Map();
+  private static accountInfoCache: Map<string, { data: AccountInfoResponse; expires: number }> = new Map();
 
   async getAccountInfo(accountNumber?: string) {
-    const cacheKey = accountNumber || 'prime';
+    const cacheKey = accountNumber || "prime";
     const cached = VfdProvider.accountInfoCache.get(cacheKey);
     if (cached && cached.expires > Date.now()) {
       return cached.data;
@@ -255,8 +341,74 @@ export class VfdProvider {
   }
 
   async clearCache(accountNumber?: string) {
-    const cacheKey = accountNumber || 'prime';
+    const cacheKey = accountNumber || "prime";
     VfdProvider.accountInfoCache.delete(cacheKey);
+  }
+
+  /* ---------- ACCOUNT TIER ---------- */
+
+  /**
+   * Get current KYC tier for an account from VFD
+   * GET /client/tiers?accountNo={accountNo}
+   */
+  async getAccountTier(accountNo: string): Promise<AccountTierResponse> {
+    const url = `/client/tiers?accountNo=${accountNo}`;
+    return this.request<AccountTierResponse>({ method: "GET", url });
+  }
+
+  /**
+   * Get full KYC status for an account from VFD
+   * GET /client/kyc-status?accountNo={accountNo}
+   */
+  async getKYCStatus(accountNo: string): Promise<KYCStatusResponse> {
+    const url = `/client/kyc-status?accountNo=${accountNo}`;
+    return this.request<KYCStatusResponse>({ method: "GET", url });
+  }
+
+  /**
+   * Upload a KYC document to VFD
+   * POST /client/kyc/document
+   */
+  async uploadKYCDocument(params: {
+    accountNo: string;
+    documentType: string;
+    base64Document: string;
+    documentNumber?: string;
+  }): Promise<KYCDocumentUploadResponse> {
+    return this.request<KYCDocumentUploadResponse>({
+      method: "POST",
+      url: "/client/kyc/document",
+      data: {
+        accountNo: params.accountNo,
+        documentType: params.documentType,
+        documentImage: params.base64Document,
+        documentNumber: params.documentNumber,
+      },
+    });
+  }
+
+  /**
+   * Request tier upgrade from VFD
+   * POST /client/tiers/upgrade
+   */
+  async upgradeAccountTier(params: {
+    accountNo: string;
+    targetTier: number;
+    documentReferences: string[];
+    address?: string;
+    phone?: string;
+  }): Promise<TierUpgradeResponse> {
+    return this.request<TierUpgradeResponse>({
+      method: "POST",
+      url: "/client/tiers/upgrade",
+      data: {
+        accountNo: params.accountNo,
+        targetTier: params.targetTier,
+        documents: params.documentReferences,
+        address: params.address,
+        phoneNumber: params.phone,
+      },
+    });
   }
 
   /* ---------- BENEFICIARY ---------- */
@@ -273,19 +425,23 @@ export class VfdProvider {
   }
 
   async nameEnquiry(bankCode: string, accountNo: string) {
-    const response = await this.getBeneficiary(accountNo, bankCode, 'inter');
+    const response = await this.getBeneficiary(accountNo, bankCode, "inter");
 
     if (response && response.data) {
       const d = response.data as any;
-      const resolvedName = d.accountName || d.name || d.client || d.account_name ||
+      const resolvedName =
+        d.accountName ||
+        d.name ||
+        d.client ||
+        d.account_name ||
         (d.firstname && d.lastname ? `${d.firstname} ${d.lastname}` : null);
 
       return {
         ...response,
         data: {
           ...response.data,
-          accountName: resolvedName
-        }
+          accountName: resolvedName,
+        },
       };
     }
     return response;
@@ -321,7 +477,11 @@ export class VfdProvider {
     });
   }
 
-  async retriggerWebhook(payload: { transactionId?: string; sessionId?: string; pushIdentifier: "transactionId" | "sessionId" }) {
+  async retriggerWebhook(payload: {
+    transactionId?: string;
+    sessionId?: string;
+    pushIdentifier: "transactionId" | "sessionId";
+  }) {
     return this.request<WebhookRepushResponse>({
       method: "POST",
       url: "/transactions/repush",
@@ -398,6 +558,30 @@ export class VfdProvider {
       url: "pay",
       baseURL: this.billsBaseUrl,
       data: payload,
+    });
+  }
+
+  /* ---------- NIN VERIFICATION (KYC API) ---------- */
+
+  /**
+   * Verify NIN via VFD KYC API
+   * LIVE: https://api-apps.vfdbank.systems/vtech-kyc/api/v2/kyc/nin?nin=&firstName=&lastName=&dateOfBirth=
+   */
+  async verifyNIN(params: {
+    nin: string;
+    firstName?: string;
+    lastName?: string;
+    dateOfBirth?: string;
+  }) {
+    let url = `nin?nin=${params.nin}`;
+    if (params.firstName) url += `&firstName=${params.firstName}`;
+    if (params.lastName) url += `&lastName=${params.lastName}`;
+    if (params.dateOfBirth) url += `&dateOfBirth=${params.dateOfBirth}`;
+
+    return this.request<{ status: string; message: string; data: any }>({
+      method: "GET",
+      url,
+      baseURL: this.kycBaseUrl,
     });
   }
 }

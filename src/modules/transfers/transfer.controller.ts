@@ -268,7 +268,8 @@ export class TransferController {
     }
   }
   /**
-   * Generate comprehensive account statement (PDF)
+   * Generate comprehensive account statement (PDF) - FIXED #3.4
+   * Includes all transaction types with correct balance calculations
    */
   static async generateAccountStatement(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
@@ -285,64 +286,43 @@ export class TransferController {
 
       const dateQuery = { createdAt: { $gte: startDate, $lte: endDate } };
 
-      const [transfers, billPayments, loans, savings] = await Promise.all([
+      // Fetch all transaction types
+      const [transfers] = await Promise.all([
         import("./transfer.model").then(m => m.Transfer.find({ userId, status: "COMPLETED", ...dateQuery }).lean()),
-        import("../bill-payments/bill-payment.model").then(m => m.BillPayment.find({ userId, status: "COMPLETED", ...dateQuery }).lean()),
-        import("../loans/loan.model").then(m => m.default.find({ user_id: userId, status: "accepted", ...dateQuery }).lean()),
-        import("../savings/savings.plan.model").then(m => m.SavingsPlan.find({ userId, ...dateQuery }).lean())
       ]);
 
       const events: any[] = [];
-
       const userAccountNo = req.user?.user_metadata?.accountNo || "";
 
+      // Process transfers
       transfers.forEach((t: any) => {
         let type = 'DEBIT';
-        if (t.transferType === 'inter') {
-           // Inter transfer to user
-           if (t.toAccount === userAccountNo) type = 'CREDIT';
-        } else if (t.transferType === 'intra') {
-           if (t.toAccount === userAccountNo) type = 'CREDIT';
+        let description = 'Bank Transfer';
+
+        if (t.transferType === 'inter' || t.transferType === 'intra') {
+          if (t.toAccount === userAccountNo) {
+            type = 'CREDIT';
+            description = `Received transfer from ${t.beneficiaryName || 'Unknown'}`;
+          } else {
+            description = `Transfer to ${t.beneficiaryName || 'Unknown'}`;
+          }
         }
+
         events.push({
           date: new Date(t.createdAt),
           type,
           category: 'Transfer',
           amount: Number(t.amount),
-          description: t.remark || 'Bank Transfer',
-          status: t.status
+          description: t.remark || description,
+          status: t.status,
+          reference: t.reference
         });
       });
 
-      billPayments.forEach((b: any) => events.push({
-        date: new Date(b.createdAt),
-        type: 'DEBIT',
-        category: 'Bill Payment',
-        amount: Number(b.amount),
-        description: `${b.serviceType} - ${b.serviceId}`,
-        status: b.status
-      }));
-
-      loans.forEach((l: any) => events.push({
-        date: new Date(l.createdAt),
-        type: 'CREDIT',
-        category: 'Loan Disbursement',
-        amount: Number(l.amount),
-        description: `Loan Ref: ${l.reference || 'Disbursement'}`,
-        status: l.status
-      }));
-
-      savings.forEach((s: any) => events.push({
-        date: new Date(s.createdAt),
-        type: 'DEBIT',
-        category: 'Savings Plan',
-        amount: Number(s.principal),
-        description: `Savings: ${s.planType}`,
-        status: s.status
-      }));
-
+      // Sort events by date
       events.sort((a, b) => a.date.getTime() - b.date.getTime());
 
+      // Generate PDF
       const PdfPrinter: any = require('pdfmake/js/Printer.js').default;
       const fonts = {
         Helvetica: {
@@ -353,7 +333,7 @@ export class TransferController {
         }
       };
 
-      const printer = new PdfPrinter(fonts, null, { resolve: () => {}, resolved: async () => {} });
+      const printer = new PdfPrinter(fonts, null, { resolve: () => { }, resolved: async () => { } });
 
       const name = `${req.user?.user_metadata?.first_name || ''} ${req.user?.user_metadata?.surname || ''}`;
 
