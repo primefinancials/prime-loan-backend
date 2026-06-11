@@ -23,6 +23,13 @@ export interface IVendor extends Document {
     rejectionReason?: string;
     deactivationReason?: string;
 
+    statusHistory?: {
+        status: VendorStatus;
+        date: Date;
+        reason?: string;
+        actorId?: string;
+    }[];
+
     logistics?: {
         enabled: boolean;
         deliveryPartners?: string[];
@@ -54,6 +61,13 @@ const VendorSchema = new Schema<IVendor>({
     approvedBy: { type: String },
     rejectionReason: { type: String },
     deactivationReason: { type: String },
+
+    statusHistory: [{
+        status: { type: String, enum: Object.values(VendorStatus) },
+        date: { type: Date, default: Date.now },
+        reason: { type: String },
+        actorId: { type: String }
+    }],
 
     logistics: {
         enabled: { type: Boolean, default: false },

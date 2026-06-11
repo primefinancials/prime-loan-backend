@@ -156,6 +156,15 @@ export interface ISettings extends Document {
     atCallFromNumbers: string[];      // Africa's Talking virtual numbers — randomly rotated
     termiiSenderIds: string[];        // Termii sender IDs — randomly rotated
   };
+
+  // Default/Late Charge Configuration
+  chargeConfiguration: {
+    enabled: boolean;
+    type: 'PERCENTAGE' | 'FIXED_AMOUNT';
+    percentageValue?: number;  // e.g., 1 for 1%
+    fixedAmountValue?: number;  // e.g., 50 naira
+    calculationBase: 'PRINCIPAL_ONLY' | 'PRINCIPAL_PLUS_INTEREST_AND_FEES';
+  };
 }
 
 /**
@@ -460,6 +469,23 @@ const SettingsSchema = new Schema<ISettings>(
       termiiSenderIds: {
         type: [String],
         default: ['Prime Loan']
+      }
+    },
+
+    // Default/Late Charge Configuration (Fix #4.2)
+    chargeConfiguration: {
+      enabled: { type: Boolean, default: true },
+      type: {
+        type: String,
+        enum: ['PERCENTAGE', 'FIXED_AMOUNT'],
+        default: 'PERCENTAGE'
+      },
+      percentageValue: { type: Number, default: 1 }, // 1%
+      fixedAmountValue: { type: Number, default: 0 },
+      calculationBase: {
+        type: String,
+        enum: ['PRINCIPAL_ONLY', 'PRINCIPAL_PLUS_INTEREST_AND_FEES'],
+        default: 'PRINCIPAL_PLUS_INTEREST_AND_FEES' // NEW FORMULA
       }
     },
   },

@@ -115,6 +115,46 @@ export class MarketplaceController {
         }
     }
 
+    // Admin: Get detailed vendor profile with full KYC, bank details, and payment history
+    static async getVendorDetailedProfile(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const { page = 1, limit = 20 } = req.query;
+            
+            // Get vendor details
+            const vendor = await MarketplaceService.getVendorDetails(id);
+            
+            // Get payment history (if vendorPayouts collection exists)
+            const paymentHistory = await (global as any).db?.collection('vendor_payouts')?.find(
+              { vendorId: id }
+            )
+              .sort({ createdAt: -1 })
+              .skip((Number(page) - 1) * Number(limit))
+              .limit(Number(limit))
+              .toArray() || [];
+
+            // Get recent orders
+            const recentOrders = await (global as any).db?.collection('orders')?.find(
+              { vendorId: id }
+            )
+              .sort({ createdAt: -1 })
+              .skip((Number(page) - 1) * Number(limit))
+              .limit(Number(limit))
+              .toArray() || [];
+
+            res.status(200).json({
+              status: "success",
+              data: {
+                vendor,
+                paymentHistory,
+                recentOrders
+              }
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
     /* =====================
        PRODUCT ENDPOINTS
     ===================== */

@@ -58,47 +58,45 @@ export class UserService {
         name: string,
         surname: string,
         phone: string,
-        bvn: string,
+        bvn?: string,
         password: string,
-        nin: string,
+        nin?: string,
         dob: string,
         pin: string,
+        address?: string,
         referralCode?: string
     }) {
-        const { email, name, surname, phone, bvn, nin, password, dob, pin, referralCode } = data;
+        const { email, name, surname, phone, bvn, nin, password, dob, pin, address, referralCode } = data;
 
         // Enhanced validation
-        if (!email || !name || !surname || !phone || !bvn || !password || !nin || !dob || !pin) {
+        if (!email || !name || !surname || !phone || !password || !dob || !pin) {
             throw new BadRequestError("All required fields must be provided");
         }
 
-        // Validate email format
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
         if (!emailRegex.test(email)) {
             throw new BadRequestError("Invalid email format");
         }
 
-        // Validate phone format (Nigerian numbers)
         const phoneRegex = /^(\+234|234|0)[789][01]\d{8}$/;
         if (!phoneRegex.test(phone)) {
             throw new BadRequestError("Invalid Nigerian phone number format");
         }
 
-        // Validate BVN and NIN length
-        if (bvn.length !== 11 || nin.length !== 11) {
+        if ((bvn && bvn.length !== 11) || (nin && nin.length !== 11)) {
             throw new BadRequestError("BVN and NIN must be exactly 11 digits");
         }
 
-        // Check for existing users
+        // Duplicate checks
         const duplicateEmail = await User.findOne({ email });
         const duplicateNumber = await User.findOne({ "user_metadata.phone": phone });
         const duplicateNIN = await User.findOne({ "user_metadata.nin": nin });
         const duplicateBVN = await User.findOne({ "user_metadata.bvn": bvn });
 
-        // Claim Flow: If duplicateEmail exists but is 'pending_signup', allow update
         let isClaiming = false;
+
         if (duplicateEmail) {
-            if (duplicateEmail.status === 'pending_signup') {
+            if (duplicateEmail.status === "pending_signup") {
                 isClaiming = true;
             } else {
                 throw new ConflictError(`A user already exists with the email: ${email}`);
@@ -106,16 +104,17 @@ export class UserService {
         }
 
         if (duplicateNumber)
-            throw new ConflictError(`A user already exists with the phone number: ${phone}`)
+            throw new ConflictError(`A user already exists with the phone number: ${phone}`);
         if (duplicateNIN)
-            throw new ConflictError(`A user already exists with the NIN: ${nin}`)
+            throw new ConflictError(`A user already exists with the NIN: ${nin}`);
         if (duplicateBVN)
-            throw new ConflictError(`A user already exists with the BVN: ${bvn}`)
+            throw new ConflictError(`A user already exists with the BVN: ${bvn}`);
 
         data.password = encryptPassword(data.password);
 
-        // Resolve referral code to influencer _id (if provided)
+        // Referral resolution
         let referredByInfluencerId: string | undefined;
+
         if (referralCode) {
             try {
                 const { InfluencerService } = await import('../influencer/influencer.service');
@@ -124,21 +123,79 @@ export class UserService {
                     referredByInfluencerId = resolved.influencer._id.toString();
                 }
             } catch (err) {
-                console.error('Referral code resolution failed (non-fatal):', (err as Error).message);
+                console.error("Referral resolution failed:", (err as Error).message);
             }
         }
 
-        // Create VFD account
-        const response = await UserService.vfdProvider.createClient({ bvn: data.bvn, dob: data.dob });
+        // ===============================
+        // ✅ VFD ACCOUNT STRATEGY LOGIC
+        // ===============================
+        const vfdProvider = UserService.vfdProvider;
 
-        if (!response.data?.accountNo) {
-            throw new BadRequestError("Failed to create bank account. Please verify your BVN and date of birth.");
+        let vfdResponse;
+        let currentTier = 1;
+
+        try {
+            // Strategy 1: BVN + NIN + Address → Tier 3
+            if (bvn && nin && address) {
+                const res = await vfdProvider.createClientWithBVNNIN({
+                    bvn,
+                    nin,
+                    address,
+                    dateOfBirth: dob,
+                });
+
+                if (res?.data?.accountNo) {
+                    vfdResponse = res;
+                    currentTier = Number(res.data.currentTier ?? 3);
+                }
+            }
+
+            // Strategy 2: NIN only → Tier 1 (fallback if previous failed)
+            if (!vfdResponse && nin) {
+                const res = await vfdProvider.createClientWithNIN({
+                    nin,
+                    dateOfBirth: dob,
+                });
+
+                if (res?.data?.accountNo) {
+                    vfdResponse = res;
+                    currentTier = 1;
+                }
+            }
+
+            // Strategy 3: BVN only → Tier 1 legacy fallback
+            if (!vfdResponse && bvn) {
+                const res = await vfdProvider.createClient({
+                    bvn,
+                    dob,
+                });
+
+                if (res?.data?.accountNo) {
+                    vfdResponse = res;
+                    currentTier = 1;
+                }
+            }
+
+            if (!vfdResponse?.data?.accountNo) {
+                throw new BadRequestError(
+                    "Failed to create bank account. Please verify your BVN/NIN and date of birth."
+                );
+            }
+        } catch (err) {
+            throw new BadRequestError(
+                "VFD account creation failed: " + (err as Error).message
+            );
         }
+
+        const accountNo = vfdResponse.data.accountNo;
 
         let user;
 
+        // ===============================
+        // CLAIM FLOW (EXISTING USER)
+        // ===============================
         if (isClaiming && duplicateEmail) {
-            // Update existing placeholder user
             duplicateEmail.password = data.password;
             duplicateEmail.user_metadata = {
                 ...duplicateEmail.user_metadata,
@@ -148,23 +205,27 @@ export class UserService {
                 bvn,
                 nin,
                 dateOfBirth: dob,
-                accountNo: response.data?.accountNo,
+                accountNo,
                 pin,
                 wallet: "0",
                 creditScore: 1.0,
                 ladderIndex: 0,
                 signupBonusReceived: false
             };
+
             duplicateEmail.status = "active";
             duplicateEmail.confirmation_sent_at = getCurrentTimestamp();
             duplicateEmail.phone = phone;
+
             if (referredByInfluencerId) (duplicateEmail as any).referredBy = referredByInfluencerId;
             if (referralCode) (duplicateEmail as any).referralCode = referralCode;
 
             await duplicateEmail.save();
             user = duplicateEmail;
         } else {
-            // Create new
+            // ===============================
+            // NEW USER CREATION
+            // ===============================
             user = await User.create({
                 password: data.password,
                 refresh_tokens: [],
@@ -176,7 +237,7 @@ export class UserService {
                     bvn,
                     nin,
                     dateOfBirth: dob,
-                    accountNo: response.data?.accountNo,
+                    accountNo,
                     pin,
                     wallet: "0",
                     creditScore: 1.0,
@@ -193,43 +254,40 @@ export class UserService {
                 is_super_admin: false,
                 status: "active",
                 ...(referredByInfluencerId ? { referredBy: referredByInfluencerId } : {}),
-                ...(referralCode ? { referralCode } : {})
+                ...(referralCode ? { referralCode } : {}),
             });
         }
 
-        // Fetch platform settings for bonuses
+        // ===============================
+        // WALLET + BONUSES (UNCHANGED)
+        // ===============================
         const settings = await SettingsService.getSettings();
-        const signupBonus = settings.loan?.signupBonus || 100; // Updated to use dynamic setting
+        const signupBonus = settings.loan?.signupBonus || 100;
         const influencerSignupBonus = settings.influencer?.commissionRates?.signup_bonus || 100;
 
-        // Initialize user wallet in ledger
         await LedgerService.createEntry({
             traceId: `user_init_${user._id as any}`,
             userId: user._id as any,
             account: `user_wallet:${user._id as any}`,
-            entryType: 'CREDIT',
-            category: 'transfer',
-            subtype: 'wallet_initialization',
+            entryType: "CREDIT",
+            category: "transfer",
+            subtype: "wallet_initialization",
             amount: 0,
-            status: 'COMPLETED',
-            meta: {
-                reason: 'Initial wallet setup'
-            }
+            status: "COMPLETED",
+            meta: { reason: "Initial wallet setup" },
         });
 
-        // Credit signup bonus (async)
         TransferService.createUserBonus(user._id as any, signupBonus).catch(console.error);
 
         const admins = await getMailsByPermission("manage_users");
 
-        // Send welcome email (async)
         try {
             await NotificationService.sendWelcomeEmail(
                 user.email,
                 user.user_metadata.first_name || ""
             );
         } catch (error) {
-            console.error('Failed to send welcome email:', error);
+            console.error("Failed to send welcome email:", error);
         }
 
         try {
@@ -237,20 +295,23 @@ export class UserService {
                 admins,
                 user.user_metadata.first_name || "",
                 user.user_metadata.surname || ""
-            )
+            );
         } catch (error) {
-            console.error('Failed to send admin alert email:', error);
+            console.error("Failed admin alert:", error);
         }
 
-        // Influencer signup commission hook (Synchronized)
         try {
-            const { InfluencerService } = await import('../influencer/influencer.service');
-            await InfluencerService.recordCommissionForUser(user._id as any, 'signup', influencerSignupBonus);
+            const { InfluencerService } = await import("../influencer/influencer.service");
+            await InfluencerService.recordCommissionForUser(
+                user._id as any,
+                "signup",
+                influencerSignupBonus
+            );
         } catch (err) {
-            console.error('Signup influencer commission failed (non-fatal):', (err as Error).message);
+            console.error("Signup influencer commission failed:", (err as Error).message);
         }
 
-        return user;
+        return { user, currentTier };
     }
 
     /**

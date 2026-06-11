@@ -1,6 +1,11 @@
 /**
  * Auto-Debit Model — Stores linked payment methods (card tokens + bank mandates)
- * Replaces the old mono_account field on the User model
+ * Replaces the old mono_account field on the User model.
+ *
+ * CHANGE: Added `bankCode` field (numeric Flutterwave bank code, e.g. "057").
+ * Previously absent, causing the cron to pass `bankName` ("Zenith Bank") as
+ * the bank code to Flutterwave's direct-debit endpoint — which requires the
+ * numeric code. The controller now persists `bankCode` on link-bank.
  */
 import { Schema, model, Document } from 'mongoose';
 import { getCollectionName } from '../../shared/utils/collection.utils';
@@ -13,12 +18,13 @@ export interface IAutoDebit extends Document {
 
   // Card-specific fields
   last4?: string;
-  cardBrand?: string; // visa, mastercard, verve
+  cardBrand?: string;   // visa, mastercard, verve
   expMonth?: string;
   expYear?: string;
 
   // Bank-specific fields
-  bankName?: string;
+  bankName?: string;    // Human-readable name, e.g. "Zenith Bank"
+  bankCode?: string;    // Numeric Flutterwave bank code, e.g. "057" ← NEW
   accountNumber?: string;
   accountName?: string;
 
@@ -43,6 +49,7 @@ const AutoDebitSchema = new Schema<IAutoDebit>(
 
     // Bank fields
     bankName: { type: String },
+    bankCode: { type: String },   // ← NEW: Flutterwave numeric bank code
     accountNumber: { type: String },
     accountName: { type: String },
 

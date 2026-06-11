@@ -278,12 +278,14 @@ export class InfluencerController {
 
       // Per-service commission breakdown
       const commissionsByServiceAgg = await InfluencerCommission.aggregate([
-        { $group: {
-          _id: '$transactionType',
-          totalCommission: { $sum: '$commissionAmount' },
-          totalPlatformEarnings: { $sum: '$transactionAmount' },
-          count: { $sum: 1 }
-        }}
+        {
+          $group: {
+            _id: '$transactionType',
+            totalCommission: { $sum: '$commissionAmount' },
+            totalPlatformEarnings: { $sum: '$transactionAmount' },
+            count: { $sum: 1 }
+          }
+        }
       ]);
       const commissionsByService: Record<string, { totalCommission: number; totalPlatformEarnings: number; count: number }> = {};
       for (const c of commissionsByServiceAgg) {
@@ -640,14 +642,14 @@ export class InfluencerController {
 
       // --- ADMIN NOTIFICATION HOOK ---
       try {
-          const { SettingsService } = await import("../admin/settings.service");
-          const settings = await SettingsService.getSettings();
-          const adminEmails = (settings as any).adminEmails || process.env.ADMIN_EMAILS || "admin@primefinance.live";
-          
-          const { NotificationService } = await import("../notifications/notification.service");
-          await NotificationService.sendAdminPayoutRequestAlert(influencer, withdrawAmount, adminEmails);
+        const { SettingsService } = await import("../admin/settings.service");
+        const settings = await SettingsService.getSettings();
+        const adminEmails = (settings as any).adminEmails || process.env.ADMIN_EMAILS || "admin@primefinance.live";
+
+        const { NotificationService } = await import("../notifications/notification.service");
+        await NotificationService.sendAdminPayoutRequestAlert(influencer, withdrawAmount, adminEmails);
       } catch (notifyErr) {
-          console.warn("Failed to send admin payout alert (non-fatal):", notifyErr);
+        console.warn("Failed to send admin payout alert (non-fatal):", notifyErr);
       }
       // --------------------------------
 
@@ -669,11 +671,16 @@ export class InfluencerController {
         .select('payoutHistory pendingPayout totalEarnings payoutDetails');
       if (!influencer) return res.status(404).json({ status: 'failed', message: 'Influencer profile not found' });
 
+      const completedPayouts = (influencer.payoutHistory || [])
+        .filter(p => p.status === 'completed')
+        .reduce((sum, p) => sum + p.amount, 0);
+
       return res.status(200).json({
         status: 'success',
         data: {
           payoutHistory: influencer.payoutHistory || [],
           pendingPayout: influencer.pendingPayout,
+          completedPayouts,
           totalEarnings: influencer.totalEarnings,
           payoutDetails: influencer.payoutDetails,
         },

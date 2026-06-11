@@ -25,6 +25,10 @@ export class MarketplaceService {
             if (existing.status === VendorStatus.REJECTED) {
                 existing.status = VendorStatus.PENDING;
                 existing.rejectionReason = undefined;
+
+                existing.statusHistory = existing.statusHistory || [];
+                existing.statusHistory.push({ status: VendorStatus.PENDING, date: new Date(), reason: 'Re-application' });
+
                 Object.assign(existing, data);
                 return existing.save();
             }
@@ -33,7 +37,8 @@ export class MarketplaceService {
         const vendor = await Vendor.create({
             userId,
             ...data,
-            status: VendorStatus.PENDING
+            status: VendorStatus.PENDING,
+            statusHistory: [{ status: VendorStatus.PENDING, date: new Date(), reason: 'Initial application' }]
         });
         return vendor;
     }
@@ -49,6 +54,10 @@ export class MarketplaceService {
         vendor.status = VendorStatus.APPROVED;
         vendor.approvedBy = adminId;
         vendor.rejectionReason = undefined;
+
+        vendor.statusHistory = vendor.statusHistory || [];
+        vendor.statusHistory.push({ status: VendorStatus.APPROVED, date: new Date(), actorId: adminId });
+
         return vendor.save();
     }
 
@@ -58,6 +67,10 @@ export class MarketplaceService {
 
         vendor.status = VendorStatus.REJECTED;
         vendor.rejectionReason = reason;
+
+        vendor.statusHistory = vendor.statusHistory || [];
+        vendor.statusHistory.push({ status: VendorStatus.REJECTED, date: new Date(), reason, actorId: adminId });
+
         return vendor.save();
     }
 
@@ -67,6 +80,10 @@ export class MarketplaceService {
 
         vendor.status = VendorStatus.SUSPENDED;
         vendor.deactivationReason = reason;
+
+        vendor.statusHistory = vendor.statusHistory || [];
+        vendor.statusHistory.push({ status: VendorStatus.SUSPENDED, date: new Date(), reason, actorId: adminId });
+
         return vendor.save();
     }
 
@@ -76,6 +93,10 @@ export class MarketplaceService {
 
         vendor.status = VendorStatus.APPROVED;
         vendor.deactivationReason = undefined;
+
+        vendor.statusHistory = vendor.statusHistory || [];
+        vendor.statusHistory.push({ status: VendorStatus.APPROVED, date: new Date(), reason: 'Reactivated', actorId: adminId });
+
         return vendor.save();
     }
 
@@ -126,38 +147,97 @@ export class MarketplaceService {
     }
 
     /**
-     * Get Detailed Vendor Profile for Admin
+     * Get Detailed Vendor Profile for Admin (ENHANCED - Fix #2.1)
+     * Populates owner contact info, bank details, KYC docs, linked products, and comprehensive performance stats.
      */
     static async getVendorDetails(vendorId: string) {
         const vendor = await Vendor.findById(vendorId).lean();
         if (!vendor) throw new NotFoundError('Vendor not found');
 
-        // Get aggregate stats
-        const stats = await Order.aggregate([
-            {
-                $match: {
-                    vendorId: vendorId,
-                    status: { $in: [OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DELIVERED] }
+        // Populate owner user record with full contact and KYC details
+        const user = await User.findById((vendor as any).userId)
+            .select(
+                '_id email user_metadata.first_name user_metadata.surname user_metadata.phone ' +
+                'user_metadata.accountNo user_metadata.nin user_metadata.bvn user_metadata.bankCode ' +
+                'user_metadata.bankAccountNumber user_metadata.bankAccountName kyc_status kyc_documents'
+            )
+            .lean();
+
+        // Aggregate comprehensive performance stats
+        const [orderStats, deliveryStats] = await Promise.all([
+            Order.aggregate([
+                {
+                    $match: { vendorId: vendorId }
+                },
+                {
+                    $group: {
+                        _id: '$status',
+                        count: { $sum: 1 },
+                        totalAmount: { $sum: '$totalAmount' }
+                    }
                 }
-            },
-            {
-                $group: {
-                    _id: null,
-                    totalSales: { $sum: 1 },
-                    totalRevenue: { $sum: "$totalAmount" }
+            ]),
+            Order.aggregate([
+                {
+                    $match: {
+                        vendorId: vendorId,
+                        status: { $in: [OrderStatus.DELIVERED, OrderStatus.CANCELLED] }
+                    }
+                },
+                {
+                    $group: {
+                        _id: null,
+                        delivered: {
+                            $sum: { $cond: [{ $eq: ['$status', OrderStatus.DELIVERED] }, 1, 0] }
+                        },
+                        cancelled: {
+                            $sum: { $cond: [{ $eq: ['$status', OrderStatus.CANCELLED] }, 1, 0] }
+                        }
+                    }
                 }
-            }
+            ])
         ]);
 
-        const totalSales = stats[0]?.totalSales || 0;
-        const totalRevenue = stats[0]?.totalRevenue || 0;
+        // Process order stats
+        const orderStatusMap: Record<string, number> = {};
+        let totalRevenue = 0;
+        orderStats.forEach(stat => {
+            orderStatusMap[stat._id] = stat.count;
+            totalRevenue += stat.totalAmount || 0;
+        });
+
+        const totalSales = orderStats.reduce((sum, stat) => sum + stat.count, 0);
+        const completedOrders = orderStatusMap[OrderStatus.DELIVERED] || 0;
+        const pendingOrders = (orderStatusMap[OrderStatus.PROCESSING] || 0) + (orderStatusMap[OrderStatus.PAID] || 0);
+        const failedOrders = orderStatusMap[OrderStatus.CANCELLED] || 0;
+        const deliveryRate = totalSales > 0 ? ((completedOrders / totalSales) * 100).toFixed(2) : '0';
+
+        // Linked products (active + draft, not deleted)
+        const products = await Product.find({ vendorId }).lean()
+            .sort({ createdAt: -1 })
+            .limit(50)
+            .select('_id name price status stock images category');
 
         return {
             ...vendor,
+            user,
+            products,
             stats: {
                 totalSales,
                 totalRevenue,
-                netRevenue: totalRevenue // Assuming net = gross for now as per plan
+                netRevenue: totalRevenue,
+                completedOrders,
+                pendingOrders,
+                failedOrders,
+                deliveryRate: parseFloat(deliveryRate as string),
+            },
+            approvalDetails: {
+                status: (vendor as any).status,
+                approvedBy: (vendor as any).approvedBy,
+                approvedAt: (vendor as any).approvedAt,
+                rejectionReason: (vendor as any).rejectionReason,
+                suspensionReason: (vendor as any).suspensionReason,
+                suspendedAt: (vendor as any).suspendedAt
             }
         };
     }
