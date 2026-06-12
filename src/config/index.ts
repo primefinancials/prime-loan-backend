@@ -18,11 +18,9 @@ const DB_OPTIONS: ConnectOptions = {
   autoIndex: true,
   minPoolSize: parseInt(process.env.DB_MIN_POOL_SIZE || '5'), // Maintain up to x socket connections
   maxPoolSize: parseInt(process.env.DB_MAX_POOL_SIZE || '20'), // Maintain up to x socket connections
-  connectTimeoutMS: 60000, // Give up initial connection after 60 seconds
+  connectTimeoutMS: 15000, // Give up initial connection after 15 seconds
+  serverSelectionTimeoutMS: 15000, // Fail fast if cluster is unreachable
   socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-  // @ts-ignore
-  //   useNewUrlParser: true,
-  //   useUnifiedTopology: true,
   dbName: process.env.DATABASE_NAME,
 };
 
