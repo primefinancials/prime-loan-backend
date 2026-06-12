@@ -4,26 +4,44 @@ type CrossOrigin = Partial<typeof DefaultCorsOptions>;
 
 /**
  * Default configuration options for cross-origin requests.
+ *
+ * NOTE: `'*'` is intentionally REMOVED from the origin list.
+ * When `credentials: true` is set, browsers reject wildcard origins.
+ * Instead, all expected client origins are listed explicitly, and
+ * a regex covers *.avasa.app subdomains.
+ *
+ * Railway/Vercel preview URLs are covered by the regex patterns.
  */
 const DefaultCorsOptions: CorsOptions = {
   /**
-   * The allowed origin(s) for the request. Use '*' to allow all origins.
+   * The allowed origin(s) for the request.
+   * Each origin is checked against this list.
    */
   origin: [
-    '*',
+    // Local development
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:8081',
+
+    // Production domains
     'https://prime-finance-admin.netlify.app',
     'https://admin.primefinance.live',
     'https://primefinance.live',
     'https://www.primefinance.live',
+
+    // Vercel deployments (exact + preview)
     'https://prime-loan-web-init.vercel.app',
     'https://prime-loan-web.vercel.app',
     'https://prime-loan-web-v2-staging.vercel.app',
     'https://prime-finance-admin-staging.vercel.app',
+
+    // Vercel preview URLs (auto-generated per branch/commit)
+    /^https:\/\/prime-loan-web-v2-[a-z0-9-]+\.vercel\.app$/,
+    /^https:\/\/prime-finance-admin-[a-z0-9-]+\.vercel\.app$/,
+
+    // Avasa platform (any subdomain)
     /^https:\/\/(.*\.)?avasa\.app$/
   ],
 

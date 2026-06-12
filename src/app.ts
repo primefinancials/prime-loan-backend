@@ -32,14 +32,8 @@ export default function configureApp(app: Application): void {
     swaggerUi.setup(specs, swaggerUiOptions)
   );
 
-  // Health check
-  app.get("/health", (_req: Request, res: Response) => {
-    res.status(200).json({
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      version: "2.0.0",
-    });
-  });
+  // Health check is registered in server.ts (before DB connect)
+  // so Railway gets a 200 even during cold-start initialization.
 
   // Routes
   app.use("/api", userRoutes);

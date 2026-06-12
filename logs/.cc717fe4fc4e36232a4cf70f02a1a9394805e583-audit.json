@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 28
+    },
+    "auditLog": "/home/cypher/Documents/prime-loan-backend/logs/.cc717fe4fc4e36232a4cf70f02a1a9394805e583-audit.json",
+    "files": [
+        {
+            "date": 1781267319355,
+            "name": "/home/cypher/Documents/prime-loan-backend/logs/2026-06-12.log",
+            "hash": "2708e961b4f35404315fe418424864a464b221525c5b823a1b93cd0b7e2805ae"
+        }
+    ],
+    "hashType": "sha256"
+}
