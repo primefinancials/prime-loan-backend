@@ -33,7 +33,9 @@ export async function startApp() {
     const app = express();
 
     // Connect to database first
+    logger.info("Connecting to MongoDB...");
     await DatabaseService.connect();
+    logger.info("✅ Connected to MongoDB");
 
     // Connect to Queue Service (Redis)
     await QueueService.connect();
