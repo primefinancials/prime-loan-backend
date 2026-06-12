@@ -27,6 +27,7 @@ import { AdminController } from "../modules/admin/admin.controller";
 import { EscrowController } from "../modules/escrow/escrow.controller";
 import { MarketplaceController } from "../modules/marketplace/marketplace.controller";
 import { SettingsController } from "../modules/admin/settings.controller";
+import { AutoDebitController } from "../modules/loans/auto-debit.controller";
 
 // --- Validation Schemas ---
 import {
@@ -308,8 +309,14 @@ router.post(
   AutoDebitController.linkBank as unknown as express.RequestHandler
 );
 
+router.post(
+  "/loans/validate-account",
+  verifyJwtRest(),
+  AutoDebitController.validateAccount as unknown as express.RequestHandler
+);
+
 router.delete(
-  "/loans/unlink-method",
+  "/loans/linked-methods/:id",
   verifyJwtRest(),
   idempotencyMiddleware() as any,
   AutoDebitController.unlinkMethod as unknown as express.RequestHandler
@@ -332,6 +339,7 @@ router.get(
   verifyJwtRest(),
   AutoDebitController.getBanks as unknown as express.RequestHandler
 );
+
 
 /* -------------------------------------------------------------------------- */
 /*                              SAVINGS ROUTES                                */
@@ -476,18 +484,6 @@ router.get("/influencer/dashboard", verifyJwtRest(), InfluencerController.getDas
 router.get("/influencer/referred-users", verifyJwtRest(), InfluencerController.getReferredUsers as any);
 router.get("/influencer/earnings", verifyJwtRest(), InfluencerController.getEarnings as any);
 router.get("/referral/check", verifyJwtRest(), InfluencerController.checkReferralCode as any);
-
-/* -------------------------------------------------------------------------- */
-/*                    FLUTTERWAVE AUTO-DEBIT LINKING ROUTES                    */
-/* -------------------------------------------------------------------------- */
-import { AutoDebitController } from "../modules/loans/auto-debit.controller";
-import { FlutterwaveDebitProvider } from "../shared/providers/flutterwave-debit.provider";
-
-router.post("/loans/link-card", verifyJwtRest(), AutoDebitController.linkCard as any);
-router.post("/loans/link-bank", verifyJwtRest(), AutoDebitController.linkBank as any);
-router.get("/loans/linked-methods", verifyJwtRest(), AutoDebitController.getLinkedMethods as any);
-router.delete("/loans/linked-methods/:id", verifyJwtRest(), AutoDebitController.unlinkMethod as any);
-router.get("/loans/max-borrowable", verifyJwtRest(), AutoDebitController.getMaxBorrowable as any);
 
 /* -------------------------------------------------------------------------- */
 /*                       INFLUENCER WITHDRAWAL ROUTES                         */
