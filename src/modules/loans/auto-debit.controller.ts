@@ -13,6 +13,7 @@ import { FlutterwaveDebitProvider } from '../../shared/providers/flutterwave-deb
 import { LoanEligibilityService } from './loan-eligibility';
 import { UserService } from '../users/user.service';
 import pino from 'pino';
+import { BadRequestError } from '../../exceptions';
 
 const logger = pino({ name: 'auto-debit-controller' });
 
@@ -81,83 +82,147 @@ export class AutoDebitController {
    * POST /api/loans/link-bank
    * Link a bank account via Flutterwave direct debit.
    * Validates the bank account, then persists the mandate record.
-   *
-   * FIX: bankName was previously stored as `bankCode` — now resolved correctly.
    */
   static async linkBank(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user._id || (req as any).user.id;
-      const { accountNumber, bankCode, bankName: clientBankName, email, txRef } = req.body;
+
+      const {
+        accountNumber,
+        bankCode,
+        bankName: clientBankName,
+        email,
+        txRef,
+      } = req.body;
 
       if (!accountNumber || !bankCode) {
-        return res.status(400).json({ status: 'failed', message: 'accountNumber and bankCode are required' });
+        throw new BadRequestError("accountNumber and bankCode are required");
+      }
+
+      if (!txRef) {
+        throw new BadRequestError("Transaction reference is required");
       }
 
       const provider = new FlutterwaveDebitProvider();
 
-      // Validate the bank account — resolves the account holder name
-      let resolvedAccountName = '';
-      let resolvedBankName = clientBankName || bankCode; // fallback: use what client sent
+      // Validate account and resolve account holder name
+      let accountName = "";
+
       try {
-        const bankDetails = await provider.validateBankAccount(accountNumber, bankCode);
-        resolvedAccountName = bankDetails?.account_name || '';
-      } catch (validationErr: any) {
-        logger.warn({ bankCode, accountNumber: accountNumber.slice(-4) }, `Bank validation warning: ${validationErr.message}`);
-        // Non-fatal — proceed with linking even if resolve fails (some banks are slow)
+        const account = await provider.validateBankAccount(
+          accountNumber,
+          bankCode
+        );
+
+        accountName = account?.account_name ?? "";
+      } catch (error: any) {
+        logger.warn(
+          {
+            bankCode,
+            accountNumber: accountNumber.slice(-4),
+          },
+          `Bank validation failed: ${error.response?.data?.message || error.message}`
+        );
+
+        throw new BadRequestError(
+          `Bank validation failed: ${error.response?.data?.message || error.message}`
+        );
       }
 
-      // Fetch the human-readable bank name from Flutterwave if not provided by client
-      if (!clientBankName) {
+      // Resolve bank name
+      let bankName = clientBankName?.trim();
+
+      if (!bankName) {
         try {
           const banks: { code: string; name: string }[] = await provider.getBanks();
-          const matched = banks.find((b) => b.code === bankCode);
-          if (matched) resolvedBankName = matched.name;
-        } catch (_) { /* non-fatal */ }
+
+          bankName =
+            banks.find((bank) => bank.code === bankCode)?.name ?? bankCode;
+        } catch (error: any) {
+          throw new BadRequestError(
+            `Failed to resolve bank name: ${error.response?.data?.message || error.message}`
+          );
+        }
       }
 
-      // If txRef provided, verify the debit mandate transaction
-      let mandateToken = `mandate-${userId}-${Date.now()}`;
-      if (txRef) {
-        try {
-          const txData = await provider.verifyTransaction(txRef);
-          if (txData?.status === 'successful') {
-            mandateToken = txData.flw_ref || txData.tx_ref || mandateToken;
-          }
-        } catch (_) { /* non-fatal — token generated above as fallback */ }
+      const unsupportedBanks = ["opay", "palmpay"];
+
+      if (
+        bankName &&
+        unsupportedBanks.includes(bankName.toLowerCase())
+      ) {
+        throw new BadRequestError(
+          "This bank is not supported for direct debit"
+        );
       }
 
-      // Revoke any previously active bank account for this user
+      // Verify mandate transaction
+      let mandateToken = txRef;
+
+      try {
+        const transaction = await provider.verifyTransaction(txRef);
+
+        if (transaction?.status === "successful") {
+          mandateToken =
+            transaction.flw_ref ||
+            transaction.tx_ref ||
+            txRef;
+        }
+      } catch (error: any) {
+        throw new BadRequestError(
+          `Failed to verify transaction: ${error.response?.data?.message || error.message}`
+        );
+      }
+
+      // Revoke previous active bank mandates
       await AutoDebit.updateMany(
-        { userId: String(userId), type: 'bank', status: 'active' },
-        { $set: { status: 'revoked' } }
+        {
+          userId: String(userId),
+          type: "bank",
+          status: "active",
+        },
+        {
+          $set: {
+            status: "revoked",
+          },
+        }
       );
 
       const autoDebit = await AutoDebit.create({
         userId: String(userId),
-        type: 'bank',
+        type: "bank",
         token: mandateToken,
-        email: email || '',
-        bankName: resolvedBankName,   // FIX: was storing bankCode here before
-        bankCode,                     // Persist numeric code for FW direct-debit calls
+        email: email ?? "",
+        bankName,
+        bankCode,
         accountNumber,
-        accountName: resolvedAccountName,
-        status: 'active',
+        accountName,
+        status: "active",
       });
 
-      logger.info({ userId, accountNumber: accountNumber.slice(-4), bankName: resolvedBankName }, 'Bank account linked via Flutterwave');
+      logger.info(
+        {
+          userId,
+          bankName,
+          accountNumber: accountNumber.slice(-4),
+        },
+        "Bank account linked via Flutterwave"
+      );
 
       return res.status(201).json({
-        status: 'success',
+        status: "success",
         data: {
           id: autoDebit._id,
-          type: 'bank',
+          type: autoDebit.type,
           bankName: autoDebit.bankName,
           accountNumber: autoDebit.accountNumber,
           accountName: autoDebit.accountName,
-          status: 'active',
+          status: autoDebit.status,
         },
       });
-    } catch (err) { next(err); }
+    } catch (error) {
+      next(error);
+    }
   }
 
   /**
