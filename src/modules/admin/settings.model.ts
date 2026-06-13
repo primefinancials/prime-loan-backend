@@ -77,7 +77,7 @@ export interface ISettings extends Document {
       overdue: string;
     };
     serviceFee: number;
-    interestPercentage: number;
+    interest: { percentage: boolean; value: number; }
     signupBonus?: number;
   };
 
@@ -262,7 +262,10 @@ const SettingsSchema = new Schema<ISettings>(
         overdue: { type: String, default: "Your loan is overdue. Penalties are now being applied." }
       },
       serviceFee: { type: Number, default: 500 },
-      interestPercentage: { type: Number, default: 10 }
+      interest: {
+        percentage: { type: Boolean, default: true },
+        value: { type: Number, default: 10 }
+      }
     },
 
     // System Config

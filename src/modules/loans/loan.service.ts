@@ -273,7 +273,8 @@ export class LoanService {
 
     // Fetch dynamic loan interest and fee
     const settings = await SettingsService.getSettings();
-    const percentage = settings.loan?.interestPercentage || 0;
+    const interestConfig = settings.loan?.interest;
+    const interestRate = interestConfig ? (interestConfig.percentage ? (interestConfig.value / 100) : interestConfig.value) : 0;
 
     // Build and persist loan record
     // Destructure to exclude fields that should only be set during disbursement
@@ -281,7 +282,7 @@ export class LoanService {
 
     const loanPayload: Partial<ILoan> = {
       ...safeParams,
-      percentage,
+      percentage: interestRate,
       userId: params.userId,
       requested_amount: params.amount,
       amount: params.amount, // store Naira (requested amount; updated to disbursed amount on disbursal)
@@ -365,8 +366,9 @@ export class LoanService {
       if (existingTransfer && existingTransfer.status === "COMPLETED") {
         const settings = await SettingsService.getSettings();
         const fee = settings.loan?.serviceFee || 0;
-        const percentage = settings.loan?.interestPercentage || 0;
-        const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (percentage / 100));
+        const interestConfig = settings.loan?.interest;
+        const interestRate = interestConfig ? (interestConfig.percentage ? Number(params.amount) * (interestConfig.value / 100) : interestConfig.value) : 0;
+        const total = Number(params.amount) + Number(fee) + interestRate;
 
         lockLoan.status = "accepted";
         lockLoan.amount = params.amount;
@@ -464,8 +466,9 @@ export class LoanService {
           const duration = lockLoan.duration || 21;
           const settings = await SettingsService.getSettings();
           const fee = settings.loan?.serviceFee || 0;
-          const percentage = settings.loan?.interestPercentage || 0;
-          const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (Number(percentage) / 100));
+          const interestConfig = settings.loan?.interest;
+          const interestRate = interestConfig ? (interestConfig.percentage ? Number(params.amount) * (interestConfig.value / 100) : interestConfig.value) : 0;
+          const total = Number(params.amount) + Number(fee) + interestRate;
 
           const loanDate = new Date();
           const repaymentDate = new Date(loanDate);
