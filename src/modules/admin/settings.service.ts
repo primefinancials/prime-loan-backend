@@ -62,7 +62,7 @@ export class SettingsService {
             gracePeriod: 1
           },
           serviceFee: 500,
-          interestPercentage: 10
+          interest: { percentage: true, value: 10 }
         },
         system: {
           currency: "NGN",
@@ -104,7 +104,7 @@ export class SettingsService {
           overdue: "Your loan is overdue. Penalties are now being applied."
         },
         serviceFee: 500,
-        interestPercentage: 10
+        interest: { percentage: true, value: 10 }
       };
       await settings.save();
     }
