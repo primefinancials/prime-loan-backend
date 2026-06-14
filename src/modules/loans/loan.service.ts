@@ -61,6 +61,7 @@ export interface CreateLoanParams {
   percentage: number;
   acknowledgment: boolean;
   debit_account?: string;
+  debit_card?: string;
   idempotencyKey?: string;
   referralCode?: string;
 }
