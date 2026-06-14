@@ -4,14 +4,34 @@
  * - Sends reminders for loans due today and tomorrow
  * - Attempts auto-debit via Flutterwave when wallet is insufficient
  *
- * FIX: auto-debit bank path was passing `linkedMethod.bankName` as the `bankCode`
- *      parameter to initiateDirectDebit. The AutoDebit model stores human-readable
- *      bank names in `bankName` and the NUBAN in `accountNumber`. Flutterwave's
- *      direct-debit endpoint needs the bank's numeric code, not its name.
+ * FIX (original): auto-debit bank path was passing `linkedMethod.bankName` as the
+ *      `bankCode` parameter to initiateDirectDebit. Resolved by adding a separate
+ *      `bankCode` field to the AutoDebit model.
  *
- *      Resolution: the AutoDebit model now has a separate `bankCode` field (added below).
- *      The controller was updated to persist it on link-bank. The cron now reads
- *      `linkedMethod.bankCode` for the Flutterwave call.
+ * FIX (this revision): Three bugs in the card→bank fallback path:
+ *
+ *   Bug 1 — When chargeToken() THROWS (e.g. "Restricted card", "Declined"), the
+ *            outer try-catch at the bottom of the FW block caught the error and
+ *            logged it as "Flutterwave auto-debit failed", then returned. The bank
+ *            fallback code lived inside `if (debitResult) { ... } else { }` which
+ *            was never reached because `debitResult` was never set. Card errors now
+ *            have their own inner try-catch that catches the throw, logs it, and
+ *            lets execution continue to the bank fallback block.
+ *
+ *   Bug 2 — When the bank fallback DID run (rare case: card returned non-success
+ *            without throwing), the result was never processed. There was no
+ *            AutoDebitLog.create() call and no repayLoan() reconciliation for the
+ *            bank attempt. Fixed by moving result processing AFTER both attempts.
+ *
+ *   Bug 3 — The bank fallback reused the same txRef (`reference`) as the failed
+ *            card attempt. Flutterwave rejects duplicate txRefs. Fixed: card uses
+ *            `baseRef`, bank fallback uses `${baseRef}-bnk`.
+ *
+ *   Additionally: `wasSuccessful` was checking `debitResult?.status === 'success'`
+ *   (the outer API envelope, always true when the HTTP call works) instead of
+ *   `debitResult?.data?.status === 'successful'` (the actual transaction outcome).
+ *   This meant a pending bank debit — where money had not yet moved — could be
+ *   treated as "successful" and trigger early loan reconciliation.
  */
 import { QueueService } from '../../shared/queue';
 import { SettingsService } from '../../modules/admin/settings.service';
@@ -116,26 +136,6 @@ export class LoanPenaltiesCron {
 
               if (walletBalance > 0 && repaymentAmount > 0) {
                 try {
-                  // CORRECTION: this is a real VFD-to-VFD transfer — the user's
-                  // internal VFD "wallet" account paying the company's VFD prime
-                  // account — so the STANDARD path (live balance check + actual
-                  // VFD transfer) is the CORRECT path here. `internalOnly: true`
-                  // would skip the real transfer entirely, which is wrong for this
-                  // step (it's only appropriate for the Flutterwave reconciliation
-                  // below, where money already moved via a different rail).
-                  //
-                  // The actual bug that produced the phantom ₦721 "repayment" with
-                  // an empty wallet is fixed in loan_service.ts's repayLoan():
-                  //   - the live balance check no longer silently passes when
-                  //     `userAcc.accountBalance` parses to NaN, and
-                  //   - a VFD "status 98" error is no longer trusted as success
-                  //     unless a completed transfer for that reference is verified.
-                  // With those fixes, a deduction attempted against an
-                  // already-empty VFD wallet (as happened on the second cycle
-                  // here, using the stale `user_metadata.wallet` value) now
-                  // correctly throws "Insufficient funds" / "Could not determine
-                  // account balance" and is caught below as a failed deduction —
-                  // instead of being silently committed as a successful repayment.
                   const result = await LoanService.repayLoan({
                     loanId: loan._id,
                     userId: user._id,
@@ -143,14 +143,6 @@ export class LoanPenaltiesCron {
                     idempotencyKey: `worker-deduct-${loan._id}-${todayISO}`,
                   });
 
-                  // BUG FIX: repayLoan() can return early WITHOUT throwing and
-                  // WITHOUT making any changes (repayAmount: 0, providerResponse
-                  // .alreadyPaid: true) if the loan was fully paid by the time
-                  // it re-checked the DB. Previously this was treated as a
-                  // successful deduction regardless, producing a false
-                  // "Auto-deducted wallet balance" log entry with no underlying
-                  // transaction. Only count/report it as a deduction if a
-                  // positive amount was actually applied.
                   if (result.repayAmount > 0 && !result.providerResponse?.alreadyPaid) {
                     deductedUsers.push({ email: user.email, phone: user.user_metadata?.phone });
                     await WorkerLogService.log('loan-penalties', 'info',
@@ -169,8 +161,10 @@ export class LoanPenaltiesCron {
               }
             }
 
-            // ── 3. Flutterwave auto-debit fallback ─────────────────────────
-            // Only runs when the loan is still not fully paid after wallet deduction.
+            // ── 3. Flutterwave auto-debit ───────────────────────────────────
+            // Runs when the loan is still not fully paid after wallet deduction.
+            // Strategy: try card first; if card throws OR returns non-successful,
+            // automatically fall back to the linked bank account.
             const refreshedLoan = await Loan.findById(loan._id);
             if (refreshedLoan && refreshedLoan.loan_payment_status === 'complete') {
               logger.info({ loanId: loan._id }, 'Skipping FW auto-debit — loan fully paid after wallet deduction');
@@ -185,158 +179,204 @@ export class LoanPenaltiesCron {
                   const minDebit = settings.autoDebit?.minDebitAmount || 100;
 
                   if (debitAmount >= minDebit) {
-                    try {
-                      // Prefer card over bank (card sorts lexicographically before bank)
-                      const linkedMethods = await AutoDebit.find({
-                        userId: String((refreshedUser as any)._id),
-                        status: 'active',
-                      });
+                    // Fetch all active payment methods for this user upfront
+                    const linkedMethods = await AutoDebit.find({
+                      userId: String((refreshedUser as any)._id),
+                      status: 'active',
+                    });
 
-                      const linkedMethod = linkedMethods.find(method => method.type === 'card') ??
-                        linkedMethods.find(method => method.type === 'bank');
+                    const cardMethod = linkedMethods.find(m => m.type === 'card');
+                    const bankMethod = linkedMethods.find(m => m.type === 'bank');
 
-                      if (linkedMethod) {
-                        const fwProvider = new FlutterwaveDebitProvider();
-                        const reference = `loan-debit-${loan._id}-${Date.now()}`;
+                    if (!cardMethod && !bankMethod) {
+                      logger.info({ loanId: loan._id }, 'No active payment method found — skipping FW auto-debit');
+                    } else {
+                      const fwProvider = new FlutterwaveDebitProvider();
+                      // baseRef is used for the card attempt (or bank if card not linked).
+                      // If we fall back to bank after a card attempt, we use baseRef + '-bnk'
+                      // so Flutterwave doesn't reject it as a duplicate reference.
+                      const baseRef = `loan-debit-${loan._id}-${Date.now()}`;
 
-                        let debitResult: any;
+                      let debitResult: any = null;
+                      // Track whichever method ultimately produced a result
+                      let activeMethod: typeof linkedMethods[0] | undefined;
+                      let activeRef = baseRef;
+                      let cardWasAttempted = false;
 
-                        if (linkedMethod.type === 'card') {
-                          // BUG FIX: "Flutterwave auto-debit failed: Tokenized charge
-                          // failed: Please enter a valid redirect url" — Flutterwave's
-                          // tokenized card charge endpoint (POST /charges?type=card)
-                          // requires a `redirect_url`, used if the charge needs 3DS/OTP
-                          // authentication (common for many Nigerian cards even on
-                          // saved-token recurring charges). The cron runs unattended,
-                          // so there's no live browser session to redirect — but the
-                          // field must still be present and a valid URL, or Flutterwave
-                          // rejects the request outright before even attempting the
-                          // charge. We point it at a backend "no-op" landing page;
-                          // FlutterwaveDebitProvider.chargeToken must forward this
-                          // value as `redirect_url` in the request payload.
-                          const redirectUrl = 'https://primefinance.live';
-
+                      // ── 3a. Card attempt ──────────────────────────────────
+                      if (cardMethod) {
+                        cardWasAttempted = true;
+                        activeMethod = cardMethod;
+                        try {
                           debitResult = await fwProvider.chargeToken({
-                            token: linkedMethod.token,
-                            email: linkedMethod.email,
+                            token: cardMethod.token,
+                            email: cardMethod.email,
                             amount: debitAmount,
-                            txRef: reference,
-                            redirectUrl,
+                            txRef: baseRef,
+                            // redirect_url is required by Flutterwave even for
+                            // unattended recurring charges — without it the API
+                            // rejects the request before even attempting the charge.
+                            redirectUrl: 'https://primefinance.live',
                           });
 
-                          // If the charge requires further authentication (OTP/3DS/AVS),
-                          // Flutterwave returns a non-"successful" status with a
-                          // `meta.authorization` block instead of throwing. An
-                          // unattended cron can't complete that flow, so treat it the
-                          // same as a non-success and fall through to the bank-debit
-                          // fallback below rather than leaving it stuck pending.
-                          if (debitResult?.data?.status === 'pending' && debitResult?.data?.meta?.authorization) {
-                            logger.warn({ loanId: loan._id, authMode: debitResult.data.meta.authorization.mode },
-                              'FW card charge requires additional authentication — cannot complete unattended, falling back');
-                            debitResult = { status: 'error', data: debitResult.data };
-                          }
-                        } else {
-                          // Bank direct debit
-                          // FIX: was incorrectly passing `linkedMethod.bankName` as the
-                          //      bankCode parameter. The bank code is stored separately.
-                          const bankCode = (linkedMethod as any).bankCode || linkedMethod.bankName || '';
-                          if (!bankCode) {
-                            logger.warn({ loanId: loan._id }, 'Skipping bank auto-debit — no bankCode on linked method');
-                          } else {
-                            debitResult = await fwProvider.initiateDirectDebit({
-                              accountNumber: linkedMethod.accountNumber || '',
-                              bankCode,                           // ← FIXED
-                              email: linkedMethod.email,
+                          // Flutterwave returns pending + meta.authorization when the
+                          // card needs interactive 3DS / OTP to complete. The cron
+                          // runs unattended, so we cannot complete that flow. Log the
+                          // pending attempt and fall through to the bank fallback.
+                          if (
+                            debitResult?.data?.status === 'pending' &&
+                            debitResult?.data?.meta?.authorization
+                          ) {
+                            const authMode = debitResult.data.meta.authorization.mode;
+                            logger.warn(
+                              { loanId: loan._id, authMode },
+                              'Card charge requires interactive auth — falling back to bank'
+                            );
+                            await WorkerLogService.log('loan-penalties', 'warn',
+                              `Card charge requires ${authMode} auth — cannot complete unattended, attempting bank fallback`,
+                              { loanId: loan._id }
+                            );
+                            // Log the card pending attempt before clearing
+                            await AutoDebitLog.create({
+                              userId: String((refreshedUser as any)._id),
+                              loanId: String(loan._id),
+                              type: 'card',
                               amount: debitAmount,
-                              txRef: reference,
+                              reference: baseRef,
+                              token: cardMethod.token,
+                              status: 'pending',
+                              provider: 'flutterwave',
+                              providerResponse: debitResult,
+                            });
+                            // Clear result so the bank fallback block runs
+                            debitResult = null;
+                          }
+                        } catch (cardErr: any) {
+                          // Card was declined, restricted, or otherwise rejected.
+                          // Log the failure here, then let execution continue to
+                          // the bank fallback block below — do NOT rethrow.
+                          logger.error(
+                            { loanId: loan._id, error: cardErr.message },
+                            'Card auto-debit failed — attempting bank fallback'
+                          );
+                          await WorkerLogService.log('loan-penalties', 'error',
+                            `Card auto-debit failed: ${cardErr.message} — attempting bank fallback`,
+                            { loanId: loan._id }
+                          );
+                          debitResult = null; // Ensure bank fallback is triggered
+                        }
+                      }
+
+                      // ── 3b. Bank fallback ─────────────────────────────────
+                      // Triggered when:
+                      //   (a) no card is linked (bank is the primary method), OR
+                      //   (b) card threw an exception, OR
+                      //   (c) card returned non-successful (incl. pending-auth cleared above)
+                      const cardSucceeded = debitResult?.data?.status === 'successful';
+
+                      if (!cardSucceeded && bankMethod) {
+                        const bankCode = (bankMethod as any).bankCode || '';
+
+                        if (!bankCode) {
+                          logger.warn({ loanId: loan._id }, 'Bank fallback skipped — bankCode missing on linked method');
+                        } else if (!bankMethod.accountNumber) {
+                          logger.warn({ loanId: loan._id }, 'Bank fallback skipped — accountNumber missing on linked method');
+                        } else {
+                          // Use a fresh txRef for the bank attempt so Flutterwave
+                          // does not reject it as a duplicate of the card txRef.
+                          const bankRef = cardWasAttempted ? `${baseRef}-bnk` : baseRef;
+                          activeRef = bankRef;
+                          activeMethod = bankMethod;
+
+                          try {
+                            logger.info(
+                              { loanId: loan._id, bankCode },
+                              cardWasAttempted
+                                ? 'Initiating bank direct debit (card fallback)'
+                                : 'Initiating bank direct debit (primary method)'
+                            );
+                            debitResult = await fwProvider.initiateDirectDebit({
+                              accountNumber: bankMethod.accountNumber,
+                              bankCode,
+                              email: bankMethod.email,
+                              amount: debitAmount,
+                              txRef: bankRef,
                               narration: `Prime Finance Loan Repayment — Loan ${loan._id}`,
                             });
-                          }
-                        }
-
-                        if (debitResult) {
-                          const wasSuccessful =
-                            debitResult?.status === 'success' ||
-                            debitResult?.data?.status === 'successful';
-
-                          await AutoDebitLog.create({
-                            userId: String((refreshedUser as any)._id),
-                            loanId: String(loan._id),
-                            type: linkedMethod.type,
-                            amount: debitAmount,
-                            reference,
-                            token: linkedMethod.token,
-                            status: wasSuccessful ? 'successful' : 'pending',
-                            provider: 'flutterwave',
-                            providerResponse: debitResult,
-                          });
-
-                          if (wasSuccessful) {
-                            // Reconcile the repayment into the loan immediately.
-                            // BUG FIX: This records a repayment for funds that were
-                            // ALREADY collected via the Flutterwave charge above.
-                            // Without `internalOnly: true`, repayLoan() would run the
-                            // STANDARD path and attempt a SECOND, separate live VFD
-                            // bank transfer for the same amount — which would either
-                            // (a) double-debit the user, or (b) fail and (due to the
-                            // standard path's "status 98 = success" handling) still
-                            // get recorded as a successful repayment with no real
-                            // money behind it. `internalOnly: true` just records the
-                            // already-collected FW payment against the loan/ledger.
-                            try {
-                              await LoanService.repayLoan({
-                                loanId: loan._id,
-                                userId: (refreshedUser as any)._id,
-                                amount: debitAmount,
-                                idempotencyKey: `fw-debit-${reference}`,
-                                skipBalanceCheck: true,
-                                autoDeduct: true,
-                                internalOnly: true,
-                              });
-                            } catch (reconcileErr: any) {
-                              logger.error({ loanId: loan._id, error: reconcileErr.message },
-                                'Repayment reconciliation after FW debit failed — needs manual review');
-                            }
-
-                            await WorkerLogService.log('loan-penalties', 'info',
-                              `FW auto-debit (${linkedMethod.type}) succeeded for ${(refreshedUser as any).email}: ₦${debitAmount}`,
-                              { userId: (refreshedUser as any)._id, loanId: loan._id, reference }
+                          } catch (bankErr: any) {
+                            logger.error(
+                              { loanId: loan._id, error: bankErr.message },
+                              'Bank auto-debit failed'
                             );
-                          } else {
-                            if (linkedMethod.type === 'card') {
-                              const bankMethod = linkedMethods.find(method => method.type === 'bank');
-                              if (!bankMethod) {
-                                logger.warn({ loanId: loan._id }, 'Skipping bank auto-debit — no bank method found');
-                              } else {
-                                const bankCode = (bankMethod as any).bankCode || bankMethod.bankName || '';
-                                if (!bankCode) {
-                                  logger.warn({ loanId: loan._id }, 'Skipping bank auto-debit — no bankCode on linked method');
-                                } else {
-                                  debitResult = await fwProvider.initiateDirectDebit({
-                                    accountNumber: bankMethod.accountNumber || '',
-                                    bankCode,
-                                    email: bankMethod.email,
-                                    amount: debitAmount,
-                                    txRef: reference,
-                                    narration: `Prime Finance Loan Repayment — Loan ${loan._id}`,
-                                  });
-                                }
-                              }
-                            }
-
-                            await WorkerLogService.log('loan-penalties', 'warn',
-                              `FW auto-debit (${linkedMethod.type}) returned non-success for ${(refreshedUser as any).email}: ₦${debitAmount}`,
-                              { userId: (refreshedUser as any)._id, loanId: loan._id, reference, result: debitResult }
+                            await WorkerLogService.log('loan-penalties', 'error',
+                              `Bank auto-debit failed: ${bankErr.message}`,
+                              { loanId: loan._id }
                             );
+                            // debitResult stays null — nothing to log/reconcile below
                           }
                         }
                       }
-                    } catch (fwErr: any) {
-                      logger.error({ loanId: loan._id, error: fwErr.message }, 'Flutterwave auto-debit failed');
-                      await WorkerLogService.log('loan-penalties', 'error',
-                        `Flutterwave auto-debit failed: ${fwErr.message}`,
-                        { loanId: loan._id }
-                      );
+
+                      // ── 3c. Process result ────────────────────────────────
+                      // Runs for whichever method (card or bank) produced a result.
+                      // Only `data.status === 'successful'` means money actually moved.
+                      // The outer `status === 'success'` is just the HTTP envelope and
+                      // is true even when the transaction itself is pending.
+                      if (debitResult && activeMethod) {
+                        const wasSuccessful = debitResult?.data?.status === 'successful';
+
+                        await AutoDebitLog.create({
+                          userId: String((refreshedUser as any)._id),
+                          loanId: String(loan._id),
+                          type: activeMethod.type,
+                          amount: debitAmount,
+                          reference: activeRef,
+                          token: activeMethod.token,
+                          status: wasSuccessful ? 'successful' : 'pending',
+                          provider: 'flutterwave',
+                          providerResponse: debitResult,
+                        });
+
+                        if (wasSuccessful) {
+                          // Money already moved via Flutterwave. Use internalOnly:true
+                          // so repayLoan() records the payment against the loan/ledger
+                          // without attempting a second VFD bank transfer.
+                          try {
+                            await LoanService.repayLoan({
+                              loanId: loan._id,
+                              userId: (refreshedUser as any)._id,
+                              amount: debitAmount,
+                              idempotencyKey: `fw-debit-${activeRef}`,
+                              skipBalanceCheck: true,
+                              autoDeduct: true,
+                              internalOnly: true,
+                            });
+                          } catch (reconcileErr: any) {
+                            logger.error(
+                              { loanId: loan._id, error: reconcileErr.message },
+                              'Repayment reconciliation after FW debit failed — needs manual review'
+                            );
+                          }
+
+                          await WorkerLogService.log('loan-penalties', 'info',
+                            `FW auto-debit (${activeMethod.type}) succeeded for ${(refreshedUser as any).email}: ₦${debitAmount}`,
+                            { userId: (refreshedUser as any)._id, loanId: loan._id, reference: activeRef }
+                          );
+                        } else {
+                          // Non-successful result logged. For bank direct debits this is
+                          // often 'pending' (async settlement); webhook reconciliation
+                          // should handle the final state transition separately.
+                          await WorkerLogService.log('loan-penalties', 'warn',
+                            `FW auto-debit (${activeMethod.type}) returned non-success for ${(refreshedUser as any).email}: ₦${debitAmount}`,
+                            {
+                              userId: (refreshedUser as any)._id,
+                              loanId: loan._id,
+                              reference: activeRef,
+                              result: debitResult,
+                            }
+                          );
+                        }
+                      }
                     }
                   }
                 }
@@ -368,14 +408,6 @@ export class LoanPenaltiesCron {
 
           if (shouldRemind) {
             let reminded = false;
-            // BUG FIX: previously these notification calls were not wrapped, so a
-            // transient SMTP/email error (e.g. "Greeting never received") thrown
-            // here propagated to the outer per-loan catch block and was logged as
-            // "Error processing loan: <message>" — even though steps 1-3 (penalty
-            // + wallet deduction) for this loan had already completed successfully.
-            // That misleading error log made it look like the whole loan-processing
-            // step had failed. Reminder failures are now non-fatal: logged and
-            // skipped, without affecting penalty/deduction results already recorded.
             try {
               if (repaymentDateISO < todayISO) {
                 await NotificationService.sendLoanOverdue(user, loan);
