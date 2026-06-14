@@ -256,8 +256,14 @@ export class AutoDebitController {
 
   /**
    * GET /api/loans/linked-methods
-   * Returns all active linked payment methods for the logged-in user (cards + banks).
+   * Returns the active linked card and/or bank account for the logged-in user.
    * Tokens are excluded from the response.
+   *
+   * NOTE: Only one active card and one active bank mandate are kept per user —
+   * linkCard/linkBank already revoke any previously-active record of the same
+   * type, so at most one of each type can ever be 'active' at a time. We surface
+   * that directly as `card` / `bank` (each either the linked record or null)
+   * so the frontend doesn't need to filter an array.
    */
   static async getLinkedMethods(req: Request, res: Response, next: NextFunction) {
     try {
@@ -267,7 +273,18 @@ export class AutoDebitController {
         .sort({ createdAt: -1 })
         .lean();
 
-      return res.status(200).json({ status: 'success', data: methods });
+      const card = methods.find((m) => m.type === 'card') || null;
+      const bank = methods.find((m) => m.type === 'bank') || null;
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          card,
+          bank,
+          hasCard: !!card,
+          hasBank: !!bank,
+        },
+      });
     } catch (err) { next(err); }
   }
 

@@ -68,6 +68,7 @@ export interface ISettings extends Document {
       defaultInterest: number;
     };
     penalty: {
+      percentage: boolean;
       dailyRate: number;
       gracePeriod: number; // days
     };
@@ -254,6 +255,7 @@ const SettingsSchema = new Schema<ISettings>(
       },
       penalty: {
         dailyRate: { type: Number, default: 1 },
+        percentage: { type: Boolean, default: true },
         gracePeriod: { type: Number, default: 1 }
       },
       reminders: {

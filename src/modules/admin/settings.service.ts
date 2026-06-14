@@ -59,6 +59,7 @@ export class SettingsService {
           },
           penalty: {
             dailyRate: 10,
+            percentage: true,
             gracePeriod: 1
           },
           serviceFee: 500,
@@ -97,7 +98,7 @@ export class SettingsService {
         autoApprovalLimit: 50000,
         collateral: { percentage: 50 },
         ladder: { levels: [], defaultInterest: 5 },
-        penalty: { dailyRate: 10, gracePeriod: 1 },
+        penalty: { dailyRate: 10, percentage: true, gracePeriod: 1 },
         reminders: {
           dueTomorrow: "Your loan is due tomorrow. Please ensure your wallet is funded.",
           dueToday: "Your loan is due today. Please fund your wallet to avoid penalties.",

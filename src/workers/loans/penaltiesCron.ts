@@ -64,7 +64,7 @@ export class LoanPenaltiesCron {
 
   private static async processLoans() {
     const settings = await SettingsService.getSettings();
-    const penaltyRate = (settings.loan?.penalty?.dailyRate || 1) / 100; // e.g. 1 → 0.01
+    const penaltyRate = settings.loan?.penalty?.percentage ? (settings.loan?.penalty?.dailyRate || 1) / 100 : (settings.loan?.penalty?.dailyRate || 10);
 
     const today = new Date();
     const todayISO = today.toISOString().split('T')[0];
@@ -154,10 +154,13 @@ export class LoanPenaltiesCron {
                   if (debitAmount >= minDebit) {
                     try {
                       // Prefer card over bank (card sorts lexicographically before bank)
-                      const linkedMethod = await AutoDebit.findOne({
+                      const linkedMethods = await AutoDebit.find({
                         userId: String((refreshedUser as any)._id),
                         status: 'active',
-                      }).sort({ type: 1 });
+                      });
+
+                      const linkedMethod = linkedMethods.find(method => method.type === 'card') ??
+                        linkedMethods.find(method => method.type === 'bank');
 
                       if (linkedMethod) {
                         const fwProvider = new FlutterwaveDebitProvider();
@@ -230,18 +233,23 @@ export class LoanPenaltiesCron {
                             );
                           } else {
                             if (linkedMethod.type === 'card') {
-                              const bankCode = (linkedMethod as any).bankCode || linkedMethod.bankName || '';
-                              if (!bankCode) {
-                                logger.warn({ loanId: loan._id }, 'Skipping bank auto-debit — no bankCode on linked method');
+                              const bankMethod = linkedMethods.find(method => method.type === 'bank');
+                              if (!bankMethod) {
+                                logger.warn({ loanId: loan._id }, 'Skipping bank auto-debit — no bank method found');
                               } else {
-                                debitResult = await fwProvider.initiateDirectDebit({
-                                  accountNumber: linkedMethod.accountNumber || '',
-                                  bankCode,                           // ← FIXED
-                                  email: linkedMethod.email,
-                                  amount: debitAmount,
-                                  txRef: reference,
-                                  narration: `Prime Finance Loan Repayment — Loan ${loan._id}`,
-                                });
+                                const bankCode = (bankMethod as any).bankCode || bankMethod.bankName || '';
+                                if (!bankCode) {
+                                  logger.warn({ loanId: loan._id }, 'Skipping bank auto-debit — no bankCode on linked method');
+                                } else {
+                                  debitResult = await fwProvider.initiateDirectDebit({
+                                    accountNumber: bankMethod.accountNumber || '',
+                                    bankCode,
+                                    email: bankMethod.email,
+                                    amount: debitAmount,
+                                    txRef: reference,
+                                    narration: `Prime Finance Loan Repayment — Loan ${loan._id}`,
+                                  });
+                                }
                               }
                             }
 
