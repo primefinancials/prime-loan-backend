@@ -705,9 +705,20 @@ export class LoanService {
     // BUG FIX: The check was previously inside the Mongoose transaction, meaning
     // the provider balance fetch could be stale by the time the VFD call happened.
     // It now runs on the freshly fetched balance, strictly before any money moves.
-    if (!params.skipBalanceCheck && userBalance < repayAmount) {
+    //
+    // BUG FIX: `parseFloat(userAcc.accountBalance || "0")` returns NaN if
+    // `accountBalance` is present but non-numeric (e.g. an error string,
+    // undefined nested field, etc.). Any comparison against NaN — including
+    // `NaN < repayAmount` — is always `false`, so this check silently passed
+    // even when the account had no usable balance, letting the code proceed
+    // to attempt a real VFD transfer (and, if VFD errored with status "98",
+    // the loan would still be marked as repaid with no money actually moved).
+    // We now explicitly fail closed if the balance can't be determined.
+    if (!params.skipBalanceCheck && (isNaN(userBalance) || userBalance < repayAmount)) {
       throw new BadRequestError(
-        `Insufficient funds. Your balance is ₦${userBalance.toLocaleString()}, but ₦${repayAmount.toLocaleString()} is required for this repayment.`
+        isNaN(userBalance)
+          ? `Could not determine account balance for this repayment.`
+          : `Insufficient funds. Your balance is ₦${userBalance.toLocaleString()}, but ₦${repayAmount.toLocaleString()} is required for this repayment.`
       );
     }
 
@@ -757,9 +768,33 @@ export class LoanService {
       providerResponse = await this.vfd.transfer(transferRequest);
     } catch (err: any) {
       const providerData = err.response?.data;
+      // BUG FIX: status "98" from VFD nominally means "duplicate / already
+      // processed", implying a PRIOR call with this reference already moved
+      // the money. Previously this was trusted blindly — any error payload
+      // with status "98" (which some VFD error paths can also return for
+      // unrelated failures, e.g. invalid/empty source account) was treated
+      // as a successful transfer, and the DB was then committed as if the
+      // repayment succeeded even though no money had moved. We now verify
+      // that an actual completed transfer with this reference exists at VFD
+      // before trusting "98"; otherwise we fail closed.
       if (providerData?.status === "98") {
-        // VFD status 98 = duplicate / already processed — treat as success
-        providerResponse = providerData;
+        let verified = false;
+        try {
+          const txStatus = await this.vfd.queryTransaction?.(transferRecord.reference);
+          verified = !!txStatus && (txStatus.status === "00" || txStatus.data?.transactionStatus.toLowerCase() === "success" || txStatus.data?.transactionStatus.toLowerCase() === "successfull");
+        } catch (verifyErr: any) {
+          logger.warn({ reference: transferRecord.reference, error: verifyErr.message },
+            'Could not verify VFD status-98 transfer; treating as failed');
+        }
+
+        if (verified) {
+          providerResponse = providerData;
+        } else {
+          await TransferService.failTransfer(transferRecord.reference);
+          throw new Error(
+            `Repayment provider transfer failed: VFD returned status 98 (duplicate/already-processed) but no completed transfer could be verified for reference ${transferRecord.reference}`
+          );
+        }
       } else {
         await TransferService.failTransfer(transferRecord.reference);
         const providerError = providerData?.message || providerData || err.message;

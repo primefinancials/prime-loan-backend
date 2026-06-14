@@ -116,17 +116,50 @@ export class LoanPenaltiesCron {
 
               if (walletBalance > 0 && repaymentAmount > 0) {
                 try {
-                  await LoanService.repayLoan({
+                  // CORRECTION: this is a real VFD-to-VFD transfer — the user's
+                  // internal VFD "wallet" account paying the company's VFD prime
+                  // account — so the STANDARD path (live balance check + actual
+                  // VFD transfer) is the CORRECT path here. `internalOnly: true`
+                  // would skip the real transfer entirely, which is wrong for this
+                  // step (it's only appropriate for the Flutterwave reconciliation
+                  // below, where money already moved via a different rail).
+                  //
+                  // The actual bug that produced the phantom ₦721 "repayment" with
+                  // an empty wallet is fixed in loan_service.ts's repayLoan():
+                  //   - the live balance check no longer silently passes when
+                  //     `userAcc.accountBalance` parses to NaN, and
+                  //   - a VFD "status 98" error is no longer trusted as success
+                  //     unless a completed transfer for that reference is verified.
+                  // With those fixes, a deduction attempted against an
+                  // already-empty VFD wallet (as happened on the second cycle
+                  // here, using the stale `user_metadata.wallet` value) now
+                  // correctly throws "Insufficient funds" / "Could not determine
+                  // account balance" and is caught below as a failed deduction —
+                  // instead of being silently committed as a successful repayment.
+                  const result = await LoanService.repayLoan({
                     loanId: loan._id,
                     userId: user._id,
                     amount: repaymentAmount,
                     idempotencyKey: `worker-deduct-${loan._id}-${todayISO}`,
                   });
-                  deductedUsers.push({ email: user.email, phone: user.user_metadata?.phone });
-                  await WorkerLogService.log('loan-penalties', 'info',
-                    `Auto-deducted wallet balance for overdue loan for ${user.email || user.user_metadata?.phone}`,
-                    { userId: user._id, loanId: loan._id }
-                  );
+
+                  // BUG FIX: repayLoan() can return early WITHOUT throwing and
+                  // WITHOUT making any changes (repayAmount: 0, providerResponse
+                  // .alreadyPaid: true) if the loan was fully paid by the time
+                  // it re-checked the DB. Previously this was treated as a
+                  // successful deduction regardless, producing a false
+                  // "Auto-deducted wallet balance" log entry with no underlying
+                  // transaction. Only count/report it as a deduction if a
+                  // positive amount was actually applied.
+                  if (result.repayAmount > 0 && !result.providerResponse?.alreadyPaid) {
+                    deductedUsers.push({ email: user.email, phone: user.user_metadata?.phone });
+                    await WorkerLogService.log('loan-penalties', 'info',
+                      `Auto-deducted wallet balance for overdue loan for ${user.email || user.user_metadata?.phone}`,
+                      { userId: user._id, loanId: loan._id, amount: result.repayAmount }
+                    );
+                  } else {
+                    logger.info({ loanId: loan._id }, 'Wallet deduction skipped — loan already fully paid at commit time');
+                  }
                 } catch (err: any) {
                   logger.error({ loanId: loan._id, error: err.message }, 'Wallet deduction failed');
                   await WorkerLogService.log('loan-penalties', 'error',
@@ -169,12 +202,39 @@ export class LoanPenaltiesCron {
                         let debitResult: any;
 
                         if (linkedMethod.type === 'card') {
+                          // BUG FIX: "Flutterwave auto-debit failed: Tokenized charge
+                          // failed: Please enter a valid redirect url" — Flutterwave's
+                          // tokenized card charge endpoint (POST /charges?type=card)
+                          // requires a `redirect_url`, used if the charge needs 3DS/OTP
+                          // authentication (common for many Nigerian cards even on
+                          // saved-token recurring charges). The cron runs unattended,
+                          // so there's no live browser session to redirect — but the
+                          // field must still be present and a valid URL, or Flutterwave
+                          // rejects the request outright before even attempting the
+                          // charge. We point it at a backend "no-op" landing page;
+                          // FlutterwaveDebitProvider.chargeToken must forward this
+                          // value as `redirect_url` in the request payload.
+                          const redirectUrl = 'https://primefinance.live';
+
                           debitResult = await fwProvider.chargeToken({
                             token: linkedMethod.token,
                             email: linkedMethod.email,
                             amount: debitAmount,
                             txRef: reference,
+                            redirectUrl,
                           });
+
+                          // If the charge requires further authentication (OTP/3DS/AVS),
+                          // Flutterwave returns a non-"successful" status with a
+                          // `meta.authorization` block instead of throwing. An
+                          // unattended cron can't complete that flow, so treat it the
+                          // same as a non-success and fall through to the bank-debit
+                          // fallback below rather than leaving it stuck pending.
+                          if (debitResult?.data?.status === 'pending' && debitResult?.data?.meta?.authorization) {
+                            logger.warn({ loanId: loan._id, authMode: debitResult.data.meta.authorization.mode },
+                              'FW card charge requires additional authentication — cannot complete unattended, falling back');
+                            debitResult = { status: 'error', data: debitResult.data };
+                          }
                         } else {
                           // Bank direct debit
                           // FIX: was incorrectly passing `linkedMethod.bankName` as the
@@ -212,7 +272,17 @@ export class LoanPenaltiesCron {
                           });
 
                           if (wasSuccessful) {
-                            // Reconcile the repayment into the loan immediately
+                            // Reconcile the repayment into the loan immediately.
+                            // BUG FIX: This records a repayment for funds that were
+                            // ALREADY collected via the Flutterwave charge above.
+                            // Without `internalOnly: true`, repayLoan() would run the
+                            // STANDARD path and attempt a SECOND, separate live VFD
+                            // bank transfer for the same amount — which would either
+                            // (a) double-debit the user, or (b) fail and (due to the
+                            // standard path's "status 98 = success" handling) still
+                            // get recorded as a successful repayment with no real
+                            // money behind it. `internalOnly: true` just records the
+                            // already-collected FW payment against the loan/ledger.
                             try {
                               await LoanService.repayLoan({
                                 loanId: loan._id,
@@ -221,6 +291,7 @@ export class LoanPenaltiesCron {
                                 idempotencyKey: `fw-debit-${reference}`,
                                 skipBalanceCheck: true,
                                 autoDeduct: true,
+                                internalOnly: true,
                               });
                             } catch (reconcileErr: any) {
                               logger.error({ loanId: loan._id, error: reconcileErr.message },
@@ -297,15 +368,30 @@ export class LoanPenaltiesCron {
 
           if (shouldRemind) {
             let reminded = false;
-            if (repaymentDateISO < todayISO) {
-              await NotificationService.sendLoanOverdue(user, loan);
-              reminded = true;
-            } else if (repaymentDateISO === todayISO) {
-              await NotificationService.sendLoanDueToday(user, loan);
-              reminded = true;
-            } else if (repaymentDateISO === tomorrowISO) {
-              await NotificationService.sendLoanDueTomorrow(user, loan);
-              reminded = true;
+            // BUG FIX: previously these notification calls were not wrapped, so a
+            // transient SMTP/email error (e.g. "Greeting never received") thrown
+            // here propagated to the outer per-loan catch block and was logged as
+            // "Error processing loan: <message>" — even though steps 1-3 (penalty
+            // + wallet deduction) for this loan had already completed successfully.
+            // That misleading error log made it look like the whole loan-processing
+            // step had failed. Reminder failures are now non-fatal: logged and
+            // skipped, without affecting penalty/deduction results already recorded.
+            try {
+              if (repaymentDateISO < todayISO) {
+                await NotificationService.sendLoanOverdue(user, loan);
+                reminded = true;
+              } else if (repaymentDateISO === todayISO) {
+                await NotificationService.sendLoanDueToday(user, loan);
+                reminded = true;
+              } else if (repaymentDateISO === tomorrowISO) {
+                await NotificationService.sendLoanDueTomorrow(user, loan);
+                reminded = true;
+              }
+            } catch (notifyErr: any) {
+              logger.warn({ loanId: loan._id, error: notifyErr.message }, 'Loan reminder notification failed (non-fatal)');
+              await WorkerLogService.log('loan-penalties', 'warn',
+                `Reminder notification failed: ${notifyErr.message}`, { loanId: loan._id }
+              );
             }
 
             if (reminded) {
