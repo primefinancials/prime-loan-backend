@@ -57,6 +57,7 @@ export class FlutterwaveDebitProvider {
     amount: number;
     txRef: string;
     currency?: string;
+    redirectUrl?: string;
   }) {
     try {
       const res = await axios.post(
@@ -67,6 +68,7 @@ export class FlutterwaveDebitProvider {
           amount: params.amount,
           tx_ref: params.txRef,
           currency: params.currency || 'NGN',
+          redirect_url: params.redirectUrl,
         },
         { headers: this.headers() }
       );
