@@ -687,4 +687,65 @@ export class TestIntegrationsController {
       return res.status(500).json({ status: 'failed', message: err.message });
     }
   }
+
+  /**
+   * GET /backoffice/test-integrations/flutterwave/bill-categories
+   * query: { airtime: boolean, data: boolean }
+   * Fetches active bill categories from Flutterwave for dynamic selection
+   */
+  static async testFlutterwaveBillCategories(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { airtime, data } = req.query;
+      const axios = (await import('axios')).default;
+      const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
+      
+      if (!secretKey) {
+        throw new Error('FLUTTERWAVE_SECRET_KEY is not configured');
+      }
+
+      // We add airtime=1 or data_bundle=1 parameter to filter if requested
+      const params: any = { country: 'NG' };
+      if (airtime === 'true') params.airtime = 1;
+      if (data === 'true') params.data_bundle = 1;
+
+      const response = await axios.get('https://api.flutterwave.com/v3/bill-categories', {
+        params,
+        headers: {
+          Authorization: `Bearer ${secretKey}`
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: response.data.data
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Admin Flutterwave bill categories fetch failed');
+      return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
+
+  /**
+   * GET /backoffice/test-integrations/users/:userId/active-loans
+   * Fetches active (accepted) loans for a specific user for admin automation
+   */
+  static async getUserActiveLoans(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userId } = req.params;
+      const LoanModel = (await import('../../modules/loans/loan.model')).default;
+      
+      const loans = await LoanModel.find({
+        user: userId,
+        status: 'accepted'
+      }).sort({ createdAt: -1 });
+
+      return res.status(200).json({
+        status: 'success',
+        data: loans
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Admin fetch user active loans failed');
+      return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
 }
