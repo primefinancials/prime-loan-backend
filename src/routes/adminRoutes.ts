@@ -399,6 +399,8 @@ router.post("/test-integrations/paybeta/airtime", verifyJwtRest(), TestIntegrati
 router.post("/test-integrations/paybeta/data", verifyJwtRest(), TestIntegrationsController.buyPaybetaData as any);
 router.post("/test-integrations/flutterwave/transfer", verifyJwtRest(), TestIntegrationsController.testFlutterwaveTransfer as any);
 router.post("/test-integrations/flutterwave/bill", verifyJwtRest(), TestIntegrationsController.testFlutterwaveBillPayment as any);
+router.get("/test-integrations/flutterwave/bill-categories", verifyJwtRest(), TestIntegrationsController.testFlutterwaveBillCategories as any);
+router.get("/test-integrations/users/:userId/active-loans", verifyJwtRest(), TestIntegrationsController.getUserActiveLoans as any);
 
 /* =============================
    ADMIN TRANSFERS (ACTUAL)
