@@ -574,4 +574,117 @@ export class TestIntegrationsController {
       });
     }
   }
+  /**
+   * POST /backoffice/test-integrations/flutterwave/transfer
+   * body: { bankCode, accountNumber, amount, narration, beneficiaryName }
+   * Tests actual Flutterwave transfer (withdrawal) without logging to DB
+   */
+  static async testFlutterwaveTransfer(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { bankCode, accountNumber, amount, narration, beneficiaryName } = req.body;
+      const numAmount = Number(amount);
+
+      if (!bankCode || !accountNumber || !numAmount) {
+        return res.status(400).json({ 
+          status: 'failed', 
+          message: 'bankCode, accountNumber, and amount (positive number) are required',
+        });
+      }
+
+      const { FlutterwavePayoutProvider } = await import('../../shared/providers/flutterwave-payout.provider');
+      const provider = new FlutterwavePayoutProvider();
+
+      const reference = `admin-payout-${Date.now()}`;
+      
+      logger.info({ bankCode, accountNumber, amount: numAmount, reference }, 'Admin Flutterwave transfer initiated');
+      
+      const result = await provider.createTransfer({
+        bankCode,
+        accountNumber,
+        amount: numAmount,
+        reference,
+        narration: narration || 'Admin Manual Withdrawal',
+        beneficiaryName
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          ...result,
+          timestamp: new Date().toISOString(),
+        }
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Admin Flutterwave transfer failed');
+      return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
+
+  /**
+   * POST /backoffice/test-integrations/flutterwave/bill
+   * body: { type, billerCode, itemCode, customer, amount }
+   * Tests actual Flutterwave bill payment (airtime/data) without logging to DB
+   */
+  static async testFlutterwaveBillPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { type, billerCode, itemCode, customer, amount } = req.body;
+
+      if (!type || !customer || !amount) {
+        return res.status(400).json({ 
+          status: 'failed', 
+          message: 'type, customer, and amount are required',
+        });
+      }
+
+      // We'll dynamically construct the API request since we don't have a dedicated FLW Bill provider yet
+      const axios = (await import('axios')).default;
+      const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
+      
+      if (!secretKey) {
+        throw new Error('FLUTTERWAVE_SECRET_KEY is not configured');
+      }
+
+      const reference = `admin-bill-${Date.now()}`;
+      
+      logger.info({ type, customer, amount, reference }, 'Admin Flutterwave bill payment initiated');
+
+      const response = await axios.post(
+        'https://api.flutterwave.com/v3/bills',
+        {
+          country: 'NG',
+          customer,
+          amount: Number(amount),
+          type, // e.g. "AIRTIME", "DATA"
+          reference,
+          biller_code: billerCode,
+          item_code: itemCode
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${secretKey}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          reference,
+          response: response.data,
+          timestamp: new Date().toISOString(),
+        }
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Admin Flutterwave bill payment failed');
+      if (err.isAxiosError && err.response) {
+        return res.status(err.response.status || 400).json({
+          status: 'failed',
+          message: err.response.data?.message || err.message,
+          data: err.response.data
+        });
+      }
+      return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
 }
