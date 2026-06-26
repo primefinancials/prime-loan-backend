@@ -315,6 +315,13 @@ router.post(
   AutoDebitController.validateAccount as unknown as express.RequestHandler
 );
 
+router.post(
+  "/loans/verify-link",
+  verifyJwtRest(),
+  idempotencyMiddleware() as any,
+  AutoDebitController.verifyLink as unknown as express.RequestHandler
+);
+
 router.delete(
   "/loans/linked-methods/:id",
   verifyJwtRest(),

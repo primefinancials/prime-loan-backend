@@ -21,208 +21,262 @@ export class AutoDebitController {
 
   /**
    * POST /api/loans/link-card
-   * Verify a Flutterwave card tokenization transaction and store the card token.
-   * Frontend calls Flutterwave Inline → gets tx_ref back → sends it here.
+   * Initiate a server-to-server card charge for ₦200 to tokenize the card.
    */
   static async linkCard(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user._id || (req as any).user.id;
-      const { txRef, email } = req.body;
+      const { cardNumber, cvv, expiryMonth, expiryYear, email, fullname } = req.body;
 
-      if (!txRef) {
-        return res.status(400).json({ status: 'failed', message: 'Transaction reference (txRef) is required' });
+      if (!cardNumber || !cvv || !expiryMonth || !expiryYear) {
+        return res.status(400).json({ status: 'failed', message: 'Card details are required' });
       }
 
       const provider = new FlutterwaveDebitProvider();
-      const txData = await provider.verifyTransaction(txRef);
-
-      if (!txData || txData.status !== 'successful') {
-        return res.status(400).json({ status: 'failed', message: 'Card authorization transaction was not successful' });
-      }
-
-      const card = txData.card;
-      if (!card?.token) {
-        return res.status(400).json({ status: 'failed', message: 'No card token received from transaction' });
-      }
-
-      // Revoke any previously active card for this user to keep one primary card
-      await AutoDebit.updateMany(
-        { userId: String(userId), type: 'card', status: 'active' },
-        { $set: { status: 'revoked' } }
-      );
-
-      const autoDebit = await AutoDebit.create({
-        userId: String(userId),
-        type: 'card',
-        token: card.token,
-        email: email || txData.customer?.email || '',
-        last4: card.last_4digits || card.last4 || '',
-        cardBrand: card.type || card.brand || '',
-        expMonth: card.expiry?.split('/')[0]?.trim() || '',
-        expYear: card.expiry?.split('/')[1]?.trim() || '',
-        status: 'active',
+      const txRef = `card-link-${userId}-${Date.now()}`;
+      
+      const chargeResult = await provider.chargeCard({
+        cardNumber: String(cardNumber),
+        cvv: String(cvv),
+        expiryMonth: String(expiryMonth),
+        expiryYear: String(expiryYear),
+        email: email || 'user@primefinance.live',
+        fullname: fullname || 'Prime User',
+        amount: 200, // 200 NGN minimum for tokenization
+        txRef
       });
 
-      logger.info({ userId, cardLast4: autoDebit.last4 }, 'Card linked via Flutterwave');
+      // If Flutterwave requires OTP/PIN validation
+      if (chargeResult?.meta?.authorization?.mode === 'otp' || chargeResult?.meta?.authorization?.mode === 'pin') {
+         return res.status(200).json({
+           status: 'success',
+           message: 'OTP or PIN required',
+           data: {
+             flwRef: chargeResult.data?.flw_ref,
+             authMode: chargeResult.meta.authorization.mode,
+             type: 'card'
+           }
+         });
+      }
 
-      return res.status(201).json({
-        status: 'success',
-        data: {
-          id: autoDebit._id,
-          type: 'card',
-          last4: autoDebit.last4,
-          cardBrand: autoDebit.cardBrand,
-          status: 'active',
-        },
-      });
+      // If successful without OTP
+      if (chargeResult?.status === 'success' || chargeResult?.data?.status === 'successful') {
+         // AutoDebit record is normally created in verifyLink, but if it's already successful here:
+         const card = chargeResult.data?.card;
+         if (card?.token) {
+           await AutoDebit.updateMany(
+             { userId: String(userId), type: 'card', status: 'active' },
+             { $set: { status: 'revoked' } }
+           );
+
+           const autoDebit = await AutoDebit.create({
+             userId: String(userId),
+             type: 'card',
+             token: card.token,
+             email: email || chargeResult.data?.customer?.email || '',
+             last4: card.last_4digits || card.last4 || '',
+             cardBrand: card.type || card.brand || '',
+             expMonth: card.expiry?.split('/')[0]?.trim() || '',
+             expYear: card.expiry?.split('/')[1]?.trim() || '',
+             status: 'active',
+           });
+
+           return res.status(201).json({
+             status: 'success',
+             data: {
+               id: autoDebit._id,
+               type: 'card',
+               last4: autoDebit.last4,
+               cardBrand: autoDebit.cardBrand,
+               status: 'active',
+             },
+           });
+         }
+      }
+
+      return res.status(400).json({ status: 'failed', message: 'Card charge failed or requires unsupported auth mode' });
     } catch (err) { next(err); }
   }
 
   /**
    * POST /api/loans/link-bank
-   * Link a bank account via Flutterwave direct debit.
-   * Validates the bank account, then persists the mandate record.
+   * Link a bank account (or wallet) via Flutterwave direct debit.
    */
   static async linkBank(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user._id || (req as any).user.id;
-
-      const {
-        accountNumber,
-        bankCode,
-        bankName: clientBankName,
-        email,
-        txRef,
-      } = req.body;
+      const { accountNumber, bankCode, bankName: clientBankName, email } = req.body;
 
       if (!accountNumber || !bankCode) {
         throw new BadRequestError("accountNumber and bankCode are required");
       }
 
-      if (!txRef) {
-        throw new BadRequestError("Transaction reference is required");
-      }
-
       const provider = new FlutterwaveDebitProvider();
-
-      // Validate account and resolve account holder name
+      
       let accountName = "";
-
       try {
-        const account = await provider.validateBankAccount(
-          accountNumber,
-          bankCode
-        );
-
+        const account = await provider.validateBankAccount(accountNumber, bankCode);
         accountName = account?.account_name ?? "";
       } catch (error: any) {
-        logger.warn(
-          {
-            bankCode,
-            accountNumber: accountNumber.slice(-4),
-          },
-          `Bank validation failed: ${error.response?.data?.message || error.message}`
-        );
-
-        throw new BadRequestError(
-          `Bank validation failed: ${error.response?.data?.message || error.message}`
-        );
+        logger.warn({ bankCode, accountNumber: accountNumber.slice(-4) }, `Bank validation failed: ${error.response?.data?.message || error.message}`);
+        // For wallets like PalmPay/OPay, validation might fail or not be supported. We proceed with the charge.
+        accountName = "Wallet User";
       }
 
-      // Resolve bank name
       let bankName = clientBankName?.trim();
-
       if (!bankName) {
         try {
           const banks: { code: string; name: string }[] = await provider.getBanks();
-
-          bankName =
-            banks.find((bank) => bank.code === bankCode)?.name ?? bankCode;
+          bankName = banks.find((bank) => bank.code === bankCode)?.name ?? bankCode;
         } catch (error: any) {
-          throw new BadRequestError(
-            `Failed to resolve bank name: ${error.response?.data?.message || error.message}`
-          );
+          throw new BadRequestError(`Failed to resolve bank name: ${error.response?.data?.message || error.message}`);
         }
       }
 
-      const unsupportedBanks = ["opay", "palmpay"];
-
-      if (
-        bankName &&
-        unsupportedBanks.includes(bankName.toLowerCase())
-      ) {
-        throw new BadRequestError(
-          "This bank is not supported for direct debit"
-        );
-      }
-
-      // Verify mandate transaction
-      let mandateToken = txRef;
-
+      const txRef = `bank-link-${userId}-${Date.now()}`;
+      let chargeResult;
+      
       try {
-        const transaction = await provider.verifyTransaction(txRef);
-
-        if (transaction?.status === "successful") {
-          mandateToken =
-            transaction.flw_ref ||
-            transaction.tx_ref ||
-            txRef;
-        }
-      } catch (error: any) {
-        throw new BadRequestError(
-          `Failed to verify transaction: ${error.response?.data?.message || error.message}`
-        );
+        chargeResult = await provider.initiateDirectDebit({
+          accountNumber,
+          bankCode,
+          email: email || 'user@primefinance.live',
+          amount: 200, // 200 NGN minimum charge
+          txRef
+        });
+      } catch (err: any) {
+         if (err.message && err.message.toLowerCase().includes('wallet')) {
+             throw new BadRequestError("Service is currently unavailable from the provider for direct linking. Please try again later.");
+         }
+         throw err;
       }
 
-      // Revoke previous active bank mandates
-      await AutoDebit.updateMany(
-        {
-          userId: String(userId),
-          type: "bank",
-          status: "active",
-        },
-        {
-          $set: {
-            status: "revoked",
-          },
-        }
-      );
+      // Check for OTP/Validation
+      if (chargeResult?.meta?.authorization?.mode === 'otp') {
+         return res.status(200).json({
+           status: 'success',
+           message: 'OTP required',
+           data: {
+             flwRef: chargeResult.data?.flw_ref,
+             authMode: 'otp',
+             type: 'bank',
+             bankName,
+             bankCode,
+             accountNumber,
+             accountName
+           }
+         });
+      }
 
-      const autoDebit = await AutoDebit.create({
-        userId: String(userId),
-        type: "bank",
-        token: mandateToken,
-        email: email ?? "",
-        bankName,
-        bankCode,
-        accountNumber,
-        accountName,
-        status: "active",
-      });
+      if (chargeResult?.status === 'success' || chargeResult?.data?.status === 'successful') {
+         await AutoDebit.updateMany(
+            { userId: String(userId), type: "bank", status: "active" },
+            { $set: { status: "revoked" } }
+         );
 
-      logger.info(
-        {
-          userId,
-          bankName,
-          accountNumber: accountNumber.slice(-4),
-        },
-        "Bank account linked via Flutterwave"
-      );
+         const mandateToken = chargeResult.data?.flw_ref || chargeResult.data?.tx_ref || txRef;
 
-      return res.status(201).json({
-        status: "success",
-        data: {
-          id: autoDebit._id,
-          type: autoDebit.type,
-          bankName: autoDebit.bankName,
-          accountNumber: autoDebit.accountNumber,
-          accountName: autoDebit.accountName,
-          status: autoDebit.status,
-        },
-      });
+         const autoDebit = await AutoDebit.create({
+            userId: String(userId),
+            type: "bank",
+            token: mandateToken,
+            email: email ?? "",
+            bankName,
+            bankCode,
+            accountNumber,
+            accountName,
+            status: "active",
+         });
+
+         return res.status(201).json({
+            status: "success",
+            data: {
+              id: autoDebit._id,
+              type: autoDebit.type,
+              bankName: autoDebit.bankName,
+              accountNumber: autoDebit.accountNumber,
+              accountName: autoDebit.accountName,
+              status: autoDebit.status,
+            },
+         });
+      }
+
+      return res.status(400).json({ status: 'failed', message: 'Bank link failed' });
     } catch (error) {
       next(error);
     }
+  }
+
+  /**
+   * POST /api/loans/verify-link
+   * Verify an OTP or PIN for card/bank linking.
+   */
+  static async verifyLink(req: Request, res: Response, next: NextFunction) {
+     try {
+        const userId = (req as any).user._id || (req as any).user.id;
+        const { flwRef, otp, type, email, bankName, bankCode, accountNumber, accountName } = req.body;
+        
+        if (!flwRef || !otp) {
+           return res.status(400).json({ status: 'failed', message: 'flwRef and otp are required' });
+        }
+
+        const provider = new FlutterwaveDebitProvider();
+        const validateResult = await provider.validateCharge(flwRef, otp);
+
+        if (validateResult?.status === 'success' || validateResult?.data?.status === 'successful') {
+           const txData = await provider.verifyTransaction(flwRef);
+           
+           if (type === 'card') {
+              const card = txData.card || validateResult.data?.card;
+              if (card?.token) {
+                 await AutoDebit.updateMany(
+                   { userId: String(userId), type: 'card', status: 'active' },
+                   { $set: { status: 'revoked' } }
+                 );
+
+                 const autoDebit = await AutoDebit.create({
+                   userId: String(userId),
+                   type: 'card',
+                   token: card.token,
+                   email: email || txData.customer?.email || '',
+                   last4: card.last_4digits || card.last4 || '',
+                   cardBrand: card.type || card.brand || '',
+                   expMonth: card.expiry?.split('/')[0]?.trim() || '',
+                   expYear: card.expiry?.split('/')[1]?.trim() || '',
+                   status: 'active',
+                 });
+
+                 return res.status(201).json({ status: 'success', data: {
+                   id: autoDebit._id, type: 'card', last4: autoDebit.last4, cardBrand: autoDebit.cardBrand, status: 'active'
+                 }});
+              }
+           } else {
+              // bank
+              await AutoDebit.updateMany(
+                 { userId: String(userId), type: "bank", status: "active" },
+                 { $set: { status: "revoked" } }
+              );
+     
+              const autoDebit = await AutoDebit.create({
+                 userId: String(userId),
+                 type: "bank",
+                 token: flwRef,
+                 email: email ?? "",
+                 bankName: bankName || 'Bank',
+                 bankCode: bankCode || '000',
+                 accountNumber: accountNumber || '0000000000',
+                 accountName: accountName || 'Prime User',
+                 status: "active",
+              });
+     
+              return res.status(201).json({ status: "success", data: {
+                   id: autoDebit._id, type: autoDebit.type, bankName: autoDebit.bankName, accountNumber: autoDebit.accountNumber, accountName: autoDebit.accountName, status: autoDebit.status
+              }});
+           }
+        }
+
+        return res.status(400).json({ status: 'failed', message: 'OTP verification failed' });
+     } catch (err) { next(err); }
   }
 
   /**

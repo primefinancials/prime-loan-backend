@@ -43,6 +43,7 @@ const TransferSchema = new Schema<ITransfer>({
   naration: { type: String },
   processedAt: { type: Date },
   idempotencyKey: { type: String, unique: true, sparse: true },
+  walletBalance: { type: Number },
   meta: { type: Schema.Types.Mixed }
 }, { timestamps: true, collection: getCollectionName('transfers_v2') });
 
