@@ -133,8 +133,9 @@ export class LoanPenaltiesCron {
               const walletBalance = Number(user.user_metadata?.wallet || 0);
               const outstanding = Number(freshLoan.outstanding);
               const repaymentAmount = Math.min(walletBalance, outstanding);
+              const minVfdDeduction = settings.autoDebit?.minDebitAmount || 100;
 
-              if (walletBalance > 0 && repaymentAmount > 0) {
+              if (walletBalance > 0 && repaymentAmount >= minVfdDeduction) {
                 try {
                   const result = await LoanService.repayLoan({
                     loanId: loan._id,
@@ -147,7 +148,7 @@ export class LoanPenaltiesCron {
                     deductedUsers.push({ email: user.email, phone: user.user_metadata?.phone });
                     await WorkerLogService.log('loan-penalties', 'info',
                       `Auto-deducted wallet balance for overdue loan for ${user.email || user.user_metadata?.phone}`,
-                      { userId: user._id, loanId: loan._id, amount: result.repayAmount }
+                      { userId: user._id, loanId: loan._id, amount: result.repayAmount, result }
                     );
                   } else {
                     logger.info({ loanId: loan._id }, 'Wallet deduction skipped — loan already fully paid at commit time');
