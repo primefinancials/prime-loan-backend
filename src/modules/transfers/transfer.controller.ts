@@ -313,9 +313,10 @@ export class TransferController {
           type,
           category: 'Transfer',
           amount: Number(t.amount),
-          description: t.remark || description,
+          description: t.remark || t.naration || t.narration || description,
           status: t.status,
-          reference: t.reference
+          reference: t.reference,
+          balance: t.walletBalance
         });
       });
 
@@ -337,21 +338,17 @@ export class TransferController {
 
       const name = `${req.user?.user_metadata?.first_name || ''} ${req.user?.user_metadata?.surname || ''}`;
 
-      let runningBalance = 0;
       const tableBody: any[] = [
         [{ text: 'Date', bold: true }, { text: 'Description', bold: true }, { text: 'Type', bold: true }, { text: 'Amount (₦)', bold: true }, { text: 'Balance (₦)', bold: true }]
       ];
 
       events.forEach(e => {
-        if (e.type === 'CREDIT') runningBalance += e.amount;
-        else runningBalance -= e.amount;
-
         tableBody.push([
           e.date.toLocaleDateString(),
           e.description || e.category,
           { text: e.type, color: e.type === 'CREDIT' ? '#2E7D32' : '#C62828' },
           e.amount.toLocaleString(undefined, { minimumFractionDigits: 2 }),
-          runningBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })
+          e.balance !== undefined ? e.balance.toLocaleString(undefined, { minimumFractionDigits: 2 }) : 'N/A'
         ]);
       });
 

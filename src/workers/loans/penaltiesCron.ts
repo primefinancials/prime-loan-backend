@@ -291,19 +291,32 @@ export class LoanPenaltiesCron {
 
                           try {
                             logger.info(
-                              { loanId: loan._id, bankCode },
+                              { loanId: loan._id, bankCode, hasToken: !!bankMethod.token },
                               cardWasAttempted
                                 ? 'Initiating bank direct debit (card fallback)'
                                 : 'Initiating bank direct debit (primary method)'
                             );
-                            debitResult = await fwProvider.initiateDirectDebit({
-                              accountNumber: bankMethod.accountNumber,
-                              bankCode,
-                              email: bankMethod.email,
-                              amount: debitAmount,
-                              txRef: bankRef,
-                              narration: `Prime Finance Loan Repayment — Loan ${loan._id}`,
-                            });
+
+                            if (bankMethod.token) {
+                              // If bank was linked properly via the widget, it has a recurring token
+                              debitResult = await fwProvider.chargeToken({
+                                token: bankMethod.token,
+                                email: bankMethod.email,
+                                amount: debitAmount,
+                                txRef: bankRef,
+                                redirectUrl: 'https://primefinance.live',
+                              });
+                            } else {
+                              // Fallback for un-tokenized legacy bank links
+                              debitResult = await fwProvider.initiateDirectDebit({
+                                accountNumber: bankMethod.accountNumber,
+                                bankCode,
+                                email: bankMethod.email,
+                                amount: debitAmount,
+                                txRef: bankRef,
+                                narration: `Prime Finance Loan Repayment — Loan ${loan._id}`,
+                              });
+                            }
                           } catch (bankErr: any) {
                             logger.error(
                               { loanId: loan._id, error: bankErr.message },
