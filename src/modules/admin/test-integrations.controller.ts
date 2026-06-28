@@ -622,17 +622,17 @@ export class TestIntegrationsController {
 
   /**
    * POST /backoffice/test-integrations/flutterwave/bill
-   * body: { type, billerCode, itemCode, customer, amount }
+   * body: { type, billerName, customer, amount }
    * Tests actual Flutterwave bill payment (airtime/data) without logging to DB
    */
   static async testFlutterwaveBillPayment(req: Request, res: Response, next: NextFunction) {
     try {
-      const { type, billerCode, itemCode, customer, amount } = req.body;
+      const { type, billerName, customer, amount } = req.body;
 
-      if (!type || !customer || !amount) {
+      if (!type || !billerName || !customer || !amount) {
         return res.status(400).json({ 
           status: 'failed', 
-          message: 'type, customer, and amount are required',
+          message: 'type, billerName, customer, and amount are required',
         });
       }
 
@@ -648,16 +648,17 @@ export class TestIntegrationsController {
       
       logger.info({ type, customer, amount, reference }, 'Admin Flutterwave bill payment initiated');
 
+      const paymentType = type === 'AIRTIME' ? 'AIRTIME' : billerName;
+
       const response = await axios.post(
         'https://api.flutterwave.com/v3/bills',
         {
           country: 'NG',
           customer,
           amount: Number(amount),
-          type, // e.g. "AIRTIME", "DATA"
+          type: paymentType,
+          biller_name: billerName,
           reference,
-          biller_code: billerCode,
-          item_code: itemCode
         },
         {
           headers: {
@@ -746,6 +747,57 @@ export class TestIntegrationsController {
     } catch (err: any) {
       logger.error({ error: err.message }, 'Admin fetch user active loans failed');
       return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
+
+  /**
+   * GET /backoffice/test-integrations/flutterwave/banks
+   */
+  static async testFlutterwaveBanks(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { FlutterwavePayoutProvider } = await import('../../shared/providers/flutterwave-payout.provider');
+      const provider = new FlutterwavePayoutProvider();
+      
+      const axios = (await import('axios')).default;
+      const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
+      const response = await axios.get('https://api.flutterwave.com/v3/banks/NG', {
+        headers: { Authorization: `Bearer ${secretKey}` }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: response.data.data
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Failed to fetch Flutterwave banks');
+      return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
+
+  /**
+   * GET /backoffice/test-integrations/flutterwave/verify-account
+   * query: { accountNumber, bankCode }
+   */
+  static async testFlutterwaveVerifyAccount(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { accountNumber, bankCode } = req.query;
+      
+      if (!accountNumber || !bankCode) {
+        return res.status(400).json({ status: 'failed', message: 'accountNumber and bankCode are required' });
+      }
+
+      const { FlutterwaveDebitProvider } = await import('../../shared/providers/flutterwave-debit.provider');
+      const provider = new FlutterwaveDebitProvider();
+      
+      const details = await provider.validateBankAccount(String(accountNumber), String(bankCode));
+      
+      return res.status(200).json({
+        status: 'success',
+        data: details
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Failed to verify account on Flutterwave');
+      return res.status(400).json({ status: 'failed', message: err.message });
     }
   }
 }
