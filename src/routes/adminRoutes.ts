@@ -400,6 +400,7 @@ router.post("/test-integrations/paybeta/data", verifyJwtRest(), TestIntegrations
 router.post("/test-integrations/flutterwave/transfer", verifyJwtRest(), TestIntegrationsController.testFlutterwaveTransfer as any);
 router.post("/test-integrations/flutterwave/bill", verifyJwtRest(), TestIntegrationsController.testFlutterwaveBillPayment as any);
 router.get("/test-integrations/flutterwave/bill-categories", verifyJwtRest(), TestIntegrationsController.testFlutterwaveBillCategories as any);
+router.get("/test-integrations/flutterwave/bill-items/:billerCode", verifyJwtRest(), TestIntegrationsController.testFlutterwaveBillItems as any);
 router.get("/test-integrations/flutterwave/banks", verifyJwtRest(), TestIntegrationsController.testFlutterwaveBanks as any);
 router.get("/test-integrations/flutterwave/verify-account", verifyJwtRest(), TestIntegrationsController.testFlutterwaveVerifyAccount as any);
 router.get("/test-integrations/users/:userId/active-loans", verifyJwtRest(), TestIntegrationsController.getUserActiveLoans as any);

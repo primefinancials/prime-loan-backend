@@ -176,8 +176,13 @@ export class TestIntegrationsController {
           amount: testAmount,
           txRef: `test-${Date.now()}`,
         });
-      } else if (method.type === 'bank') {
-        result = { message: 'Bank e-mandate charge requires full flow — token found', token: method.token };
+      } else if (method.type === 'bank' && method.token) {
+        result = await provider.chargeToken({
+          token: method.token,
+          email: method.email || '',
+          amount: testAmount,
+          txRef: `admin-test-bank-${Date.now()}`,
+        });
       } else {
         result = { message: 'Unknown method type', method };
       }
@@ -627,12 +632,12 @@ export class TestIntegrationsController {
    */
   static async testFlutterwaveBillPayment(req: Request, res: Response, next: NextFunction) {
     try {
-      const { type, billerName, customer, amount } = req.body;
+      const { billerCode, itemCode, customer, amount } = req.body;
 
-      if (!type || !billerName || !customer || !amount) {
+      if (!billerCode || !itemCode || !customer || !amount) {
         return res.status(400).json({ 
           status: 'failed', 
-          message: 'type, billerName, customer, and amount are required',
+          message: 'billerCode, itemCode, customer, and amount are required',
         });
       }
 
@@ -646,18 +651,14 @@ export class TestIntegrationsController {
 
       const reference = `admin-bill-${Date.now()}`;
       
-      logger.info({ type, customer, amount, reference }, 'Admin Flutterwave bill payment initiated');
-
-      const paymentType = type === 'AIRTIME' ? 'AIRTIME' : billerName;
+      logger.info({ billerCode, itemCode, customer, amount, reference }, 'Admin Flutterwave bill payment initiated');
 
       const response = await axios.post(
-        'https://api.flutterwave.com/v3/bills',
+        `https://api.flutterwave.com/v3/billers/${encodeURIComponent(billerCode)}/items/${encodeURIComponent(itemCode)}/payment`,
         {
           country: 'NG',
-          customer,
+          customer_id: customer,
           amount: Number(amount),
-          type: paymentType,
-          biller_name: billerName,
           reference,
         },
         {
@@ -722,6 +723,39 @@ export class TestIntegrationsController {
       });
     } catch (err: any) {
       logger.error({ error: err.message }, 'Admin Flutterwave bill categories fetch failed');
+      return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
+
+  /**
+   * GET /backoffice/test-integrations/flutterwave/bill-items/:billerCode
+   * Fetches specific bill items (e.g. Data Plans) for a given biller
+   */
+  static async testFlutterwaveBillItems(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { billerCode } = req.params;
+      if (!billerCode) {
+        return res.status(400).json({ status: 'failed', message: 'billerCode is required' });
+      }
+      const axios = (await import('axios')).default;
+      const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
+      
+      if (!secretKey) {
+        throw new Error('FLUTTERWAVE_SECRET_KEY is not configured');
+      }
+
+      const response = await axios.get(`https://api.flutterwave.com/v3/billers/${encodeURIComponent(billerCode)}/items`, {
+        headers: {
+          Authorization: `Bearer ${secretKey}`
+        }
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: response.data.data
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message, billerCode: req.params.billerCode }, 'Admin Flutterwave bill items fetch failed');
       return res.status(500).json({ status: 'failed', message: err.message });
     }
   }
