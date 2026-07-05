@@ -87,3 +87,8 @@ docker-compose.override.yml
 *.tgz
 *.zip
 *.tar
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml

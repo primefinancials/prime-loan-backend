@@ -32,7 +32,9 @@ export default function configureApp(app: Application): void {
     swaggerUi.setup(specs, swaggerUiOptions)
   );
 
-  // Health check
+  // Health check & Root
+  app.get("/", (_req: Request, res: Response) => res.redirect("/health"));
+  
   app.get("/health", (_req: Request, res: Response) => {
     res.status(200).json({
       status: "healthy",
