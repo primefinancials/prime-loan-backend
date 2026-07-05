@@ -5,7 +5,7 @@
     "scripts": {
         "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
         "build": "tsc",
-        "start": "node dist/server.js",
+        "start": "tsc && node dist/server.js",
         "start:workers": "\"npm run workers:bill-payments\" \"npm run workers:transfers\" \"npm run workers:penalties\" \"npm run workers:savings\"",
         "workers:bill-payments": "node dist/workers/pollers/billPaymentsPoller.js",
         "workers:transfers": "node dist/workers/pollers/transfersPoller.js",
@@ -56,9 +56,7 @@
         "tesseract.js": "^6.0.1",
         "twilio": "^5.12.0",
         "uuid": "^11.1.0",
-        "winston-daily-rotate-file": "^5.0.0"
-    },
-    "devDependencies": {
+        "winston-daily-rotate-file": "^5.0.0",
         "@types/compression": "^1.7.5",
         "@types/cookie-parser": "^1.4.8",
         "@types/cors": "^2.8.13",

@@ -44,7 +44,7 @@ export class FlutterwaveDebitProvider {
     } catch (error) {
       const axErr = error as AxiosError;
       logger.error({ txRef, status: axErr.response?.status }, 'FW transaction verification failed');
-      throw new Error(`Transaction verification failed: ${(axErr.response?.data as any)?.message}`);
+      throw new Error(`Transaction verification failed: ${(axErr.response?.data as any)?.message || axErr.message}`);
     }
   }
 
@@ -77,7 +77,7 @@ export class FlutterwaveDebitProvider {
     } catch (error) {
       const axErr = error as AxiosError;
       logger.error({ txRef: params.txRef, status: axErr.response?.status, data: axErr.response?.data }, 'FW tokenized charge failed');
-      throw new Error(`Tokenized charge failed: ${(axErr.response?.data as any)?.message}`);
+      throw new Error(`Tokenized charge failed: ${(axErr.response?.data as any)?.message || axErr.message}`);
     }
   }
 
@@ -136,7 +136,7 @@ export class FlutterwaveDebitProvider {
     } catch (error) {
       const axErr = error as AxiosError;
       logger.error({ txRef: params.txRef, status: axErr.response?.status, data: axErr.response?.data }, 'FW card charge failed');
-      throw new Error(`Card charge failed: ${(axErr.response?.data as any)?.message}`);
+      throw new Error(`Card charge failed: ${(axErr.response?.data as any)?.message || axErr.message}`);
     }
   }
 
@@ -158,7 +158,7 @@ export class FlutterwaveDebitProvider {
     } catch (error) {
       const axErr = error as AxiosError;
       logger.error({ flwRef, status: axErr.response?.status, data: axErr.response?.data }, 'FW charge validation failed');
-      throw new Error(`Charge validation failed: ${(axErr.response?.data as any)?.message}`);
+      throw new Error(`Charge validation failed: ${(axErr.response?.data as any)?.message || axErr.message}`);
     }
   }
 
@@ -179,7 +179,7 @@ export class FlutterwaveDebitProvider {
     } catch (error) {
       const axErr = error as AxiosError;
       logger.error({ accountNumber: accountNumber.slice(-4), bankCode, status: axErr.response?.status }, 'Bank validation failed');
-      throw new Error(`Bank validation failed: ${(axErr.response?.data as any)?.message}`);
+      throw new Error(`Bank validation failed: ${(axErr.response?.data as any)?.message || axErr.message}`);
     }
   }
 
@@ -214,7 +214,7 @@ export class FlutterwaveDebitProvider {
     } catch (error) {
       const axErr = error as AxiosError;
       logger.error({ txRef: params.txRef, status: axErr.response?.status }, 'FW direct debit failed');
-      throw new Error(`Direct debit initiation failed: ${(axErr.response?.data as any)?.message}`);
+      throw new Error(`Direct debit initiation failed: ${(axErr.response?.data as any)?.message || axErr.message}`);
     }
   }
 
@@ -228,7 +228,7 @@ export class FlutterwaveDebitProvider {
     } catch (error) {
       const axErr = error as AxiosError;
       logger.error({ status: axErr.response?.status }, 'Failed to fetch banks');
-      throw new Error(`Failed to fetch banks: ${(axErr.response?.data as any)?.message}`);
+      throw new Error(`Failed to fetch banks: ${(axErr.response?.data as any)?.message || axErr.message}`);
     }
   }
 }

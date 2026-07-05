@@ -9,7 +9,8 @@ export class RedisService {
 
   static getInstance(): Redis {
     if (!this.instance) {
-      this.instance = new Redis(Number(process.env.REDIS_PORT) || 6379, process.env.REDIS_HOST || 'redis://localhost', {
+      const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+      this.instance = new Redis(redisUrl, {
         maxLoadingRetryTime: 100,
         maxRetriesPerRequest: 3,
         lazyConnect: true
