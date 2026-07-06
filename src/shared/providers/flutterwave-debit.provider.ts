@@ -57,6 +57,7 @@ export class FlutterwaveDebitProvider {
     amount: number;
     txRef: string;
     currency?: string;
+    redirectUrl?: string;
   }) {
     try {
       const res = await axios.post(
@@ -67,6 +68,7 @@ export class FlutterwaveDebitProvider {
           amount: params.amount,
           tx_ref: params.txRef,
           currency: params.currency || 'NGN',
+          redirect_url: params.redirectUrl,
         },
         { headers: this.headers() }
       );
@@ -76,6 +78,87 @@ export class FlutterwaveDebitProvider {
       const axErr = error as AxiosError;
       logger.error({ txRef: params.txRef, status: axErr.response?.status, data: axErr.response?.data }, 'FW tokenized charge failed');
       throw new Error(`Tokenized charge failed: ${(axErr.response?.data as any)?.message || axErr.message}`);
+    }
+  }
+
+  private encrypt3DES(text: string): string {
+    const crypto = require('crypto');
+    const md5 = crypto.createHash('md5').update(this.secretKey).digest('hex');
+    const last12 = md5.substring(md5.length - 12).toLowerCase();
+    const first12 = this.secretKey.replace('FLWSECK-', '').replace('FLWSECK_TEST-', '').substring(0, 12);
+    const encryptionKey = `${first12}${last12}`;
+    
+    const cipher = crypto.createCipheriv('des-ede3', Buffer.from(encryptionKey), null);
+    cipher.setAutoPadding(true);
+    let encrypted = cipher.update(text, 'utf8', 'base64');
+    encrypted += cipher.final('base64');
+    return encrypted;
+  }
+
+  /**
+   * Charge a card directly (Server-to-Server)
+   */
+  async chargeCard(params: {
+    cardNumber: string;
+    cvv: string;
+    expiryMonth: string;
+    expiryYear: string;
+    email: string;
+    amount: number;
+    txRef: string;
+    fullname?: string;
+    currency?: string;
+    redirectUrl?: string;
+  }) {
+    try {
+      const payload = {
+        card_number: params.cardNumber,
+        cvv: params.cvv,
+        expiry_month: params.expiryMonth,
+        expiry_year: params.expiryYear,
+        currency: params.currency || 'NGN',
+        amount: params.amount,
+        email: params.email,
+        fullname: params.fullname || 'Prime User',
+        tx_ref: params.txRef,
+        redirect_url: params.redirectUrl || 'https://primefinance.live'
+      };
+
+      const encrypted = this.encrypt3DES(JSON.stringify(payload));
+
+      const res = await axios.post(
+        `${this.baseUrl}/charges?type=card`,
+        { client: encrypted },
+        { headers: this.headers() }
+      );
+      logger.info({ txRef: params.txRef, status: res.data?.status }, 'FW card charge initiated');
+      return res.data;
+    } catch (error) {
+      const axErr = error as AxiosError;
+      logger.error({ txRef: params.txRef, status: axErr.response?.status, data: axErr.response?.data }, 'FW card charge failed');
+      throw new Error(`Card charge failed: ${(axErr.response?.data as any)?.message || axErr.message}`);
+    }
+  }
+
+  /**
+   * Validate a charge (OTP/PIN/3DS)
+   */
+  async validateCharge(flwRef: string, otp: string) {
+    try {
+      const res = await axios.post(
+        `${this.baseUrl}/validate-charge`,
+        {
+          otp,
+          flw_ref: flwRef
+        },
+        { headers: this.headers() }
+      );
+      logger.info({ flwRef, status: res.data?.status }, 'FW charge validated');
+      return res.data;
+    } catch (error) {
+      const axErr = error as AxiosError;
+      logger.error({ flwRef, status: axErr.response?.status, data: axErr.response?.data }, 'FW charge validation failed');
+      throw new Error(`Charge validation failed: ${(axErr.response?.data as any)?.message || axErr.message}`);
     }
   }
 

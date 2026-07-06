@@ -1,0 +1,13 @@
+const crypto = require('crypto');
+const secretKey = "FLWSECK-f053378a95d4cf6a2822b593e4907af9-198c2ce438evt-X";
+const md5 = crypto.createHash('md5').update(secretKey).digest('hex');
+const last12 = md5.substring(md5.length - 12).toLowerCase();
+const first12 = secretKey.replace('FLWSECK-', '').replace('FLWSECK_TEST-', '').substring(0, 12);
+const encryptionKey = `${first12}${last12}`;
+console.log("Key:", encryptionKey);
+const text = JSON.stringify({ card_number: "123456789" });
+const cipher = crypto.createCipheriv('des-ede3', Buffer.from(encryptionKey), null);
+cipher.setAutoPadding(true);
+let encrypted = cipher.update(text, 'utf8', 'base64');
+encrypted += cipher.final('base64');
+console.log("Encrypted:", encrypted);

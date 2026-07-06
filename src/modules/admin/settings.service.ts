@@ -59,10 +59,11 @@ export class SettingsService {
           },
           penalty: {
             dailyRate: 10,
+            percentage: true,
             gracePeriod: 1
           },
           serviceFee: 500,
-          interestPercentage: 10
+          interest: { percentage: true, value: 10 }
         },
         system: {
           currency: "NGN",
@@ -97,14 +98,14 @@ export class SettingsService {
         autoApprovalLimit: 50000,
         collateral: { percentage: 50 },
         ladder: { levels: [], defaultInterest: 5 },
-        penalty: { dailyRate: 10, gracePeriod: 1 },
+        penalty: { dailyRate: 10, percentage: true, gracePeriod: 1 },
         reminders: {
           dueTomorrow: "Your loan is due tomorrow. Please ensure your wallet is funded.",
           dueToday: "Your loan is due today. Please fund your wallet to avoid penalties.",
           overdue: "Your loan is overdue. Penalties are now being applied."
         },
         serviceFee: 500,
-        interestPercentage: 10
+        interest: { percentage: true, value: 10 }
       };
       await settings.save();
     }
@@ -343,5 +344,88 @@ export class SettingsService {
    */
   static async refresh(): Promise<ISettings> {
     return this.getSettings();
+  }
+
+  /**
+   * Get current charge configuration for loan penalties/default charges
+   */
+  static async getChargeConfig() {
+    const settings = await this.getSettings();
+    return settings.chargeConfiguration || {
+      enabled: true,
+      type: 'PERCENTAGE',
+      percentageValue: 1,
+      fixedAmountValue: 0,
+      calculationBase: 'PRINCIPAL_PLUS_INTEREST_AND_FEES'
+    };
+  }
+
+  /**
+   * Update charge configuration (Fix #4.2)
+   * Admin-only operation
+   */
+  static async updateChargeConfig(
+    adminId: string,
+    updates: {
+      enabled?: boolean;
+      type?: 'PERCENTAGE' | 'FIXED_AMOUNT';
+      percentageValue?: number;
+      fixedAmountValue?: number;
+      calculationBase?: 'PRINCIPAL_ONLY' | 'PRINCIPAL_PLUS_INTEREST_AND_FEES';
+    }
+  ): Promise<ISettings> {
+    if (!adminId) throw new BadRequestError("Missing adminId");
+
+    const settings = await this.getSettings();
+
+    if (!settings.chargeConfiguration) {
+      settings.chargeConfiguration = {
+        enabled: true,
+        type: 'PERCENTAGE',
+        percentageValue: 1,
+        fixedAmountValue: 0,
+        calculationBase: 'PRINCIPAL_PLUS_INTEREST_AND_FEES'
+      };
+    }
+
+    // Validate update values
+    if (updates.enabled !== undefined) {
+      settings.chargeConfiguration.enabled = updates.enabled;
+    }
+
+    if (updates.type) {
+      if (!['PERCENTAGE', 'FIXED_AMOUNT'].includes(updates.type)) {
+        throw new BadRequestError("Type must be 'PERCENTAGE' or 'FIXED_AMOUNT'");
+      }
+      settings.chargeConfiguration.type = updates.type;
+    }
+
+    if (updates.percentageValue !== undefined) {
+      if (updates.percentageValue < 0 || updates.percentageValue > 100) {
+        throw new BadRequestError("Percentage value must be between 0 and 100");
+      }
+      settings.chargeConfiguration.percentageValue = updates.percentageValue;
+    }
+
+    if (updates.fixedAmountValue !== undefined) {
+      if (updates.fixedAmountValue < 0) {
+        throw new BadRequestError("Fixed amount value must be non-negative");
+      }
+      settings.chargeConfiguration.fixedAmountValue = updates.fixedAmountValue;
+    }
+
+    if (updates.calculationBase) {
+      if (!['PRINCIPAL_ONLY', 'PRINCIPAL_PLUS_INTEREST_AND_FEES'].includes(updates.calculationBase)) {
+        throw new BadRequestError("Calculation base must be 'PRINCIPAL_ONLY' or 'PRINCIPAL_PLUS_INTEREST_AND_FEES'");
+      }
+      settings.chargeConfiguration.calculationBase = updates.calculationBase;
+    }
+
+    settings.markModified('chargeConfiguration');
+    settings.updatedBy = adminId;
+    settings.updatedAt = new Date();
+
+    await settings.save();
+    return settings;
   }
 }

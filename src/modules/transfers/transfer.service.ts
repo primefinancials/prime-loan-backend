@@ -183,9 +183,8 @@ export class TransferService {
           await LedgerService.updateStatus(ledger[0]._id as any, 'COMPLETED', session);
         }
 
-        // 1. Update transfer status immediately
+        // 1. Update transfer status (we'll save it at the end after calculating wallet balance)
         transfer.status = 'COMPLETED';
-        await transfer.save({ session });
 
         // 2. Resolve Users
         const [toUser, fromUser] = await Promise.all([
@@ -217,6 +216,10 @@ export class TransferService {
             toUser.user_metadata.wallet = String(Number(toUser.user_metadata.wallet || 0) + Number(transfer.amount));
           }
           await toUser.save({ session });
+
+          if (String(transfer.userId) === String(toUser._id)) {
+             transfer.walletBalance = Number(toUser.user_metadata.wallet);
+          }
         }
 
         // 4. Process Sender
@@ -233,7 +236,15 @@ export class TransferService {
             logger.warn({ error: err.message }, 'Failed to sync sender balance from VFD');
           }
           await fromUser.save({ session });
+          
+          if (String(transfer.userId) === String(fromUser._id)) {
+             transfer.walletBalance = Number(fromUser.user_metadata.wallet);
+          }
         }
+
+        // Save transfer with updated balance
+        await transfer.save({ session });
+
 
         // 5. Notifications (Awaited as requested, but at the very end of the logic)
         const originatorName = fromUser ? `${fromUser.user_metadata.first_name || ""} ${fromUser.user_metadata.surname || ""}`.trim() : "Prime Loan";

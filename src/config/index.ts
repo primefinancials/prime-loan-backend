@@ -19,10 +19,8 @@ const DB_OPTIONS: ConnectOptions = {
   minPoolSize: parseInt(process.env.DB_MIN_POOL_SIZE || '5'), // Maintain up to x socket connections
   maxPoolSize: parseInt(process.env.DB_MAX_POOL_SIZE || '20'), // Maintain up to x socket connections
   connectTimeoutMS: 60000, // Give up initial connection after 60 seconds
+  serverSelectionTimeoutMS: 15000, // Fail fast if cluster is unreachable
   socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
-  // @ts-ignore
-  //   useNewUrlParser: true,
-  //   useUnifiedTopology: true,
   dbName: process.env.DATABASE_NAME,
 };
 
@@ -51,12 +49,12 @@ export const CLUB_KONNECT_API_URLs = {
   query_transaction: (OrderID: number) => `${CLUB_KONNECT_API_URL}/APIQueryV1.asp${APIAUTH}&OrderID=${OrderID}`,
   cancel_transaction: (OrderID: number) => `${CLUB_KONNECT_API_URL}/APICancelV1.asp${APIAUTH}&OrderID=${OrderID}`,
 
-  buy_airtime: (Amount: number, MobileNumber: number, MobileNetwork: MOBILENETWORKS, BOnusType?: BONUSTYPE) => 
+  buy_airtime: (Amount: number, MobileNumber: number, MobileNetwork: MOBILENETWORKS, BOnusType?: BONUSTYPE) =>
     `${CLUB_KONNECT_API_URL}/APIAirtimeV1.asp${APIAUTH}&Amount=${Amount}&MobileNumber=${MobileNumber}&MobileNetwork=${MobileNetwork}${BOnusType ? `&BonusType=${BOnusType}` : ''}`
   ,
 
   data_plans: () => `${CLUB_KONNECT_API_URL}/APIDatabundlePlansV2.asp?UserID=${CLUB_KONNECT_API_USER_ID}`,
-  buy_data: (DataPlan: number, MobileNumber: number, MobileNetwork: MOBILENETWORKS) => 
+  buy_data: (DataPlan: number, MobileNumber: number, MobileNetwork: MOBILENETWORKS) =>
     `${CLUB_KONNECT_API_URL}/APIDatabundleV1.asp${APIAUTH}&DataPlan=${DataPlan}&MobileNumber=${MobileNumber}&MobileNetwork=${MobileNetwork}`
   ,
 
@@ -84,12 +82,12 @@ export const CLUB_KONNECT_API_URLs = {
     `${CLUB_KONNECT_API_URL}/APIBettingV1.asp${APIAUTH}&BettingCompany=${BettingCompany}&CustomerID=${CustomerID}&Amount=${Amount}`
   ,
 
-  internet_plans: (MobileNetwork: "smile-direct" | "spectranet") => `${CLUB_KONNECT_API_URL}/${MobileNetwork == "smile-direct"? "APISmilePackagesV2" : "APISpectranetPackagesV2"}.asp`,
+  internet_plans: (MobileNetwork: "smile-direct" | "spectranet") => `${CLUB_KONNECT_API_URL}/${MobileNetwork == "smile-direct" ? "APISmilePackagesV2" : "APISpectranetPackagesV2"}.asp`,
   verify_smile_no: (MobileNetwork: "smile-direct", MobileNumber: number) =>
     `${CLUB_KONNECT_API_URL}/APIVerifySmileV1.asp${APIAUTH}&MobileNetwork=${MobileNetwork}&MobileNumber=${MobileNumber}`
   ,
   buy_internet: (MobileNetwork: "smile-direct" | "spectranet", DataPlan: string, MobileNumber: number) =>
-    `${CLUB_KONNECT_API_URL}/${MobileNetwork == "smile-direct"? "APIElectricityV1": "APISpectranetV1"}.asp${APIAUTH}&MobileNetwork=${MobileNetwork}&DataPlan=${DataPlan}&MobileNumber=${MobileNumber}`
+    `${CLUB_KONNECT_API_URL}/${MobileNetwork == "smile-direct" ? "APIElectricityV1" : "APISpectranetV1"}.asp${APIAUTH}&MobileNetwork=${MobileNetwork}&DataPlan=${DataPlan}&MobileNumber=${MobileNumber}`
   ,
 
   waec_types: () => `${CLUB_KONNECT_API_URL}/APIWAECPackagesV2.asp`,

@@ -3,6 +3,11 @@
  * - Combines middleware, DB connection, and route setup
  * - Uses HTTP server wrapper for flexibility (WebSockets, etc.)
  * - Graceful shutdown and centralized logging
+ * 
+ * ARCHITECTURE NOTE: The server binds to the port IMMEDIATELY with a
+ * minimal health-check endpoint, then connects to DB/Redis in the
+ * background. This prevents Railway (or any PaaS) from marking the
+ * service as unhealthy during slow cold-starts.
  */
 
 import express from "express";
@@ -28,43 +33,59 @@ import { SocketService } from "./shared/sockets";
 
 const logger = pino({ name: "prime-finance-server" });
 
+/** Tracks whether all backend services are ready */
+let servicesReady = false;
+
 export async function startApp() {
   try {
     const app = express();
-
-    // Connect to database first
-    await DatabaseService.connect();
-
-    // Connect to Queue Service (Redis)
-    await QueueService.connect();
-
-    // Configure Express app
-    await createApp(app);
-
-    // Start background workers (non-blocking)
-    startBackgroundWorkers();
-
     const server = http.createServer(app);
+
+    // ─── PHASE 1: Bind to port immediately ───────────────────────
+    // Serve a basic health endpoint so Railway's health checks pass
+    // while we initialize DB and Redis in the background.
+    app.get("/health", (_req, res) => {
+      res.status(200).json({
+        status: servicesReady ? "healthy" : "starting",
+        timestamp: new Date().toISOString(),
+        version: "2.0.0",
+      });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server
+        .listen(PORT, "0.0.0.0", () => {
+          logger.info(`✅ Server listening on port ${PORT} (health-check ready)`);
+          resolve();
+        })
+        .on("error", (err: any) => {
+          logger.error({ err }, "Server failed to bind to port");
+          reject(err);
+        });
+    });
+
+    // ─── PHASE 2: Connect backend services ───────────────────────
+    logger.info("Connecting to MongoDB...");
+    await DatabaseService.connect();
+    logger.info("✅ Connected to MongoDB");
+
+    logger.info("Connecting to Redis (BullMQ)...");
+    await QueueService.connect();
+    logger.info("✅ Connected to Redis");
+
+    // ─── PHASE 3: Configure Express app & routes ─────────────────
+    await createApp(app);
 
     // Initialize Socket.io
     SocketService.init(server);
 
+    // Mark services as fully ready
+    servicesReady = true;
+    logger.info("✅ All services initialized — server is fully operational");
+    logger.info("Routes mounted under /api/*");
 
-    server
-      .listen(PORT, "0.0.0.0", (): void => {
-        logger.info("Prime Loan server initiated");
-      })
-      .on("listening", () => {
-        logger.info(`✅ Server listening on port ${PORT}`);
-        logger.info("Routes mounted under /api/*");
-      })
-      .on("error", (err: any) => {
-        logger.error({ err }, "Server failed to start");
-        process.exit(1);
-      })
-      .on("close", () => {
-        logger.info("Server closed");
-      });
+    // ─── PHASE 4: Start background workers (non-blocking) ────────
+    startBackgroundWorkers();
 
     // Graceful shutdown
     process.on("SIGTERM", async () => {
@@ -78,7 +99,7 @@ export async function startApp() {
 
     return server;
   } catch (error: any) {
-    logger.error({ error: error.message }, "Failed to start app");
+    logger.error({ error: error.message, stack: error.stack }, "Failed to start app");
     process.exit(1);
   }
 }

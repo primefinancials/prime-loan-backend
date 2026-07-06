@@ -1,6 +1,5 @@
 /**
  * Auto-Debit Controller — Handles Flutterwave card/bank linking and querying
- * Replaces MonoAccountController
  */
 import { Request, Response, NextFunction } from 'express';
 import { AutoDebit } from './auto-debit.model';
@@ -8,6 +7,7 @@ import { FlutterwaveDebitProvider } from '../../shared/providers/flutterwave-deb
 import { LoanEligibilityService } from './loan-eligibility';
 import { UserService } from '../users/user.service';
 import pino from 'pino';
+import { BadRequestError } from '../../exceptions';
 
 const logger = pino({ name: 'auto-debit-controller' });
 
@@ -15,114 +15,153 @@ export class AutoDebitController {
 
   /**
    * POST /api/loans/link-card
-   * Verify a Flutterwave card tokenization transaction and store the card token
+   * Extracts token from Flutterwave txRef after the widget handles the charge.
    */
   static async linkCard(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user._id || (req as any).user.id;
-      const { txRef, email } = req.body;
+      const { txRef } = req.body;
 
       if (!txRef) {
-        return res.status(400).json({ status: 'failed', message: 'Transaction reference (txRef) is required' });
+        return res.status(400).json({ status: 'failed', message: 'txRef is required' });
       }
 
       const provider = new FlutterwaveDebitProvider();
+      
       const txData = await provider.verifyTransaction(txRef);
-
-      if (!txData || txData.status !== 'successful') {
-        return res.status(400).json({ status: 'failed', message: 'Card authorization transaction was not successful' });
-      }
-
       const card = txData.card;
-      if (!card?.token) {
-        return res.status(400).json({ status: 'failed', message: 'No card token received from transaction' });
+      
+      if (card?.token) {
+         await AutoDebit.updateMany(
+           { userId: String(userId), type: 'card', status: 'active' },
+           { $set: { status: 'revoked' } }
+         );
+
+         const autoDebit = await AutoDebit.create({
+           userId: String(userId),
+           type: 'card',
+           token: card.token,
+           email: txData.customer?.email || '',
+           last4: card.last_4digits || card.last4 || '',
+           cardBrand: card.type || card.brand || '',
+           expMonth: card.expiry?.split('/')[0]?.trim() || '',
+           expYear: card.expiry?.split('/')[1]?.trim() || '',
+           status: 'active',
+         });
+
+         return res.status(201).json({
+           status: 'success',
+           data: {
+             id: autoDebit._id,
+             type: 'card',
+             last4: autoDebit.last4,
+             cardBrand: autoDebit.cardBrand,
+             status: 'active',
+           },
+         });
       }
 
-      // Save the linked card
-      const autoDebit = await AutoDebit.create({
-        userId: String(userId),
-        type: 'card',
-        token: card.token,
-        email: email || txData.customer?.email || '',
-        last4: card.last_4digits || card.last4 || '',
-        cardBrand: card.type || card.brand || '',
-        expMonth: card.expiry?.split('/')[0] || '',
-        expYear: card.expiry?.split('/')[1] || '',
-        status: 'active',
-      });
-
-      logger.info({ userId, cardLast4: autoDebit.last4 }, 'Card linked via Flutterwave');
-
-      return res.status(201).json({
-        status: 'success',
-        data: {
-          id: autoDebit._id,
-          type: 'card',
-          last4: autoDebit.last4,
-          cardBrand: autoDebit.cardBrand,
-          status: 'active',
-        },
-      });
+      return res.status(400).json({ status: 'failed', message: 'No valid card token found in transaction.' });
     } catch (err) { next(err); }
   }
 
   /**
    * POST /api/loans/link-bank
-   * Link a bank account via Flutterwave e-mandate (stores validated bank details)
+   * Extracts token from Flutterwave txRef after the widget handles the charge.
    */
   static async linkBank(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user._id || (req as any).user.id;
-      const { accountNumber, bankCode, email, txRef } = req.body;
+      const { txRef } = req.body;
+
+      if (!txRef) {
+        return res.status(400).json({ status: 'failed', message: 'txRef is required' });
+      }
+
+      const provider = new FlutterwaveDebitProvider();
+      const txData = await provider.verifyTransaction(txRef);
+      
+      // Prevent OPay / Bank Transfer mandates (they are one-time push payments, not recurring tokens)
+      if (txData.payment_type === 'bank_transfer') {
+        return res.status(400).json({
+          status: 'failed',
+          message: 'Bank transfers cannot be used for recurring auto-debits. Please link a Debit Card or a NIBSS-enrolled bank account (e.g., GTB, UBA, Zenith).',
+        });
+      }
+
+      // We assume the charge was successful if verifyTransaction passes.
+      // Bank mandate token is often the tx_ref or flw_ref
+      const token = txData.flw_ref || txRef;
+
+      await AutoDebit.updateMany(
+         { userId: String(userId), type: "bank", status: "active" },
+         { $set: { status: "revoked" } }
+      );
+
+      const autoDebit = await AutoDebit.create({
+         userId: String(userId),
+         type: "bank",
+         token: token,
+         email: txData.customer?.email || "",
+         bankName: txData.account?.bank_name || 'Bank',
+         bankCode: txData.account?.bank_code || '000',
+         accountNumber: txData.account?.account_number || '0000000000',
+         accountName: txData.customer?.name || 'Prime User',
+         status: "active",
+      });
+
+      return res.status(201).json({
+         status: "success",
+         data: {
+           id: autoDebit._id,
+           type: autoDebit.type,
+           bankName: autoDebit.bankName,
+           accountNumber: autoDebit.accountNumber,
+           accountName: autoDebit.accountName,
+           status: autoDebit.status,
+         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/loans/verify-link
+   * Deprecated for Flutterwave Widget approach, but kept for compatibility
+   */
+  static async verifyLink(req: Request, res: Response, next: NextFunction) {
+      return res.status(200).json({ status: 'success', message: 'Legacy endpoint. Use standard link flow.' });
+  }
+
+  /**
+   * POST /api/loans/validate-account
+   */
+  static async validateAccount(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { accountNumber, bankCode } = req.body;
 
       if (!accountNumber || !bankCode) {
         return res.status(400).json({ status: 'failed', message: 'accountNumber and bankCode are required' });
       }
 
       const provider = new FlutterwaveDebitProvider();
+      const details = await provider.validateBankAccount(accountNumber, bankCode);
 
-      // Validate the bank account first
-      const bankDetails = await provider.validateBankAccount(accountNumber, bankCode);
-
-      // If txRef provided, verify the mandate transaction
-      let mandateToken = `mandate-${userId}-${Date.now()}`;
-      if (txRef) {
-        const txData = await provider.verifyTransaction(txRef);
-        if (txData?.status === 'successful') {
-          mandateToken = txData.flw_ref || txData.tx_ref || mandateToken;
-        }
-      }
-
-      const autoDebit = await AutoDebit.create({
-        userId: String(userId),
-        type: 'bank',
-        token: mandateToken,
-        email: email || '',
-        bankName: bankDetails?.account_name ? bankCode : bankCode,
-        accountNumber,
-        accountName: bankDetails?.account_name || '',
-        status: 'active',
-      });
-
-      logger.info({ userId, accountNumber: accountNumber.slice(-4) }, 'Bank account linked via Flutterwave');
-
-      return res.status(201).json({
+      return res.status(200).json({
         status: 'success',
         data: {
-          id: autoDebit._id,
-          type: 'bank',
-          bankName: autoDebit.bankName,
-          accountNumber: autoDebit.accountNumber,
-          accountName: autoDebit.accountName,
-          status: 'active',
+          accountName: details?.account_name || '',
+          accountNumber: details?.account_number || accountNumber,
         },
       });
-    } catch (err) { next(err); }
+    } catch (err: any) {
+      return res.status(422).json({ status: 'failed', message: err.message || 'Account validation failed' });
+    }
   }
 
   /**
    * GET /api/loans/linked-methods
-   * Returns all linked payment methods (cards + banks)
    */
   static async getLinkedMethods(req: Request, res: Response, next: NextFunction) {
     try {
@@ -132,13 +171,23 @@ export class AutoDebitController {
         .sort({ createdAt: -1 })
         .lean();
 
-      return res.status(200).json({ status: 'success', data: methods });
+      const card = methods.find((m) => m.type === 'card') || null;
+      const bank = methods.find((m) => m.type === 'bank') || null;
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          card,
+          bank,
+          hasCard: !!card,
+          hasBank: !!bank,
+        },
+      });
     } catch (err) { next(err); }
   }
 
   /**
    * DELETE /api/loans/linked-methods/:id
-   * Removes (revokes) a linked payment method
    */
   static async unlinkMethod(req: Request, res: Response, next: NextFunction) {
     try {
@@ -160,7 +209,6 @@ export class AutoDebitController {
 
   /**
    * GET /api/loans/max-borrowable
-   * Returns the user's max borrowable amount (considering both ladder and savings)
    */
   static async getMaxBorrowable(req: Request, res: Response, next: NextFunction) {
     try {
@@ -170,14 +218,7 @@ export class AutoDebitController {
         return res.status(404).json({ status: 'failed', message: 'User not found' });
       }
 
-      // Important: Use the centralized LoanEligibilityService
-      const LoanEligibilityService = (await import('./loan-eligibility')).LoanEligibilityService;
       const capacities = await LoanEligibilityService.getMaxBorrowableAmount(user as any);
-      
-      const maxAmount = capacities.maxAmount;
-      const borrowableFromSavings = capacities.savingsBasedMax;
-      const ladderAmount = capacities.ladderMax;
-      const ladderIndex = capacities.ladderIndex;
 
       // Check linked payment methods
       const linkedMethods = await AutoDebit.countDocuments({ userId: String(userId), status: 'active' });
@@ -185,22 +226,33 @@ export class AutoDebitController {
       // Check active loans
       const LoanModel = (await import('./loan.model')).default;
       const hasActiveLoan = await LoanModel.exists({
-        userId: user._id,
+        userId: (user as any)._id,
         loan_payment_status: { $in: ['in-progress', 'not-started'] },
-        status: { $in: ['pending', 'processing', 'accepted'] }
+        status: { $in: ['pending', 'processing', 'accepted'] },
       });
 
       return res.status(200).json({
         status: 'success',
         data: {
-          maxAmount,
-          savingsBasedMax: borrowableFromSavings,
-          ladderMax: ladderAmount,
-          ladderIndex,
+          maxAmount: capacities.maxAmount,
+          savingsBasedMax: capacities.savingsBasedMax,
+          ladderMax: capacities.ladderMax,
+          ladderIndex: capacities.ladderIndex,
           hasLinkedPaymentMethod: linkedMethods > 0,
           hasActiveLoan: !!hasActiveLoan,
         },
       });
+    } catch (err) { next(err); }
+  }
+
+  /**
+   * GET /api/loans/banks
+   */
+  static async getBanks(req: Request, res: Response, next: NextFunction) {
+    try {
+      const provider = new FlutterwaveDebitProvider();
+      const banks = await provider.getBanks();
+      return res.status(200).json({ status: 'success', data: banks });
     } catch (err) { next(err); }
   }
 }

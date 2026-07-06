@@ -68,6 +68,7 @@ export interface ISettings extends Document {
       defaultInterest: number;
     };
     penalty: {
+      percentage: boolean;
       dailyRate: number;
       gracePeriod: number; // days
     };
@@ -77,7 +78,7 @@ export interface ISettings extends Document {
       overdue: string;
     };
     serviceFee: number;
-    interestPercentage: number;
+    interest: { percentage: boolean; value: number; }
     signupBonus?: number;
   };
 
@@ -155,6 +156,15 @@ export interface ISettings extends Document {
     provider: 'termii' | 'africastalking';
     atCallFromNumbers: string[];      // Africa's Talking virtual numbers — randomly rotated
     termiiSenderIds: string[];        // Termii sender IDs — randomly rotated
+  };
+
+  // Default/Late Charge Configuration
+  chargeConfiguration: {
+    enabled: boolean;
+    type: 'PERCENTAGE' | 'FIXED_AMOUNT';
+    percentageValue?: number;  // e.g., 1 for 1%
+    fixedAmountValue?: number;  // e.g., 50 naira
+    calculationBase: 'PRINCIPAL_ONLY' | 'PRINCIPAL_PLUS_INTEREST_AND_FEES';
   };
 }
 
@@ -245,6 +255,7 @@ const SettingsSchema = new Schema<ISettings>(
       },
       penalty: {
         dailyRate: { type: Number, default: 1 },
+        percentage: { type: Boolean, default: true },
         gracePeriod: { type: Number, default: 1 }
       },
       reminders: {
@@ -253,7 +264,10 @@ const SettingsSchema = new Schema<ISettings>(
         overdue: { type: String, default: "Your loan is overdue. Penalties are now being applied." }
       },
       serviceFee: { type: Number, default: 500 },
-      interestPercentage: { type: Number, default: 10 }
+      interest: {
+        percentage: { type: Boolean, default: true },
+        value: { type: Number, default: 10 }
+      }
     },
 
     // System Config
@@ -460,6 +474,23 @@ const SettingsSchema = new Schema<ISettings>(
       termiiSenderIds: {
         type: [String],
         default: ['Prime Loan']
+      }
+    },
+
+    // Default/Late Charge Configuration (Fix #4.2)
+    chargeConfiguration: {
+      enabled: { type: Boolean, default: true },
+      type: {
+        type: String,
+        enum: ['PERCENTAGE', 'FIXED_AMOUNT'],
+        default: 'PERCENTAGE'
+      },
+      percentageValue: { type: Number, default: 1 }, // 1%
+      fixedAmountValue: { type: Number, default: 0 },
+      calculationBase: {
+        type: String,
+        enum: ['PRINCIPAL_ONLY', 'PRINCIPAL_PLUS_INTEREST_AND_FEES'],
+        default: 'PRINCIPAL_PLUS_INTEREST_AND_FEES' // NEW FORMULA
       }
     },
   },

@@ -61,6 +61,7 @@ export interface CreateLoanParams {
   percentage: number;
   acknowledgment: boolean;
   debit_account?: string;
+  debit_card?: string;
   idempotencyKey?: string;
   referralCode?: string;
 }
@@ -79,6 +80,7 @@ export interface RepayParams {
   mandatory?: number;
   idempotencyKey?: string;
   internalOnly?: boolean;
+  autoDeduct?: boolean;
   skipBalanceCheck?: boolean;
   session?: any;
 }
@@ -272,7 +274,8 @@ export class LoanService {
 
     // Fetch dynamic loan interest and fee
     const settings = await SettingsService.getSettings();
-    const percentage = settings.loan?.interestPercentage || 0;
+    const interestConfig = settings.loan?.interest;
+    const interestRate = interestConfig ? (interestConfig.percentage ? (interestConfig.value / 100) : interestConfig.value) : 0;
 
     // Build and persist loan record
     // Destructure to exclude fields that should only be set during disbursement
@@ -280,7 +283,7 @@ export class LoanService {
 
     const loanPayload: Partial<ILoan> = {
       ...safeParams,
-      percentage,
+      percentage: interestRate,
       userId: params.userId,
       requested_amount: params.amount,
       amount: params.amount, // store Naira (requested amount; updated to disbursed amount on disbursal)
@@ -364,8 +367,9 @@ export class LoanService {
       if (existingTransfer && existingTransfer.status === "COMPLETED") {
         const settings = await SettingsService.getSettings();
         const fee = settings.loan?.serviceFee || 0;
-        const percentage = settings.loan?.interestPercentage || 0;
-        const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (percentage / 100));
+        const interestConfig = settings.loan?.interest;
+        const interestRate = interestConfig ? (interestConfig.percentage ? Number(params.amount) * (interestConfig.value / 100) : interestConfig.value) : 0;
+        const total = Number(params.amount) + Number(fee) + interestRate;
 
         lockLoan.status = "accepted";
         lockLoan.amount = params.amount;
@@ -463,8 +467,9 @@ export class LoanService {
           const duration = lockLoan.duration || 21;
           const settings = await SettingsService.getSettings();
           const fee = settings.loan?.serviceFee || 0;
-          const percentage = settings.loan?.interestPercentage || 0;
-          const total = Number(params.amount) + Number(fee) + (Number(params.amount) * (Number(percentage) / 100));
+          const interestConfig = settings.loan?.interest;
+          const interestRate = interestConfig ? (interestConfig.percentage ? Number(params.amount) * (interestConfig.value / 100) : interestConfig.value) : 0;
+          const total = Number(params.amount) + Number(fee) + interestRate;
 
           const loanDate = new Date();
           const repaymentDate = new Date(loanDate);
@@ -576,11 +581,32 @@ export class LoanService {
 
         loan.outstanding = newOutstanding;
         loan.loan_payment_status = paidInFull ? "complete" : "in-progress";
-        await loan.save();
+        await loan.save({ session });
+
+        // Create a Transfer record for transaction history visibility (FIX #3.1)
+        // This ensures internal auto-deductions appear in user's transaction history
+        const traceId = UuidService.generateTraceId();
+        const transferRef = `internal-repay-${traceId}`;
+
+        const internalTransfer = new Transfer({
+          userId: String(params.userId),
+          traceId,
+          fromAccount: params.autoDeduct ? "bank_account" : "savings",
+          toAccount: "loan_repayment",
+          amount: repayAmount,
+          transferType: "inter",
+          status: "COMPLETED",
+          reference: transferRef,
+          remark: `Automatic loan repayment from ${params.autoDeduct ? "bank_account" : "savings"}`,
+          processedAt: now,
+          idempotencyKey: params.idempotencyKey || `auto-deduct-${loan._id}-${now.getTime()}`
+        });
+
+        await internalTransfer.save({ session });
 
         // Ledger double entry: savings_pool -> loan_repayment
         await LedgerService.createDoubleEntry(
-          UuidService.generateTraceId(),
+          traceId,
           `user_wallet:${params.userId}`,
           "loan_repayment",
           repayAmount,
@@ -588,7 +614,7 @@ export class LoanService {
           {
             userId: params.userId,
             subtype: "auto_deduction",
-            idempotencyKey: params.idempotencyKey || `auto-deduct-${loan._id}-${Date.now()}`,
+            idempotencyKey: params.idempotencyKey || `auto-deduct-${loan._id}-${now.getTime()}`,
             session
           }
         );
@@ -599,9 +625,11 @@ export class LoanService {
           repayAmount,
           newOutstanding: loan.outstanding,
           paidInFull,
-        }, "Internal-only loan repayment completed (auto-deduction from savings)");
+          traceId,
+          transferRef
+        }, "Internal-only loan repayment completed (auto-deduction from savings) with Transfer record created");
 
-        return { loan, providerResponse: { status: "00", internal: true }, trxnRes: null, repayAmount };
+        return { loan, providerResponse: { status: "00", internal: true }, trxnRes: internalTransfer, repayAmount };
       };
 
       if (params.session) {
@@ -677,9 +705,20 @@ export class LoanService {
     // BUG FIX: The check was previously inside the Mongoose transaction, meaning
     // the provider balance fetch could be stale by the time the VFD call happened.
     // It now runs on the freshly fetched balance, strictly before any money moves.
-    if (!params.skipBalanceCheck && userBalance < repayAmount) {
+    //
+    // BUG FIX: `parseFloat(userAcc.accountBalance || "0")` returns NaN if
+    // `accountBalance` is present but non-numeric (e.g. an error string,
+    // undefined nested field, etc.). Any comparison against NaN — including
+    // `NaN < repayAmount` — is always `false`, so this check silently passed
+    // even when the account had no usable balance, letting the code proceed
+    // to attempt a real VFD transfer (and, if VFD errored with status "98",
+    // the loan would still be marked as repaid with no money actually moved).
+    // We now explicitly fail closed if the balance can't be determined.
+    if (!params.skipBalanceCheck && (isNaN(userBalance) || userBalance < repayAmount)) {
       throw new BadRequestError(
-        `Insufficient funds. Your balance is ₦${userBalance.toLocaleString()}, but ₦${repayAmount.toLocaleString()} is required for this repayment.`
+        isNaN(userBalance)
+          ? `Could not determine account balance for this repayment.`
+          : `Insufficient funds. Your balance is ₦${userBalance.toLocaleString()}, but ₦${repayAmount.toLocaleString()} is required for this repayment.`
       );
     }
 
@@ -729,9 +768,33 @@ export class LoanService {
       providerResponse = await this.vfd.transfer(transferRequest);
     } catch (err: any) {
       const providerData = err.response?.data;
+      // BUG FIX: status "98" from VFD nominally means "duplicate / already
+      // processed", implying a PRIOR call with this reference already moved
+      // the money. Previously this was trusted blindly — any error payload
+      // with status "98" (which some VFD error paths can also return for
+      // unrelated failures, e.g. invalid/empty source account) was treated
+      // as a successful transfer, and the DB was then committed as if the
+      // repayment succeeded even though no money had moved. We now verify
+      // that an actual completed transfer with this reference exists at VFD
+      // before trusting "98"; otherwise we fail closed.
       if (providerData?.status === "98") {
-        // VFD status 98 = duplicate / already processed — treat as success
-        providerResponse = providerData;
+        let verified = false;
+        try {
+          const txStatus = await this.vfd.queryTransaction?.(transferRecord.reference);
+          verified = !!txStatus && (txStatus.status === "00" || txStatus.data?.transactionStatus.toLowerCase() === "success" || txStatus.data?.transactionStatus.toLowerCase() === "successfull");
+        } catch (verifyErr: any) {
+          logger.warn({ reference: transferRecord.reference, error: verifyErr.message },
+            'Could not verify VFD status-98 transfer; treating as failed');
+        }
+
+        if (verified) {
+          providerResponse = providerData;
+        } else {
+          await TransferService.failTransfer(transferRecord.reference);
+          throw new Error(
+            `Repayment provider transfer failed: VFD returned status 98 (duplicate/already-processed) but no completed transfer could be verified for reference ${transferRecord.reference}`
+          );
+        }
       } else {
         await TransferService.failTransfer(transferRecord.reference);
         const providerError = providerData?.message || providerData || err.message;

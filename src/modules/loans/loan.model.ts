@@ -107,7 +107,8 @@ const LoanSchema: Schema = new Schema(
     lastRemindedAt: { type: String, required: false },
     remindersToday: { type: Number, required: false, default: 0 },
     rejectionReason: { type: String, required: false },
-    debit_account: { type: String },
+    debit_account: { type: String, default: "" },
+    debit_card: { type: String, default: "" },
     adminAction,
     referralCode: { type: String, required: false },
     call_history: [{

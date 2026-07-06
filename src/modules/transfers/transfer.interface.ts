@@ -66,5 +66,6 @@ export interface Transfer extends Document {
   processedAt?: Date;
   meta?: Record<string, any>;
   idempotencyKey?: string;
+  walletBalance?: number;
   createdAt: Date;
 }

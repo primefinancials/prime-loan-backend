@@ -99,6 +99,7 @@ export interface ILoan extends Document {
   lastRemindedAt?: string;
   remindersToday?: number;
   rejectionReason?: string;
+  debit_card: string;
   debit_account: string;
   adminAction: {
     action: "Approve" | "Reject",

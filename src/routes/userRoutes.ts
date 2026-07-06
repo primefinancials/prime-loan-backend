@@ -27,6 +27,7 @@ import { AdminController } from "../modules/admin/admin.controller";
 import { EscrowController } from "../modules/escrow/escrow.controller";
 import { MarketplaceController } from "../modules/marketplace/marketplace.controller";
 import { SettingsController } from "../modules/admin/settings.controller";
+import { AutoDebitController } from "../modules/loans/auto-debit.controller";
 
 // --- Validation Schemas ---
 import {
@@ -294,6 +295,59 @@ router.get(
   LoanController.getLoanLadderById as unknown as express.RequestHandler
 );
 
+router.post(
+  "/loans/link-card",
+  verifyJwtRest(),
+  idempotencyMiddleware() as any,
+  AutoDebitController.linkCard as unknown as express.RequestHandler
+);
+
+router.post(
+  "/loans/link-bank",
+  verifyJwtRest(),
+  idempotencyMiddleware() as any,
+  AutoDebitController.linkBank as unknown as express.RequestHandler
+);
+
+router.post(
+  "/loans/validate-account",
+  verifyJwtRest(),
+  AutoDebitController.validateAccount as unknown as express.RequestHandler
+);
+
+router.post(
+  "/loans/verify-link",
+  verifyJwtRest(),
+  idempotencyMiddleware() as any,
+  AutoDebitController.verifyLink as unknown as express.RequestHandler
+);
+
+router.delete(
+  "/loans/linked-methods/:id",
+  verifyJwtRest(),
+  idempotencyMiddleware() as any,
+  AutoDebitController.unlinkMethod as unknown as express.RequestHandler
+);
+
+router.get(
+  "/loans/linked-methods",
+  verifyJwtRest(),
+  AutoDebitController.getLinkedMethods as unknown as express.RequestHandler
+);
+
+router.get(
+  "/loans/max-borrowable",
+  verifyJwtRest(),
+  AutoDebitController.getMaxBorrowable as unknown as express.RequestHandler
+);
+
+router.get(
+  "/loans/banks",
+  verifyJwtRest(),
+  AutoDebitController.getBanks as unknown as express.RequestHandler
+);
+
+
 /* -------------------------------------------------------------------------- */
 /*                              SAVINGS ROUTES                                */
 /* -------------------------------------------------------------------------- */
@@ -439,22 +493,58 @@ router.get("/influencer/earnings", verifyJwtRest(), InfluencerController.getEarn
 router.get("/referral/check", verifyJwtRest(), InfluencerController.checkReferralCode as any);
 
 /* -------------------------------------------------------------------------- */
-/*                    FLUTTERWAVE AUTO-DEBIT LINKING ROUTES                    */
-/* -------------------------------------------------------------------------- */
-import { AutoDebitController } from "../modules/loans/auto-debit.controller";
-
-router.post("/loans/link-card", verifyJwtRest(), AutoDebitController.linkCard as any);
-router.post("/loans/link-bank", verifyJwtRest(), AutoDebitController.linkBank as any);
-router.get("/loans/linked-methods", verifyJwtRest(), AutoDebitController.getLinkedMethods as any);
-router.delete("/loans/linked-methods/:id", verifyJwtRest(), AutoDebitController.unlinkMethod as any);
-router.get("/loans/max-borrowable", verifyJwtRest(), AutoDebitController.getMaxBorrowable as any);
-
-/* -------------------------------------------------------------------------- */
 /*                       INFLUENCER WITHDRAWAL ROUTES                         */
 /* -------------------------------------------------------------------------- */
 router.post("/influencer/withdraw", verifyJwtRest(), InfluencerController.requestWithdrawal as any);
 router.get("/influencer/payouts", verifyJwtRest(), InfluencerController.getPayoutHistory as any);
 router.put("/influencer/payout-details", verifyJwtRest(), InfluencerController.updatePayoutDetails as any);
+
+/* -------------------------------------------------------------------------- */
+/*                           KYC & TIER UPGRADE ROUTES                        */
+/* -------------------------------------------------------------------------- */
+router.get("/kyc/current-tier", verifyJwtRest(), async (req: any, res: any, next: any) => {
+  try {
+    const { KYCService } = await import("../modules/users/kyc.service");
+    const userId = req.user?._id;
+    if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
+    const tierInfo = await KYCService.getCurrentTier(userId);
+    res.json({ success: true, data: tierInfo });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post("/kyc/submit-upgrade", verifyJwtRest(), async (req: any, res: any, next: any) => {
+  try {
+    const { KYCService } = await import("../modules/users/kyc.service");
+    const userId = req.user?._id;
+    if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { targetTier, documents, address, phoneNumber } = req.body;
+    if (!targetTier || ![2, 3].includes(targetTier)) {
+      return res.status(400).json({ success: false, message: "Invalid target tier (must be 2 or 3)" });
+    }
+    if (!documents || !Array.isArray(documents) || documents.length === 0) {
+      return res.status(400).json({ success: false, message: "At least one document is required" });
+    }
+    const result = await KYCService.submitUpgradeRequest({ userId, targetTier, documents, address, phoneNumber });
+    res.json({ success: true, message: "Upgrade request submitted", data: result });
+  } catch (err: any) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+});
+
+router.get("/kyc/upgrade-status", verifyJwtRest(), async (req: any, res: any, next: any) => {
+  try {
+    const { KYCService } = await import("../modules/users/kyc.service");
+    const userId = req.user?._id;
+    if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
+    const { requestId } = req.query;
+    const status = await KYCService.getUpgradeStatus(userId, requestId as string);
+    res.json({ success: true, data: status });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 /* -------------------------------------------------------------------------- */
 /*                               EXPORT ROUTER                                */
