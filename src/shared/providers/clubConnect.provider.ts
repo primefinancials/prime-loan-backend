@@ -1,4 +1,5 @@
 import axios from "axios";
+import { HttpsProxyAgent } from "https-proxy-agent";
 import { CLUB_KONNECT_API_URLs } from "../../config";
 import { APIError } from "../../exceptions";
 import { 
@@ -31,6 +32,12 @@ function addEightPercent(value: number) {
   return String(value + (value * 0.03));
 }
 export class ClubConnectsService {
+    private axiosInstance = axios.create(
+        process.env.FORWARD_PROXY_URL 
+            ? { httpsAgent: new HttpsProxyAgent(process.env.FORWARD_PROXY_URL) } 
+            : {}
+    );
+
     private handleResponse<T>(response: { data: T & { statuscode?: string; status?: StatusCode } }): T {
         console.log("Response:", response);
         console.log("Response data:", response.data);
@@ -45,20 +52,20 @@ export class ClubConnectsService {
     };
 
     public async CheckWalletBalance(): Promise<WalletBalance> {
-        const response = await axios.get<WalletBalance>(CLUB_KONNECT_API_URLs.check_wallet_balance());
+        const response = await this.axiosInstance.get<WalletBalance>(CLUB_KONNECT_API_URLs.check_wallet_balance());
 
         return response.data;
     };
 
     public async QueryTransaction(orderId: number): Promise<QueryTransactionResponse> {
-        const response = await axios.get<QueryTransactionResponse>(
+        const response = await this.axiosInstance.get<QueryTransactionResponse>(
           CLUB_KONNECT_API_URLs.query_transaction(orderId)
         );
         return this.handleResponse(response);
     };
 
     public async CancelTransaction(orderId: number): Promise<QueryResponse> {
-        const response = await axios.get<QueryResponse>(CLUB_KONNECT_API_URLs.cancel_transaction(orderId));
+        const response = await this.axiosInstance.get<QueryResponse>(CLUB_KONNECT_API_URLs.cancel_transaction(orderId));
 
         return this.handleResponse(response);
     };
@@ -69,7 +76,7 @@ export class ClubConnectsService {
         mobileNetwork: MOBILENETWORKS,
         bonusType?: BONUSTYPE
     ): Promise<QueryResponse> {
-        const response = await axios.get<QueryResponse>(
+        const response = await this.axiosInstance.get<QueryResponse>(
           CLUB_KONNECT_API_URLs.buy_airtime(amount, mobileNumber, mobileNetwork, bonusType)
         );
 
@@ -77,7 +84,7 @@ export class ClubConnectsService {
     }; 
 
     public async GetDataPlans(): Promise<MobileNetwork> {
-        const response = await axios.get<MobileNetwork>(CLUB_KONNECT_API_URLs.data_plans());
+        const response = await this.axiosInstance.get<MobileNetwork>(CLUB_KONNECT_API_URLs.data_plans());
 
         return ({
             MOBILE_NETWORK: {
@@ -102,13 +109,13 @@ export class ClubConnectsService {
     };
 
     public async BuyData(dataPlan: number, mobileNumber: number, mobileNetwork: MOBILENETWORKS): Promise<QueryResponse> {
-        const response = await axios.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_data(dataPlan, mobileNumber, mobileNetwork));
+        const response = await this.axiosInstance.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_data(dataPlan, mobileNumber, mobileNetwork));
 
         return this.handleResponse(response);
     };
 
     public async GetTvPackages(): Promise<TV_ID_Interface> {
-        const response = await axios.get<TV_ID_Interface>(CLUB_KONNECT_API_URLs.tv_packages());
+        const response = await this.axiosInstance.get<TV_ID_Interface>(CLUB_KONNECT_API_URLs.tv_packages());
 
         return ({
             TV_ID: {
@@ -133,97 +140,97 @@ export class ClubConnectsService {
     };
 
     public async VerifyTvNumber(cableTV: CABLETV, smartCardNo: number): Promise<VerifyCableTVResponse> {
-        const response = await axios.get<VerifyCableTVResponse>(CLUB_KONNECT_API_URLs.verify_tv_no(cableTV, smartCardNo));
+        const response = await this.axiosInstance.get<VerifyCableTVResponse>(CLUB_KONNECT_API_URLs.verify_tv_no(cableTV, smartCardNo));
 
         return response.data;
     };
 
     public async BuyTv(cableTV: CABLETV, pkg: string, smartCardNo: number, phoneNo: number): Promise<QueryResponse> {
-        const response = await axios.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_tv(cableTV, pkg, smartCardNo, phoneNo));
+        const response = await this.axiosInstance.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_tv(cableTV, pkg, smartCardNo, phoneNo));
 
         return this.handleResponse(response);
     };
 
     public async GetPowerSubscriptions(): Promise<ElectricCompanyData> {
-        const response = await axios.get<ElectricCompanyData>(CLUB_KONNECT_API_URLs.power_subscriptions());
+        const response = await this.axiosInstance.get<ElectricCompanyData>(CLUB_KONNECT_API_URLs.power_subscriptions());
 
         return response.data;
     };
 
     public async VerifyPowerNumber(electricCompany: string, meterNo: number): Promise<VerifyElectricityMeterResponse> {
-        const response = await axios.get<VerifyElectricityMeterResponse>(CLUB_KONNECT_API_URLs.verify_power_no(electricCompany, meterNo));
+        const response = await this.axiosInstance.get<VerifyElectricityMeterResponse>(CLUB_KONNECT_API_URLs.verify_power_no(electricCompany, meterNo));
 
         return response.data;
     };
 
     public async BuyPower(electricCompany: string, meterType: METERTYPE, meterNo: number, amount: number, phoneNo: number): Promise<ElectricityPurchaseResponse> {
-        const response = await axios.get<ElectricityPurchaseResponse>(CLUB_KONNECT_API_URLs.buy_power(electricCompany, meterType, meterNo, amount, phoneNo));
+        const response = await this.axiosInstance.get<ElectricityPurchaseResponse>(CLUB_KONNECT_API_URLs.buy_power(electricCompany, meterType, meterNo, amount, phoneNo));
 
         return this.handleResponse(response);
     };
 
     public async GetBettingPlatforms(): Promise<BettingCompanyData> {
-        const response = await axios.get<BettingCompanyData>(CLUB_KONNECT_API_URLs.betting_platforms());
+        const response = await this.axiosInstance.get<BettingCompanyData>(CLUB_KONNECT_API_URLs.betting_platforms());
 
         return response.data;
     }
 
     public async VerifyBettingNumber(bettingCompany: string, customerId: number): Promise<VerifyBettingCustomerResponse> {
-        const response = await axios.get<VerifyBettingCustomerResponse>(CLUB_KONNECT_API_URLs.verify_betting_no(bettingCompany, customerId));
+        const response = await this.axiosInstance.get<VerifyBettingCustomerResponse>(CLUB_KONNECT_API_URLs.verify_betting_no(bettingCompany, customerId));
 
         return response.data;
     }
 
     public async BuyBetting(bettingCompany: string, customerId: number, amount: number): Promise<QueryResponse> {
-        const response = await axios.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_betting(bettingCompany, customerId, amount));
+        const response = await this.axiosInstance.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_betting(bettingCompany, customerId, amount));
 
         return this.handleResponse(response);
     }
 
     public async GetInternetPlans(mobileNetwork: "smile-direct" | "spectranet"): Promise<InternetNetworkData> {
-        const response = await axios.get<InternetNetworkData>(CLUB_KONNECT_API_URLs.internet_plans(mobileNetwork));
+        const response = await this.axiosInstance.get<InternetNetworkData>(CLUB_KONNECT_API_URLs.internet_plans(mobileNetwork));
 
         return response.data;
     }
 
     public async VerifySmileNumber(mobileNumber: number): Promise<VerifySmileResponse> {
-        const response = await axios.get<VerifySmileResponse>(CLUB_KONNECT_API_URLs.verify_smile_no("smile-direct", mobileNumber));
+        const response = await this.axiosInstance.get<VerifySmileResponse>(CLUB_KONNECT_API_URLs.verify_smile_no("smile-direct", mobileNumber));
 
         return response.data;
     }
 
     public async BuyInternet(mobileNetwork: "smile-direct" | "spectranet", dataPlan: string, mobileNumber: number): Promise<QueryResponse> {
-        const response = await axios.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_internet(mobileNetwork, dataPlan, mobileNumber));
+        const response = await this.axiosInstance.get<QueryResponse>(CLUB_KONNECT_API_URLs.buy_internet(mobileNetwork, dataPlan, mobileNumber));
 
         return this.handleResponse(response);
     }
 
     public async GetWaecTypes(): Promise<ExamTypeData> {
-        const response = await axios.get<ExamTypeData>(CLUB_KONNECT_API_URLs.waec_types());
+        const response = await this.axiosInstance.get<ExamTypeData>(CLUB_KONNECT_API_URLs.waec_types());
 
         return response.data;
     }
 
     public async BuyWaec(examType: string, phoneNo: number): Promise<WAECCheckerResponse> {
-        const response = await axios.get<WAECCheckerResponse>(CLUB_KONNECT_API_URLs.buy_waec(examType, phoneNo));
+        const response = await this.axiosInstance.get<WAECCheckerResponse>(CLUB_KONNECT_API_URLs.buy_waec(examType, phoneNo));
 
         return this.handleResponse(response);
     }
 
     public async GetJambTypes(): Promise<ExamTypeData> {
-        const response = await axios.get<ExamTypeData>(CLUB_KONNECT_API_URLs.jamb_types());
+        const response = await this.axiosInstance.get<ExamTypeData>(CLUB_KONNECT_API_URLs.jamb_types());
 
         return response.data;
     }
 
     public async VerifyJambNumber(examType: string, profileId: number): Promise<VerifyJAMBProfileResponse> {
-        const response = await axios.get<VerifyJAMBProfileResponse>(CLUB_KONNECT_API_URLs.verify_jamb_no(examType, profileId));
+        const response = await this.axiosInstance.get<VerifyJAMBProfileResponse>(CLUB_KONNECT_API_URLs.verify_jamb_no(examType, profileId));
 
         return response.data;
     }
 
     public async BuyJamb(examType: string, phoneNo: number): Promise<JAMBCheckerResponse> {
-        const response = await axios.get<JAMBCheckerResponse>(CLUB_KONNECT_API_URLs.buy_jamb(examType, phoneNo));
+        const response = await this.axiosInstance.get<JAMBCheckerResponse>(CLUB_KONNECT_API_URLs.buy_jamb(examType, phoneNo));
 
         return this.handleResponse(response);
     }

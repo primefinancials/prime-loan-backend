@@ -4,6 +4,7 @@
  * Auth: Single header `P-API-KEY`
  */
 import axios, { AxiosError } from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import pino from 'pino';
 
 const logger = pino({ name: 'paybeta-provider' });
@@ -91,7 +92,8 @@ export class PayBetaProvider {
         method,
         url,
         headers,
-        ...(data ? { data } : {})
+        ...(data ? { data } : {}),
+        ...(process.env.FORWARD_PROXY_URL ? { httpsAgent: new HttpsProxyAgent(process.env.FORWARD_PROXY_URL) } : {})
       };
       
       // Log request for debugging (at trace level to avoid log spam)
