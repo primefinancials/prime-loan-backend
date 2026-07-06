@@ -9,8 +9,8 @@
  * the service passed serviceId "BIL100" as `network` but the derived item_code
  * didn't match what Flutterwave's catalog returned for that biller.
  */
-import axios from 'axios';
-import {
+import axios, { AxiosRequestConfig } from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
   NormalizedBillProvider,
   BillCategory, BillBiller, BillProduct,
   BillProviderResult, BillValidationResult,
@@ -27,13 +27,28 @@ function fwHeaders() {
   return { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
 }
 
+function getProxyAgent() {
+  if (process.env.FORWARD_PROXY_URL) {
+    return new HttpsProxyAgent(process.env.FORWARD_PROXY_URL);
+  }
+  return undefined;
+}
+
 async function fwGet<T = any>(path: string, params?: Record<string, any>) {
-  const res = await axios.get<{ status: string; data?: T }>(`https://api.flutterwave.com${path}`, { headers: fwHeaders(), params });
+  const config: AxiosRequestConfig = { headers: fwHeaders(), params };
+  const agent = getProxyAgent();
+  if (agent) config.httpsAgent = agent;
+  
+  const res = await axios.get<{ status: string; data?: T }>(`https://api.flutterwave.com${path}`, config);
   return res.data;
 }
 
 async function fwPost<T = any>(path: string, body: any = {}) {
-  const res = await axios.post<{ status: string; data?: T; message?: string }>(`https://api.flutterwave.com${path}`, body, { headers: fwHeaders() });
+  const config: AxiosRequestConfig = { headers: fwHeaders() };
+  const agent = getProxyAgent();
+  if (agent) config.httpsAgent = agent;
+
+  const res = await axios.post<{ status: string; data?: T; message?: string }>(`https://api.flutterwave.com${path}`, body, config);
   return res.data;
 }
 

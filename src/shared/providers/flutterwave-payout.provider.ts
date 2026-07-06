@@ -3,6 +3,7 @@
  * Wraps Flutterwave's Transfer API
  */
 import axios, { AxiosError } from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import pino from 'pino';
 
 const logger = pino({ name: 'flutterwave-payout-provider' });
@@ -21,12 +22,19 @@ export interface PayoutResult {
 export class FlutterwavePayoutProvider {
   private secretKey: string;
   private baseUrl = 'https://api.flutterwave.com/v3';
+  private axiosInstance;
 
   constructor() {
     this.secretKey = process.env.FLUTTERWAVE_SECRET_KEY || '';
     if (!this.secretKey) {
       logger.warn('FLUTTERWAVE_SECRET_KEY not configured for payouts');
     }
+
+    const axiosConfig: any = {};
+    if (process.env.FORWARD_PROXY_URL) {
+      axiosConfig.httpsAgent = new HttpsProxyAgent(process.env.FORWARD_PROXY_URL);
+    }
+    this.axiosInstance = axios.create(axiosConfig);
   }
 
   private headers() {
@@ -48,7 +56,7 @@ export class FlutterwavePayoutProvider {
     beneficiaryName?: string;
   }): Promise<PayoutResult> {
     try {
-      const res = await axios.post(
+      const res = await this.axiosInstance.post(
         `${this.baseUrl}/transfers`,
         {
           account_bank: params.bankCode,
@@ -88,7 +96,7 @@ export class FlutterwavePayoutProvider {
    */
   async getTransferStatus(transferId: number) {
     try {
-      const res = await axios.get(
+      const res = await this.axiosInstance.get(
         `${this.baseUrl}/transfers/${transferId}`,
         { headers: this.headers() }
       );
