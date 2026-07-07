@@ -407,25 +407,35 @@ export class TestIntegrationsController {
         results.patternE_QueryParam = { status: r.status, dataType: typeof r.data, empty: r.data === '', data: r.data };
       } catch (e: any) { results.patternE_QueryParam = { error: e.message }; }
 
-      // Pattern F: Try v2 URL
+      // Pattern F: Try v2/wallet2 URL (per VFD docs - correct v2 path)
       try {
-        const v2Url = baseUrl.replace('/v1/', '/v2/').replace('/v1', '/v2');
-        const r = await axios.get(`${v2Url}/bank`, {
+        const v2Url = 'https://api-apps.vfdbank.systems/vtech-wallet/api/v2/wallet2/bank';
+        const r = await axios.get(v2Url, {
           headers: { AccessToken: accessToken, "Content-Type": "application/json" },
           timeout: 15000, validateStatus: () => true
         });
-        results.patternF_V2Url = { status: r.status, url: `${v2Url}/bank`, dataType: typeof r.data, empty: r.data === '', data: typeof r.data === 'string' ? r.data.substring(0, 500) : r.data };
-      } catch (e: any) { results.patternF_V2Url = { error: e.message }; }
+        results.patternF_V2Wallet2 = { status: r.status, url: v2Url, dataType: typeof r.data, empty: r.data === '', data: typeof r.data === 'string' ? r.data.substring(0, 1000) : r.data };
+      } catch (e: any) { results.patternF_V2Wallet2 = { error: e.message }; }
 
-      // Pattern G: Try without /api path  
+      // Pattern G: Try sandbox/test URL
       try {
-        const altUrl = 'https://api-apps.vfdbank.systems/vtech-wallet/bank';
+        const sandboxUrl = 'https://api-devapps.vfdbank.systems/vtech-wallet/api/v2/wallet2/bank';
+        const r = await axios.get(sandboxUrl, {
+          headers: { AccessToken: accessToken, "Content-Type": "application/json" },
+          timeout: 15000, validateStatus: () => true
+        });
+        results.patternG_Sandbox = { status: r.status, url: sandboxUrl, dataType: typeof r.data, empty: r.data === '', data: typeof r.data === 'string' ? r.data.substring(0, 1000) : r.data };
+      } catch (e: any) { results.patternG_Sandbox = { error: e.message }; }
+
+      // Pattern H: Try v1 with wallet2 path
+      try {
+        const altUrl = 'https://api-apps.vfdbank.systems/vtech-wallet/api/v1/wallet2/bank';
         const r = await axios.get(altUrl, {
           headers: { AccessToken: accessToken, "Content-Type": "application/json" },
           timeout: 15000, validateStatus: () => true
         });
-        results.patternG_AltPath = { status: r.status, url: altUrl, dataType: typeof r.data, empty: r.data === '', data: typeof r.data === 'string' ? r.data.substring(0, 500) : r.data };
-      } catch (e: any) { results.patternG_AltPath = { error: e.message }; }
+        results.patternH_V1Wallet2 = { status: r.status, url: altUrl, dataType: typeof r.data, empty: r.data === '', data: typeof r.data === 'string' ? r.data.substring(0, 1000) : r.data };
+      } catch (e: any) { results.patternH_V1Wallet2 = { error: e.message }; }
 
       return res.status(200).json({
         status: 'success',
