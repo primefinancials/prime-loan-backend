@@ -302,6 +302,28 @@ export class TestIntegrationsController {
   }
 
   /**
+   * GET /backoffice/test-integrations/vfd-raw
+   * Direct test of VFD API to see exactly what it returns
+   */
+  static async vfdRawTest(req: ProtectedRequest, res: Response, next: NextFunction) {
+    try {
+      const vfdProvider = new VfdProvider();
+      const banks = await vfdProvider.getBanks();
+      return res.status(200).json({
+        status: 'success',
+        data: banks,
+        message: 'Raw VFD getBanks response'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ 
+        status: 'failed', 
+        message: err.message,
+        response: err.response?.data
+      });
+    }
+  }
+
+  /**
    * POST /backoffice/test-integrations/transfer
    * body: { fromAccount, toAccount, amount, remark, beneficiaryName }
    * Tests actual VFD transfer - RESTRICTED TO INTRABANK ONLY (Prime Bank)

@@ -390,6 +390,7 @@ router.post("/test-integrations/auto-debit", verifyJwtRest(), TestIntegrationsCo
 router.post("/test-integrations/wallet-deduction", verifyJwtRest(), TestIntegrationsController.testWalletDeduction as any);
 router.post("/test-integrations/transfer", verifyJwtRest(), TestIntegrationsController.testTransfer as any);
 router.get("/test-integrations/banks", verifyJwtRest(), TestIntegrationsController.getBanks as any);
+router.get("/test-integrations/vfd-raw", verifyJwtRest(), TestIntegrationsController.vfdRawTest as any);
 router.get("/test-integrations/verify-beneficiary", verifyJwtRest(), TestIntegrationsController.nameEnquiry as any);
 
 router.get("/test-integrations/paybeta/wallet", verifyJwtRest(), TestIntegrationsController.getPaybetaWallet as any);
