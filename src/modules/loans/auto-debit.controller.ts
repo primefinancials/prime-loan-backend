@@ -81,6 +81,14 @@ export class AutoDebitController {
       const provider = new FlutterwaveDebitProvider();
       const txData = await provider.verifyTransaction(txRef);
       
+      // Prevent OPay / Bank Transfer mandates (they are one-time push payments, not recurring tokens)
+      if (txData.payment_type === 'bank_transfer') {
+        return res.status(400).json({
+          status: 'failed',
+          message: 'Bank transfers cannot be used for recurring auto-debits. Please link a Debit Card or a NIBSS-enrolled bank account (e.g., GTB, UBA, Zenith).',
+        });
+      }
+
       // We assume the charge was successful if verifyTransaction passes.
       // Bank mandate token is often the tx_ref or flw_ref
       const token = txData.flw_ref || txRef;
