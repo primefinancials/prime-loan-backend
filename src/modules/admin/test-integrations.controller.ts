@@ -335,6 +335,7 @@ export class TestIntegrationsController {
         method: 'GET',
         url: `${baseUrl}/bank`,
         headers: {
+          Authorization: `Bearer ${accessToken}`,
           AccessToken: accessToken,
           "Content-Type": "application/json",
         }
