@@ -320,6 +320,44 @@ export class TestIntegrationsController {
   }
 
   /**
+   * GET /backoffice/test-integrations/vfd-raw-no-proxy
+   * Direct test of VFD API without proxy
+   */
+  static async vfdRawNoProxyTest(req: Request, res: Response, next: NextFunction) {
+    try {
+      const axios = (await import('axios')).default;
+      const { customerKey, customerSecret, baseUrl } = require('../../config');
+      const { generateBearerToken } = require('../../shared/utils/generateBearerToken');
+      
+      const accessToken = await generateBearerToken(customerKey, customerSecret);
+      
+      const config: any = {
+        method: 'GET',
+        url: `${baseUrl}/bank`,
+        headers: {
+          AccessToken: accessToken,
+          "Content-Type": "application/json",
+        }
+      };
+      
+      const response = await axios(config);
+      return res.status(200).json({
+        status: 'success',
+        data: response.data,
+        accessTokenGenerated: accessToken,
+        accessTokenLength: accessToken?.length,
+        message: 'Raw VFD getBanks response NO PROXY'
+      });
+    } catch (err: any) {
+      return res.status(500).json({ 
+        status: 'failed', 
+        message: err.message,
+        response: err.response?.data
+      });
+    }
+  }
+
+  /**
    * GET /backoffice/test-integrations/vfd-raw
    * Direct test of VFD API to see exactly what it returns
    */
