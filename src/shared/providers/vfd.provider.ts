@@ -260,13 +260,6 @@ export class VfdProvider {
 
     try {
       const response = await axios(config);
-      console.log(`[VFD Provider] Request to ${config.url} completed with status:`, response.status);
-      console.log(`[VFD Provider] Response headers:`, JSON.stringify(response.headers));
-      console.log(`[VFD Provider] Response data typeof:`, typeof response.data, `isBuffer:`, Buffer.isBuffer(response.data));
-      console.log(`[VFD Provider] Response data stringified:`, JSON.stringify(response.data));
-      if (typeof response.data === 'string' && response.data === '') {
-        console.warn(`[VFD Provider] WARNING: VFD returned exactly empty string!`);
-      }
       return response.data as T;
     } catch (error) {
       const axiosError = error as AxiosError;
