@@ -28,28 +28,23 @@ function fwHeaders() {
   return { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
 }
 
-function getProxyAgent() {
-  if (process.env.FORWARD_PROXY_URL) {
-    return new HttpsProxyAgent(process.env.FORWARD_PROXY_URL);
-  }
-  return undefined;
-}
+const PROXY_URL = process.env.PROXY_URL || 'http://172.31.3.240:3128';
+const proxyAgent = new HttpsProxyAgent(PROXY_URL);
 
 async function fwGet<T = any>(path: string, params?: Record<string, any>) {
-  const config: AxiosRequestConfig = { headers: fwHeaders(), params };
-  const agent = getProxyAgent();
-  if (agent) config.httpsAgent = agent;
-  
-  const res = await axios.get<{ status: string; data?: T }>(`https://api.flutterwave.com${path}`, config);
+  const res = await axios.get<{ status: string; data?: T }>(`https://api.flutterwave.com${path}`, {
+    headers: fwHeaders(),
+    params,
+    httpsAgent: proxyAgent
+  });
   return res.data;
 }
 
 async function fwPost<T = any>(path: string, body: any = {}) {
-  const config: AxiosRequestConfig = { headers: fwHeaders() };
-  const agent = getProxyAgent();
-  if (agent) config.httpsAgent = agent;
-
-  const res = await axios.post<{ status: string; data?: T; message?: string }>(`https://api.flutterwave.com${path}`, body, config);
+  const res = await axios.post<{ status: string; data?: T; message?: string }>(`https://api.flutterwave.com${path}`, body, {
+    headers: fwHeaders(),
+    httpsAgent: proxyAgent
+  });
   return res.data;
 }
 
