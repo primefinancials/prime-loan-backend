@@ -321,100 +321,122 @@ export class TestIntegrationsController {
 
   /**
    * GET /backoffice/test-integrations/vfd-raw-no-proxy
-   * Full diagnostic: generates token AND calls VFD both WITHOUT proxy.
-   * Also reports this server's outbound IP so we can tell VFD to whitelist it.
+   * Comprehensive diagnostic: tries multiple auth patterns to find what VFD expects
    */
   static async vfdRawNoProxyTest(req: Request, res: Response, next: NextFunction) {
     try {
       const axios = (await import('axios')).default;
       const { customerKey, customerSecret, baseUrl, authUrl } = require('../../config');
       
-      // Step 1: Get our outbound IP
+      // Step 1: Get outbound IP
       let outboundIp = 'unknown';
       try {
         const ipRes = await axios.get('https://api.ipify.org?format=json', { timeout: 5000 });
         outboundIp = ipRes.data?.ip || 'unknown';
-      } catch (e: any) {
-        outboundIp = `error: ${e.message}`;
-      }
+      } catch (e: any) { outboundIp = `error: ${e.message}`; }
 
-      // Step 2: Generate token WITHOUT proxy (fresh, bypass cache)
+      // Step 2: Generate fresh token (no proxy)
       let accessToken = '';
-      let tokenResponse: any = null;
-      let tokenStatus = 0;
       try {
         const tokenRes = await axios.post(authUrl, {
           consumerKey: customerKey,
           consumerSecret: customerSecret,
           validityTime: "-1"
         }, {
-          headers: {
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json"
-          },
+          headers: { "Content-Type": "application/json" },
           timeout: 15000
         });
-        tokenStatus = tokenRes.status;
-        tokenResponse = tokenRes.data;
         accessToken = tokenRes.data?.data?.access_token || tokenRes.data?.access_token || '';
       } catch (tokenErr: any) {
-        return res.status(500).json({
-          status: 'failed',
-          step: 'token_generation',
-          outboundIp,
-          message: tokenErr.message,
-          responseData: tokenErr.response?.data,
-          responseStatus: tokenErr.response?.status
-        });
+        return res.status(500).json({ status: 'failed', step: 'token', message: tokenErr.message });
       }
 
-      // Step 3: Call VFD /bank endpoint WITHOUT proxy using fresh token
-      const bankRes = await axios({
-        method: 'GET',
-        url: `${baseUrl}/bank`,
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          AccessToken: accessToken,
-          "Content-Type": "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          "Accept": "application/json"
-        },
-        timeout: 15000
-      });
+      // Step 3: Build wallet-credentials header
+      const walletCreds = Buffer.from(`${customerKey}:${customerSecret}`).toString('base64');
+
+      // Step 4: Try multiple auth patterns
+      const results: any = {};
+      const testUrl = `${baseUrl}/bank`;
+
+      // Pattern A: AccessToken only (current code)
+      try {
+        const r = await axios.get(testUrl, {
+          headers: { AccessToken: accessToken, "Content-Type": "application/json" },
+          timeout: 15000, validateStatus: () => true
+        });
+        results.patternA_AccessTokenOnly = { status: r.status, dataType: typeof r.data, empty: r.data === '', data: r.data };
+      } catch (e: any) { results.patternA_AccessTokenOnly = { error: e.message }; }
+
+      // Pattern B: Authorization Bearer only
+      try {
+        const r = await axios.get(testUrl, {
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          timeout: 15000, validateStatus: () => true
+        });
+        results.patternB_BearerOnly = { status: r.status, dataType: typeof r.data, empty: r.data === '', data: r.data };
+      } catch (e: any) { results.patternB_BearerOnly = { error: e.message }; }
+
+      // Pattern C: Both AccessToken + Authorization
+      try {
+        const r = await axios.get(testUrl, {
+          headers: { AccessToken: accessToken, Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          timeout: 15000, validateStatus: () => true
+        });
+        results.patternC_Both = { status: r.status, dataType: typeof r.data, empty: r.data === '', data: r.data };
+      } catch (e: any) { results.patternC_Both = { error: e.message }; }
+
+      // Pattern D: wallet-credentials header
+      try {
+        const r = await axios.get(testUrl, {
+          headers: { 
+            AccessToken: accessToken, 
+            "wallet-credentials": walletCreds,
+            "Content-Type": "application/json" 
+          },
+          timeout: 15000, validateStatus: () => true
+        });
+        results.patternD_WalletCreds = { status: r.status, dataType: typeof r.data, empty: r.data === '', data: r.data };
+      } catch (e: any) { results.patternD_WalletCreds = { error: e.message }; }
+
+      // Pattern E: Token as query param
+      try {
+        const r = await axios.get(`${testUrl}?access_token=${accessToken}`, {
+          headers: { "Content-Type": "application/json" },
+          timeout: 15000, validateStatus: () => true
+        });
+        results.patternE_QueryParam = { status: r.status, dataType: typeof r.data, empty: r.data === '', data: r.data };
+      } catch (e: any) { results.patternE_QueryParam = { error: e.message }; }
+
+      // Pattern F: Try v2 URL
+      try {
+        const v2Url = baseUrl.replace('/v1/', '/v2/').replace('/v1', '/v2');
+        const r = await axios.get(`${v2Url}/bank`, {
+          headers: { AccessToken: accessToken, "Content-Type": "application/json" },
+          timeout: 15000, validateStatus: () => true
+        });
+        results.patternF_V2Url = { status: r.status, url: `${v2Url}/bank`, dataType: typeof r.data, empty: r.data === '', data: typeof r.data === 'string' ? r.data.substring(0, 500) : r.data };
+      } catch (e: any) { results.patternF_V2Url = { error: e.message }; }
+
+      // Pattern G: Try without /api path  
+      try {
+        const altUrl = 'https://api-apps.vfdbank.systems/vtech-wallet/bank';
+        const r = await axios.get(altUrl, {
+          headers: { AccessToken: accessToken, "Content-Type": "application/json" },
+          timeout: 15000, validateStatus: () => true
+        });
+        results.patternG_AltPath = { status: r.status, url: altUrl, dataType: typeof r.data, empty: r.data === '', data: typeof r.data === 'string' ? r.data.substring(0, 500) : r.data };
+      } catch (e: any) { results.patternG_AltPath = { error: e.message }; }
 
       return res.status(200).json({
         status: 'success',
         outboundIp,
-        tokenStep: {
-          status: tokenStatus,
-          tokenLength: accessToken?.length,
-          tokenPreview: accessToken?.substring(0, 30) + '...',
-          fullResponse: tokenResponse
-        },
-        bankStep: {
-          httpStatus: bankRes.status,
-          httpStatusText: bankRes.statusText,
-          dataType: typeof bankRes.data,
-          dataEmpty: bankRes.data === '' || bankRes.data === null || bankRes.data === undefined,
-          data: bankRes.data,
-          responseHeaders: bankRes.headers
-        },
-        config: {
-          baseUrl,
-          authUrl,
-          customerKeyPreview: customerKey?.substring(0, 8) + '...',
-        }
+        tokenLength: accessToken?.length,
+        baseUrl,
+        authUrl,
+        results
       });
     } catch (err: any) {
-      return res.status(500).json({ 
-        status: 'failed', 
-        step: 'bank_call',
-        message: err.message,
-        responseStatus: err.response?.status,
-        responseData: err.response?.data,
-        responseHeaders: err.response?.headers
-      });
+      return res.status(500).json({ status: 'failed', message: err.message });
     }
   }
 
