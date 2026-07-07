@@ -214,6 +214,8 @@ export class FlutterwaveDebitProvider {
           tx_ref: params.txRef,
           currency: 'NGN',
           narration: params.narration || 'Prime Loan Auto-Debit',
+          is_mandate: true, // Crucial for recurring OTP-free
+          // bvn: params.bvn // Optional but recommended by FW
         },
         { headers: this.headers() }
       );

@@ -159,6 +159,8 @@ export class TestIntegrationsController {
 
       const { AutoDebit } = await import('../../modules/loans/auto-debit.model');
       const { FlutterwaveDebitProvider } = await import('../../shared/providers/flutterwave-debit.provider');
+      const { OPayProvider } = await import('../../shared/providers/opay.provider');
+      const { MonnifyProvider } = await import('../../shared/providers/monnify.provider');
 
       const methods = await AutoDebit.find({ userId: String(userId), status: 'active' }).lean();
       if (!methods.length) {
@@ -167,23 +169,53 @@ export class TestIntegrationsController {
 
       const testAmount = amount || 100; // Minimum test amount
       const method = methods[0] as any; // Use first active method
-      const provider = new FlutterwaveDebitProvider();
+      const fwProvider = new FlutterwaveDebitProvider();
 
       let result: any;
       if (method.type === 'card' && method.token) {
-        result = await provider.chargeToken({
+        result = await fwProvider.chargeToken({
           token: method.token,
           email: method.email || '',
           amount: testAmount,
-          txRef: `test-${Date.now()}`,
+          txRef: `admin-test-card-${Date.now()}`,
         });
       } else if (method.type === 'bank' && method.token) {
-        result = await provider.chargeToken({
-          token: method.token,
-          email: method.email || '',
-          amount: testAmount,
-          txRef: `admin-test-bank-${Date.now()}`,
-        });
+        if (method.provider === 'monnify') {
+          const monnifyProvider = new MonnifyProvider();
+          result = await monnifyProvider.debitMandate({
+            mandateCode: method.token,
+            amount: testAmount,
+            reference: `admin-test-bank-monnify-${Date.now()}`,
+            narration: 'Admin Test Bank Auto Debit'
+          });
+        } else {
+          result = await fwProvider.chargeToken({
+            token: method.token,
+            email: method.email || '',
+            amount: testAmount,
+            txRef: `admin-test-bank-flw-${Date.now()}`,
+          });
+        }
+      } else if (method.type === 'wallet' && method.token) {
+        if (method.provider === 'opay') {
+          const opayProvider = new OPayProvider();
+          result = await opayProvider.chargeWallet({
+            token: method.token,
+            amount: testAmount,
+            reference: `admin-test-opay-${Date.now()}`,
+            phone: method.walletPhone
+          });
+        } else if (method.provider === 'monnify') {
+          const monnifyProvider = new MonnifyProvider();
+          result = await monnifyProvider.debitMandate({
+            mandateCode: method.token,
+            amount: testAmount,
+            reference: `admin-test-moniepoint-${Date.now()}`,
+            narration: 'Admin Test Wallet Auto Debit'
+          });
+        } else {
+           result = { message: 'Unknown wallet provider', method };
+        }
       } else {
         result = { message: 'Unknown method type', method };
       }

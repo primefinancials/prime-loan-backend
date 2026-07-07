@@ -12,7 +12,7 @@ import { getCollectionName } from '../../shared/utils/collection.utils';
 
 export interface IAutoDebit extends Document {
   userId: string;
-  type: 'card' | 'bank';
+  type: 'card' | 'bank' | 'wallet';
   token: string;
   email: string;
 
@@ -28,7 +28,12 @@ export interface IAutoDebit extends Document {
   accountNumber?: string;
   accountName?: string;
 
-  status: 'active' | 'revoked' | 'expired';
+  // Wallet-specific / Provider fields
+  provider?: 'flutterwave' | 'opay' | 'monnify';
+  walletPhone?: string;
+  mandateCode?: string;
+
+  status: 'active' | 'revoked' | 'expired' | 'pending';
   createdAt: Date;
   updatedAt: Date;
   expiresAt?: Date;
@@ -37,7 +42,7 @@ export interface IAutoDebit extends Document {
 const AutoDebitSchema = new Schema<IAutoDebit>(
   {
     userId: { type: String, required: true, index: true },
-    type: { type: String, enum: ['card', 'bank'], required: true },
+    type: { type: String, enum: ['card', 'bank', 'wallet'], required: true },
     token: { type: String, required: true },
     email: { type: String, required: true },
 
@@ -53,7 +58,12 @@ const AutoDebitSchema = new Schema<IAutoDebit>(
     accountNumber: { type: String },
     accountName: { type: String },
 
-    status: { type: String, enum: ['active', 'revoked', 'expired'], default: 'active' },
+    // Wallet fields
+    provider: { type: String, enum: ['flutterwave', 'opay', 'monnify'] },
+    walletPhone: { type: String },
+    mandateCode: { type: String },
+
+    status: { type: String, enum: ['active', 'revoked', 'expired', 'pending'], default: 'active' },
     expiresAt: { type: Date },
   },
   { collection: getCollectionName('auto_debits'), timestamps: true }

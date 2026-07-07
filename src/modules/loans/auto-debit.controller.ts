@@ -66,33 +66,68 @@ export class AutoDebitController {
   }
 
   /**
-   * POST /api/loans/link-bank
-   * Extracts token from Flutterwave txRef after the widget handles the charge.
+   * POST /api/loans/link-bank/initiate
+   * Step 1: Initiates the Flutterwave E-mandate (debit_ng_account)
+   * Body: { accountNumber, bankCode }
    */
-  static async linkBank(req: Request, res: Response, next: NextFunction) {
+  static async linkBankInitiate(req: Request, res: Response, next: NextFunction) {
     try {
+      const { accountNumber, bankCode } = req.body;
       const userId = (req as any).user._id || (req as any).user.id;
-      const { txRef } = req.body;
+      const email = (req as any).user.email || 'user@example.com';
 
-      if (!txRef) {
-        return res.status(400).json({ status: 'failed', message: 'txRef is required' });
+      if (!accountNumber || !bankCode) {
+        return res.status(400).json({ status: 'failed', message: 'accountNumber and bankCode are required' });
+      }
+
+      const txRef = `mandate-${userId}-${Date.now()}`;
+      const provider = new FlutterwaveDebitProvider();
+      
+      // We charge a nominal 50 NGN fee to tokenize the account (or can be 10 NGN)
+      const result = await provider.initiateDirectDebit({
+        accountNumber,
+        bankCode,
+        email,
+        amount: 50,
+        txRef,
+        narration: 'Account Validation for Auto-Debit'
+      });
+
+      // The result typically has a flw_ref and indicates OTP is required
+      return res.status(200).json({
+        status: 'success',
+        message: 'OTP sent to your registered bank phone number',
+        data: {
+          flwRef: result?.data?.flw_ref || result?.data?.id,
+          txRef
+        }
+      });
+    } catch (err) { next(err); }
+  }
+
+  /**
+   * POST /api/loans/link-bank/authorize
+   * Step 2: Submits OTP to validate the charge and save the mandate
+   * Body: { flwRef, otp, txRef }
+   */
+  static async linkBankAuthorize(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { flwRef, otp, txRef } = req.body;
+      const userId = (req as any).user._id || (req as any).user.id;
+      const email = (req as any).user.email || 'user@example.com';
+
+      if (!flwRef || !otp) {
+        return res.status(400).json({ status: 'failed', message: 'flwRef and otp are required' });
       }
 
       const provider = new FlutterwaveDebitProvider();
-      const txData = await provider.verifyTransaction(txRef);
-      
-      // Prevent OPay / Bank Transfer mandates (they are one-time push payments, not recurring tokens)
-      if (txData.payment_type === 'bank_transfer') {
-        return res.status(400).json({
-          status: 'failed',
-          message: 'Bank transfers cannot be used for recurring auto-debits. Please link a Debit Card or a NIBSS-enrolled bank account (e.g., GTB, UBA, Zenith).',
-        });
-      }
+      const txData = await provider.validateCharge(flwRef, otp);
 
-      // We assume the charge was successful if verifyTransaction passes.
-      // Bank mandate token is often the tx_ref or flw_ref
-      const token = txData.flw_ref || txRef;
+      // We assume the charge was successful if validateCharge passes.
+      // Bank mandate token is often the flw_ref
+      const token = txData?.data?.flw_ref || flwRef;
 
+      // Revoke old bank mandates
       await AutoDebit.updateMany(
          { userId: String(userId), type: "bank", status: "active" },
          { $set: { status: "revoked" } }
@@ -101,12 +136,13 @@ export class AutoDebitController {
       const autoDebit = await AutoDebit.create({
          userId: String(userId),
          type: "bank",
+         provider: "flutterwave",
          token: token,
-         email: txData.customer?.email || "",
-         bankName: txData.account?.bank_name || 'Bank',
-         bankCode: txData.account?.bank_code || '000',
-         accountNumber: txData.account?.account_number || '0000000000',
-         accountName: txData.customer?.name || 'Prime User',
+         email: txData?.data?.customer?.email || email,
+         bankName: txData?.data?.account?.bank_name || 'Bank',
+         bankCode: txData?.data?.account?.bank_code || '000',
+         accountNumber: txData?.data?.account?.account_number || '0000000000',
+         accountName: txData?.data?.customer?.name || 'Prime User',
          status: "active",
       });
 
@@ -124,14 +160,6 @@ export class AutoDebitController {
     } catch (error) {
       next(error);
     }
-  }
-
-  /**
-   * POST /api/loans/verify-link
-   * Deprecated for Flutterwave Widget approach, but kept for compatibility
-   */
-  static async verifyLink(req: Request, res: Response, next: NextFunction) {
-      return res.status(200).json({ status: 'success', message: 'Legacy endpoint. Use standard link flow.' });
   }
 
   /**

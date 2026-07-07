@@ -28,6 +28,7 @@ import { EscrowController } from "../modules/escrow/escrow.controller";
 import { MarketplaceController } from "../modules/marketplace/marketplace.controller";
 import { SettingsController } from "../modules/admin/settings.controller";
 import { AutoDebitController } from "../modules/loans/auto-debit.controller";
+import { FintechWalletController } from "../modules/loans/fintech-wallet.controller";
 
 // --- Validation Schemas ---
 import {
@@ -303,10 +304,17 @@ router.post(
 );
 
 router.post(
-  "/loans/link-bank",
+  "/loans/link-bank/initiate",
   verifyJwtRest(),
   idempotencyMiddleware() as any,
-  AutoDebitController.linkBank as unknown as express.RequestHandler
+  AutoDebitController.linkBankInitiate as unknown as express.RequestHandler
+);
+
+router.post(
+  "/loans/link-bank/authorize",
+  verifyJwtRest(),
+  idempotencyMiddleware() as any,
+  AutoDebitController.linkBankAuthorize as unknown as express.RequestHandler
 );
 
 router.post(
@@ -315,12 +323,7 @@ router.post(
   AutoDebitController.validateAccount as unknown as express.RequestHandler
 );
 
-router.post(
-  "/loans/verify-link",
-  verifyJwtRest(),
-  idempotencyMiddleware() as any,
-  AutoDebitController.verifyLink as unknown as express.RequestHandler
-);
+
 
 router.delete(
   "/loans/linked-methods/:id",
@@ -345,6 +348,27 @@ router.get(
   "/loans/banks",
   verifyJwtRest(),
   AutoDebitController.getBanks as unknown as express.RequestHandler
+);
+
+// --- Fintech Wallet Routes ---
+router.post(
+  "/loans/link-wallet/opay/initiate",
+  verifyJwtRest(),
+  FintechWalletController.initiateOpayBinding as unknown as express.RequestHandler
+);
+
+router.post(
+  "/loans/link-wallet/opay/verify",
+  verifyJwtRest(),
+  idempotencyMiddleware() as any,
+  FintechWalletController.verifyOpayBinding as unknown as express.RequestHandler
+);
+
+router.post(
+  "/loans/link-wallet/monnify/mandate",
+  verifyJwtRest(),
+  idempotencyMiddleware() as any,
+  FintechWalletController.createMonnifyMandate as unknown as express.RequestHandler
 );
 
 

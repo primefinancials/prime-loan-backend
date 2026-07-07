@@ -4,6 +4,7 @@
  */
 import { Router } from 'express';
 import { ATVoiceCallbackController } from '../modules/webhooks/at-voice-callback.controller';
+import { FintechWalletController } from '../modules/loans/fintech-wallet.controller';
 
 const router = Router();
 
@@ -20,6 +21,12 @@ const router = Router();
 router.post(
   '/africastalking/voice',
   ATVoiceCallbackController.handleCallback
+);
+
+/* ---------- Monnify Webhooks ---------- */
+router.post(
+  '/monnify',
+  FintechWalletController.handleMonnifyWebhook
 );
 
 export default router;
