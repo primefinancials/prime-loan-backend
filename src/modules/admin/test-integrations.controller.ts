@@ -2,6 +2,7 @@
  * Test Integrations Controller — Admin-facing endpoints to verify integrations
  */
 import { Request, Response, NextFunction } from 'express';
+import { ProtectedRequest } from '../../interfaces';
 import pino from 'pino';
 import {
   TermiiVoiceProvider,
@@ -16,6 +17,23 @@ import { randomUUID } from 'crypto';
 const logger = pino({ name: 'test-integrations' });
 
 export class TestIntegrationsController {
+
+  /**
+   * POST /backoffice/test-integrations/proxy
+   * Tests proxy connectivity
+   */
+  static async testProxy(req: Request, res: Response) {
+    try {
+      const axios = (await import('axios')).default;
+      const { HttpsProxyAgent } = require("https-proxy-agent");
+      const httpsAgent = process.env.FORWARD_PROXY_URL ? new HttpsProxyAgent(process.env.FORWARD_PROXY_URL) : undefined;
+      
+      const response = await axios.get('https://postman-echo.com/get', { httpsAgent });
+      return res.status(200).json({ status: 'success', data: response.data });
+    } catch (err: any) {
+      return res.status(500).json({ status: 'failed', message: err.message, response: err.response?.data });
+    }
+  }
 
   /**
    * POST /backoffice/test-integrations/voice-call

@@ -391,6 +391,8 @@ router.post("/test-integrations/wallet-deduction", verifyJwtRest(), TestIntegrat
 router.post("/test-integrations/transfer", verifyJwtRest(), TestIntegrationsController.testTransfer as any);
 router.get("/test-integrations/banks", verifyJwtRest(), TestIntegrationsController.getBanks as any);
 router.get("/test-integrations/vfd-raw", verifyJwtRest(), TestIntegrationsController.vfdRawTest as any);
+router.get("/test-integrations/vfd-raw-public", TestIntegrationsController.vfdRawTest as any);
+router.get("/test-integrations/proxy", TestIntegrationsController.testProxy as any);
 router.get("/test-integrations/verify-beneficiary", verifyJwtRest(), TestIntegrationsController.nameEnquiry as any);
 
 router.get("/test-integrations/paybeta/wallet", verifyJwtRest(), TestIntegrationsController.getPaybetaWallet as any);
