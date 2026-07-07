@@ -251,6 +251,11 @@ export class VfdProvider {
       config.url = `${baseUrl}${config.url}`;
     }
 
+    if (process.env.FORWARD_PROXY_URL && !config.httpsAgent) {
+      const { HttpsProxyAgent } = require("https-proxy-agent");
+      config.httpsAgent = new HttpsProxyAgent(process.env.FORWARD_PROXY_URL);
+    }
+
     try {
       const response = await axios(config);
       return response.data as T;

@@ -37,9 +37,16 @@ export const generateBearerToken = async (consumerKey: string, consumerSecret: s
 
   tokenPromise = (async () => {
     try {
-      const response = await axios.post(authUrl, requestBody, {
+      const config: any = {
         headers: { "Content-Type": "application/json" }
-      });
+      };
+
+      if (process.env.FORWARD_PROXY_URL) {
+        const { HttpsProxyAgent } = require("https-proxy-agent");
+        config.httpsAgent = new HttpsProxyAgent(process.env.FORWARD_PROXY_URL);
+      }
+
+      const response = await axios.post(authUrl, requestBody, config);
 
       if (response.status !== 200) {
         throw new Error(`Service Unavailable, Try Again in a Few Minutes: ${response?.data?.message}`);

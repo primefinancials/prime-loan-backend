@@ -4,6 +4,7 @@
  * Replaces the old MonoProvider
  */
 import axios, { AxiosError } from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import pino from 'pino';
 
 const logger = pino({ name: 'flutterwave-debit-provider' });
@@ -11,12 +12,19 @@ const logger = pino({ name: 'flutterwave-debit-provider' });
 export class FlutterwaveDebitProvider {
   private secretKey: string;
   private baseUrl = 'https://api.flutterwave.com/v3';
+  private axiosInstance: import('axios').AxiosInstance;
 
   constructor() {
     this.secretKey = process.env.FLUTTERWAVE_SECRET_KEY || '';
     if (!this.secretKey) {
       logger.warn('FLUTTERWAVE_SECRET_KEY not configured');
     }
+
+    this.axiosInstance = axios.create(
+      process.env.FORWARD_PROXY_URL 
+        ? { httpsAgent: new HttpsProxyAgent(process.env.FORWARD_PROXY_URL) } 
+        : {}
+    );
   }
 
   private headers() {
@@ -35,7 +43,7 @@ export class FlutterwaveDebitProvider {
    */
   async verifyTransaction(txRef: string) {
     try {
-      const res = await axios.get(
+      const res = await this.axiosInstance.get(
         `${this.baseUrl}/transactions/verify_by_reference?tx_ref=${txRef}`,
         { headers: this.headers() }
       );
@@ -60,7 +68,7 @@ export class FlutterwaveDebitProvider {
     redirectUrl?: string;
   }) {
     try {
-      const res = await axios.post(
+      const res = await this.axiosInstance.post(
         `${this.baseUrl}/tokenized-charges`,
         {
           token: params.token,
@@ -126,7 +134,7 @@ export class FlutterwaveDebitProvider {
 
       const encrypted = this.encrypt3DES(JSON.stringify(payload));
 
-      const res = await axios.post(
+      const res = await this.axiosInstance.post(
         `${this.baseUrl}/charges?type=card`,
         { client: encrypted },
         { headers: this.headers() }
@@ -145,7 +153,7 @@ export class FlutterwaveDebitProvider {
    */
   async validateCharge(flwRef: string, otp: string) {
     try {
-      const res = await axios.post(
+      const res = await this.axiosInstance.post(
         `${this.baseUrl}/validate-charge`,
         {
           otp,
@@ -169,7 +177,7 @@ export class FlutterwaveDebitProvider {
    */
   async validateBankAccount(accountNumber: string, bankCode: string) {
     try {
-      const res = await axios.post(
+      const res = await this.axiosInstance.post(
         `${this.baseUrl}/accounts/resolve`,
         { account_number: accountNumber, account_bank: bankCode },
         { headers: this.headers() }
@@ -196,7 +204,7 @@ export class FlutterwaveDebitProvider {
     narration?: string;
   }) {
     try {
-      const res = await axios.post(
+      const res = await this.axiosInstance.post(
         `${this.baseUrl}/charges?type=debit_ng_account`,
         {
           account_bank: params.bankCode,
@@ -223,7 +231,7 @@ export class FlutterwaveDebitProvider {
    */
   async getBanks() {
     try {
-      const res = await axios.get(`${this.baseUrl}/banks/NG`, { headers: this.headers() });
+      const res = await this.axiosInstance.get(`${this.baseUrl}/banks/NG`, { headers: this.headers() });
       return res.data?.data || [];
     } catch (error) {
       const axErr = error as AxiosError;
