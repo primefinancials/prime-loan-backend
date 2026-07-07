@@ -12,7 +12,7 @@ const logger = pino({ name: 'flutterwave-debit-provider' });
 export class FlutterwaveDebitProvider {
   private secretKey: string;
   private baseUrl = 'https://api.flutterwave.com/v3';
-  private axiosInstance;
+  private axiosInstance: import('axios').AxiosInstance;
 
   constructor() {
     this.secretKey = process.env.FLUTTERWAVE_SECRET_KEY || '';
@@ -20,11 +20,11 @@ export class FlutterwaveDebitProvider {
       logger.warn('FLUTTERWAVE_SECRET_KEY not configured');
     }
 
-    const axiosConfig: any = {};
-    if (process.env.FORWARD_PROXY_URL) {
-      axiosConfig.httpsAgent = new HttpsProxyAgent(process.env.FORWARD_PROXY_URL);
-    }
-    this.axiosInstance = axios.create(axiosConfig);
+    this.axiosInstance = axios.create(
+      process.env.FORWARD_PROXY_URL 
+        ? { httpsAgent: new HttpsProxyAgent(process.env.FORWARD_PROXY_URL) } 
+        : {}
+    );
   }
 
   private headers() {

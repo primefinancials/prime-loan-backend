@@ -13,7 +13,6 @@
  *  8. validateBillerCustomer: 4th param renamed to `paymentItemCode`
  */
 import axios, { AxiosRequestConfig, AxiosError } from "axios";
-import { HttpsProxyAgent } from 'https-proxy-agent';
 import { generateBearerToken, clearBearerToken } from "../utils/generateBearerToken";
 import { customerKey, customerSecret, baseUrl } from "../../config";
 
@@ -252,7 +251,8 @@ export class VfdProvider {
       config.url = `${baseUrl}${config.url}`;
     }
 
-    if (process.env.FORWARD_PROXY_URL) {
+    if (process.env.FORWARD_PROXY_URL && !config.httpsAgent) {
+      const { HttpsProxyAgent } = require("https-proxy-agent");
       config.httpsAgent = new HttpsProxyAgent(process.env.FORWARD_PROXY_URL);
     }
 

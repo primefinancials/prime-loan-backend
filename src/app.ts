@@ -34,9 +34,6 @@ export default function configureApp(app: Application): void {
 
   // Health check is registered in server.ts (before DB connect)
   // so Railway gets a 200 even during cold-start initialization.
-  
-  // Root endpoint redirect for AWS Elastic Beanstalk health checker
-  app.get("/", (_req: Request, res: Response) => res.redirect("/health"));
 
   // Routes
   app.use("/api", userRoutes);
