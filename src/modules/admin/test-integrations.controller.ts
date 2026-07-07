@@ -321,39 +321,99 @@ export class TestIntegrationsController {
 
   /**
    * GET /backoffice/test-integrations/vfd-raw-no-proxy
-   * Direct test of VFD API without proxy
+   * Full diagnostic: generates token AND calls VFD both WITHOUT proxy.
+   * Also reports this server's outbound IP so we can tell VFD to whitelist it.
    */
   static async vfdRawNoProxyTest(req: Request, res: Response, next: NextFunction) {
     try {
       const axios = (await import('axios')).default;
-      const { customerKey, customerSecret, baseUrl } = require('../../config');
-      const { generateBearerToken } = require('../../shared/utils/generateBearerToken');
+      const { customerKey, customerSecret, baseUrl, authUrl } = require('../../config');
       
-      const accessToken = await generateBearerToken(customerKey, customerSecret);
-      
-      const config: any = {
+      // Step 1: Get our outbound IP
+      let outboundIp = 'unknown';
+      try {
+        const ipRes = await axios.get('https://api.ipify.org?format=json', { timeout: 5000 });
+        outboundIp = ipRes.data?.ip || 'unknown';
+      } catch (e: any) {
+        outboundIp = `error: ${e.message}`;
+      }
+
+      // Step 2: Generate token WITHOUT proxy (fresh, bypass cache)
+      let accessToken = '';
+      let tokenResponse: any = null;
+      let tokenStatus = 0;
+      try {
+        const tokenRes = await axios.post(authUrl, {
+          consumerKey: customerKey,
+          consumerSecret: customerSecret,
+          validityTime: "-1"
+        }, {
+          headers: {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Accept": "application/json"
+          },
+          timeout: 15000
+        });
+        tokenStatus = tokenRes.status;
+        tokenResponse = tokenRes.data;
+        accessToken = tokenRes.data?.data?.access_token || tokenRes.data?.access_token || '';
+      } catch (tokenErr: any) {
+        return res.status(500).json({
+          status: 'failed',
+          step: 'token_generation',
+          outboundIp,
+          message: tokenErr.message,
+          responseData: tokenErr.response?.data,
+          responseStatus: tokenErr.response?.status
+        });
+      }
+
+      // Step 3: Call VFD /bank endpoint WITHOUT proxy using fresh token
+      const bankRes = await axios({
         method: 'GET',
         url: `${baseUrl}/bank`,
         headers: {
           Authorization: `Bearer ${accessToken}`,
           AccessToken: accessToken,
           "Content-Type": "application/json",
-        }
-      };
-      
-      const response = await axios(config);
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Accept": "application/json"
+        },
+        timeout: 15000
+      });
+
       return res.status(200).json({
         status: 'success',
-        data: response.data,
-        accessTokenGenerated: accessToken,
-        accessTokenLength: accessToken?.length,
-        message: 'Raw VFD getBanks response NO PROXY'
+        outboundIp,
+        tokenStep: {
+          status: tokenStatus,
+          tokenLength: accessToken?.length,
+          tokenPreview: accessToken?.substring(0, 30) + '...',
+          fullResponse: tokenResponse
+        },
+        bankStep: {
+          httpStatus: bankRes.status,
+          httpStatusText: bankRes.statusText,
+          dataType: typeof bankRes.data,
+          dataEmpty: bankRes.data === '' || bankRes.data === null || bankRes.data === undefined,
+          data: bankRes.data,
+          responseHeaders: bankRes.headers
+        },
+        config: {
+          baseUrl,
+          authUrl,
+          customerKeyPreview: customerKey?.substring(0, 8) + '...',
+        }
       });
     } catch (err: any) {
       return res.status(500).json({ 
         status: 'failed', 
+        step: 'bank_call',
         message: err.message,
-        response: err.response?.data
+        responseStatus: err.response?.status,
+        responseData: err.response?.data,
+        responseHeaders: err.response?.headers
       });
     }
   }
