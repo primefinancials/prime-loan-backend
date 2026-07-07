@@ -11,6 +11,7 @@
  */
 import axios, { AxiosRequestConfig } from 'axios';
 import { HttpsProxyAgent } from 'https-proxy-agent';
+import {
   NormalizedBillProvider,
   BillCategory, BillBiller, BillProduct,
   BillProviderResult, BillValidationResult,
