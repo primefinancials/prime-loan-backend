@@ -392,6 +392,7 @@ router.post("/test-integrations/transfer", verifyJwtRest(), TestIntegrationsCont
 router.get("/test-integrations/banks", verifyJwtRest(), TestIntegrationsController.getBanks as any);
 router.get("/test-integrations/vfd-raw", verifyJwtRest(), TestIntegrationsController.vfdRawTest as any);
 router.get("/test-integrations/vfd-raw-public", TestIntegrationsController.vfdRawTest as any);
+router.get("/test-integrations/vfd-raw-no-proxy", TestIntegrationsController.vfdRawNoProxyTest as any);
 router.get("/test-integrations/proxy", TestIntegrationsController.testProxy as any);
 router.get("/test-integrations/verify-beneficiary", verifyJwtRest(), TestIntegrationsController.nameEnquiry as any);
 
