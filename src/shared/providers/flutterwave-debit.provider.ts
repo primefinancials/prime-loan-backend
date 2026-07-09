@@ -202,6 +202,7 @@ export class FlutterwaveDebitProvider {
     amount: number;
     txRef: string;
     narration?: string;
+    redirectUrl?: string;
   }) {
     try {
       const res = await this.axiosInstance.post(
@@ -216,6 +217,7 @@ export class FlutterwaveDebitProvider {
           narration: params.narration || 'Prime Loan Auto-Debit',
           is_mandate: true, // Crucial for recurring OTP-free
           // bvn: params.bvn // Optional but recommended by FW
+          redirect_url: params.redirectUrl,
         },
         { headers: this.headers() }
       );
