@@ -8,13 +8,14 @@ import { FintechWalletController } from '../modules/loans/fintech-wallet.control
 
 const router = Router();
 
+import { FlutterwaveWebhookController } from '../modules/webhooks/flutterwave-webhook.controller';
+
 /* ---------- Flutterwave Webhooks ---------- */
-// TODO: Implement FlutterwaveWebhookController for auto-debit payment status updates
-// router.post(
-//   '/flutterwave',
-//   FlutterwaveWebhookController.verifySignature,
-//   FlutterwaveWebhookController.handleWebhook
-// );
+router.post(
+  '/flutterwave',
+  FlutterwaveWebhookController.verifySignature,
+  FlutterwaveWebhookController.handleWebhook
+);
 
 /* ---------- Africa's Talking Voice Callback ---------- */
 
