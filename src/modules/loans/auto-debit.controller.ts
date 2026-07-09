@@ -83,21 +83,41 @@ export class AutoDebitController {
       const txRef = `mandate-${userId}-${Date.now()}`;
       const provider = new FlutterwaveDebitProvider();
       
-      // We charge a nominal 50 NGN fee to tokenize the account (or can be 10 NGN)
+      const frontendUrl = process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_APP_URL || 'https://prime-loan-web-v2-staging.vercel.app';
+      const redirectUrl = `${frontendUrl}/loans/callback`;
+
       const result = await provider.initiateDirectDebit({
         accountNumber,
         bankCode,
         email,
         amount: 50,
         txRef,
-        narration: 'Account Validation for Auto-Debit'
+        narration: 'Account Validation for Auto-Debit',
+        redirectUrl
       });
 
-      // The result typically has a flw_ref and indicates OTP is required
+      const meta = result?.meta;
+      const authorization = meta?.authorization;
+      
+      if (authorization?.mode === 'redirect' && authorization?.redirect) {
+        return res.status(200).json({
+          status: 'success',
+          message: 'Redirect required for bank login',
+          data: {
+            mode: 'redirect',
+            authUrl: authorization.redirect,
+            flwRef: result?.data?.flw_ref || result?.data?.id,
+            txRef
+          }
+        });
+      }
+
+      // Default to OTP mode
       return res.status(200).json({
         status: 'success',
         message: 'OTP sent to your registered bank phone number',
         data: {
+          mode: 'otp',
           flwRef: result?.data?.flw_ref || result?.data?.id,
           txRef
         }
