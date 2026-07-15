@@ -68,7 +68,7 @@ const DefaultCorsOptions: CorsOptions = {
   /**
    * The maximum age (in seconds) to cache the preflight response.
    */
-  maxAge: 30 * 60 * 60 * 24 * 1000, // 30 days
+  maxAge: 30 * 60 * 60 * 24, // 30 days in seconds
 
   /**
    * The headers that are exposed to the browser in the response.
