@@ -122,7 +122,12 @@ export class AutoDebitController {
           txRef
         }
       });
-    } catch (err) { next(err); }
+    } catch (err: any) { 
+      if (err.message && err.message.includes('failed')) {
+        return res.status(400).json({ status: 'failed', message: err.message });
+      }
+      next(err); 
+    }
   }
 
   /**

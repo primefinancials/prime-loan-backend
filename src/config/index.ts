@@ -22,6 +22,7 @@ const DB_OPTIONS: ConnectOptions = {
   serverSelectionTimeoutMS: 15000, // Fail fast if cluster is unreachable
   socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
   dbName: process.env.DATABASE_NAME,
+  family: 4, // Force IPv4 to prevent IPv6 DNS resolution timeouts which cause extreme slowness
 };
 
 const LOG_DIRECTORY = process.env.LOG_DIRECTORY || '';
