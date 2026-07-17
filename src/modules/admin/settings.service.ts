@@ -115,6 +115,17 @@ export class SettingsService {
       await settings.save();
     }
 
+    if (!settings.autoDebit) {
+      settings.autoDebit = {
+        enabled: true,
+        cardEnabled: true,
+        bankEnabled: true,
+        maxDebitAttempts: 3,
+        bankLinkingProvider: 'flutterwave'
+      };
+      await settings.save();
+    }
+
     if (!settings.workersConfig) {
       settings.workersConfig = new Map() as any;
       await settings.save();
