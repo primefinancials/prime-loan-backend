@@ -5,6 +5,7 @@
     "scripts": {
         "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
         "build": "tsc",
+        "prestart": "npm run build",
         "start": "node dist/server.js",
         "start:workers": "\"npm run workers:bill-payments\" \"npm run workers:transfers\" \"npm run workers:penalties\" \"npm run workers:savings\"",
         "workers:bill-payments": "node dist/workers/pollers/billPaymentsPoller.js",
