@@ -4,6 +4,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { AutoDebit } from './auto-debit.model';
 import { FlutterwaveDebitProvider } from '../../shared/providers/flutterwave-debit.provider';
+import { MonoProvider } from '../../shared/providers/mono.provider';
+import { MonnifyProvider } from '../../shared/providers/monnify.provider';
 import { LoanEligibilityService } from './loan-eligibility';
 import { UserService } from '../users/user.service';
 import pino from 'pino';
@@ -179,6 +181,103 @@ export class AutoDebitController {
            bankName: autoDebit.bankName,
            accountNumber: autoDebit.accountNumber,
            accountName: autoDebit.accountName,
+           status: autoDebit.status,
+         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/loans/link-bank/mono
+   * Exchanges Mono code for account ID and saves it.
+   */
+  static async linkBankMono(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { code, accountNumber, bankCode, bankName } = req.body;
+      const userId = (req as any).user._id || (req as any).user.id;
+      const email = (req as any).user.email || 'user@example.com';
+
+      if (!code) {
+        return res.status(400).json({ status: 'failed', message: 'Auth code is required' });
+      }
+
+      const provider = new MonoProvider();
+      const accountData = await provider.exchangeToken(code);
+
+      // Revoke old bank mandates
+      await AutoDebit.updateMany(
+         { userId: String(userId), type: "bank", status: "active" },
+         { $set: { status: "revoked" } }
+      );
+
+      const autoDebit = await AutoDebit.create({
+         userId: String(userId),
+         type: "bank",
+         provider: "mono",
+         token: accountData.id, // Mono account ID
+         email: email,
+         bankName: bankName || 'Bank',
+         bankCode: bankCode || '000',
+         accountNumber: accountNumber || '0000000000',
+         status: "active",
+      });
+
+      return res.status(201).json({
+         status: "success",
+         data: {
+           id: autoDebit._id,
+           type: autoDebit.type,
+           bankName: autoDebit.bankName,
+           accountNumber: autoDebit.accountNumber,
+           status: autoDebit.status,
+         },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/loans/link-bank/monnify
+   * Saves Monnify mandate code after frontend widget completes.
+   */
+  static async linkBankMonnify(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { mandateCode, accountNumber, bankCode, bankName } = req.body;
+      const userId = (req as any).user._id || (req as any).user.id;
+      const email = (req as any).user.email || 'user@example.com';
+
+      if (!mandateCode) {
+        return res.status(400).json({ status: 'failed', message: 'Mandate Code is required' });
+      }
+
+      // Revoke old bank mandates
+      await AutoDebit.updateMany(
+         { userId: String(userId), type: "bank", status: "active" },
+         { $set: { status: "revoked" } }
+      );
+
+      const autoDebit = await AutoDebit.create({
+         userId: String(userId),
+         type: "bank",
+         provider: "monnify",
+         token: mandateCode, // Monnify mandate code
+         email: email,
+         bankName: bankName || 'Bank',
+         bankCode: bankCode || '000',
+         accountNumber: accountNumber || '0000000000',
+         status: "active",
+      });
+
+      return res.status(201).json({
+         status: "success",
+         data: {
+           id: autoDebit._id,
+           type: autoDebit.type,
+           bankName: autoDebit.bankName,
+           accountNumber: autoDebit.accountNumber,
            status: autoDebit.status,
          },
       });

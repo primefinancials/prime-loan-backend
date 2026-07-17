@@ -1,5 +1,6 @@
 import pino from 'pino';
 import axios from 'axios';
+import https from 'https';
 
 const logger = pino({ name: 'monnify-provider' });
 
@@ -10,12 +11,14 @@ export class MonnifyProvider {
   private readonly contractCode: string;
   private accessToken: string | null = null;
   private tokenExpiresAt: number = 0;
+  private readonly httpsAgent: https.Agent;
 
   constructor() {
     this.baseUrl = process.env.MONNIFY_BASE_URL || 'https://sandbox.monnify.com';
     this.apiKey = process.env.MONNIFY_API_KEY || '';
     this.secretKey = process.env.MONNIFY_SECRET_KEY || '';
     this.contractCode = process.env.MONNIFY_CONTRACT_CODE || '';
+    this.httpsAgent = new https.Agent({ keepAlive: true });
   }
 
   private async getAccessToken(): Promise<string> {
@@ -37,6 +40,7 @@ export class MonnifyProvider {
           headers: {
             Authorization: `Basic ${authBuffer}`,
           },
+          httpsAgent: this.httpsAgent
         }
       );
 
@@ -96,6 +100,7 @@ export class MonnifyProvider {
 
       const response = await axios.post(`${this.baseUrl}/api/v1/direct-debit/mandate/create`, payload, {
         headers,
+        httpsAgent: this.httpsAgent
       });
 
       return {
@@ -120,12 +125,7 @@ export class MonnifyProvider {
   }): Promise<any> {
     try {
       if (!this.apiKey) {
-        logger.warn('Mocking Monnify debitMandate because keys are missing');
-        return {
-          status: 'SUCCESS',
-          amount: params.amount,
-          transactionReference: params.reference,
-        };
+        throw new Error('Monnify credentials not configured.');
       }
 
       const headers = await this.getHeaders();
@@ -137,8 +137,9 @@ export class MonnifyProvider {
         contractCode: this.contractCode,
       };
 
-      const response = await axios.post(`${this.baseUrl}/api/v1/direct-debit/mandate/debit`, payload, {
+      const response = await axios.post(`${this.baseUrl}/api/v1/direct-debit/mandate/pay`, payload, {
         headers,
+        httpsAgent: this.httpsAgent
       });
 
       return response.data;

@@ -13,6 +13,7 @@
  *  8. validateBillerCustomer: 4th param renamed to `paymentItemCode`
  */
 import axios, { AxiosRequestConfig, AxiosError } from "axios";
+import https from "https";
 import { generateBearerToken, clearBearerToken } from "../utils/generateBearerToken";
 import { customerKey, customerSecret, baseUrl } from "../../config";
 
@@ -236,6 +237,7 @@ export interface VfdBillPayRequest {
 export class VfdProvider {
   private billsBaseUrl = "https://api-apps.vfdbank.systems/vtech-bills/api/v2/billspaymentstore/";
   private kycBaseUrl = "https://api-apps.vfdbank.systems/vtech-kyc/api/v2/kyc/";
+  private httpsAgent = new https.Agent({ keepAlive: true });
 
   constructor() { }
 
@@ -256,6 +258,8 @@ export class VfdProvider {
     if (process.env.FORWARD_PROXY_URL && !config.httpsAgent) {
       const { HttpsProxyAgent } = require("https-proxy-agent");
       config.httpsAgent = new HttpsProxyAgent(process.env.FORWARD_PROXY_URL);
+    } else if (!config.httpsAgent) {
+      config.httpsAgent = this.httpsAgent;
     }
 
     try {

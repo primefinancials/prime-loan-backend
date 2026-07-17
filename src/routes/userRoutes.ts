@@ -318,6 +318,20 @@ router.post(
 );
 
 router.post(
+  "/loans/link-bank/mono",
+  verifyJwtRest(),
+  idempotencyMiddleware() as any,
+  AutoDebitController.linkBankMono as unknown as express.RequestHandler
+);
+
+router.post(
+  "/loans/link-bank/monnify",
+  verifyJwtRest(),
+  idempotencyMiddleware() as any,
+  AutoDebitController.linkBankMonnify as unknown as express.RequestHandler
+);
+
+router.post(
   "/loans/validate-account",
   verifyJwtRest(),
   AutoDebitController.validateAccount as unknown as express.RequestHandler
