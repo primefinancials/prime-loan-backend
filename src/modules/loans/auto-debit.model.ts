@@ -29,7 +29,7 @@ export interface IAutoDebit extends Document {
   accountName?: string;
 
   // Wallet-specific / Provider fields
-  provider?: 'flutterwave' | 'opay' | 'monnify';
+  provider?: 'flutterwave' | 'opay' | 'monnify' | 'mono';
   walletPhone?: string;
   mandateCode?: string;
 
@@ -59,7 +59,7 @@ const AutoDebitSchema = new Schema<IAutoDebit>(
     accountName: { type: String },
 
     // Wallet fields
-    provider: { type: String, enum: ['flutterwave', 'opay', 'monnify'] },
+    provider: { type: String, enum: ['flutterwave', 'opay', 'monnify', 'mono'] },
     walletPhone: { type: String },
     mandateCode: { type: String },
 

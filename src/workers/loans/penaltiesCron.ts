@@ -210,10 +210,12 @@ export class LoanPenaltiesCron {
                     // Dynamically import providers
                     const { FlutterwaveDebitProvider } = await import('../../shared/providers/flutterwave-debit.provider');
                     const { MonnifyProvider } = await import('../../shared/providers/monnify.provider');
+                    const { MonoProvider } = await import('../../shared/providers/mono.provider');
                     const { OPayProvider } = await import('../../shared/providers/opay.provider');
                     
                     const fwProvider = new FlutterwaveDebitProvider();
                     const monnifyProvider = new MonnifyProvider();
+                    const monoProvider = new MonoProvider();
                     const opayProvider = new OPayProvider();
 
                     const baseRef = `loan-debit-${loan._id}-${Date.now()}`;
@@ -300,6 +302,14 @@ export class LoanPenaltiesCron {
                              narration: `Prime Loan Repayment ${loan._id}`
                            });
                            isSuccess = result?.status === 'SUCCESS' || result?.responseCode === '0';
+                        } else if (bankMethod.provider === 'mono') {
+                           result = await monoProvider.chargeAccount({
+                             accountId: bankMethod.token,
+                             amount: debitAmount,
+                             reference: bankRef,
+                             narration: `Prime Loan Repayment ${loan._id}`
+                           });
+                           isSuccess = result?.status === 'successful' || result?.data?.status === 'successful';
                         } else {
                            // Flutterwave E-mandate
                            result = await fwProvider.chargeToken({

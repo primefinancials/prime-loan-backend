@@ -20,10 +20,11 @@ export class FlutterwaveDebitProvider {
       logger.warn('FLUTTERWAVE_SECRET_KEY not configured');
     }
 
+    const https = require('https');
     this.axiosInstance = axios.create(
       process.env.FORWARD_PROXY_URL 
         ? { httpsAgent: new HttpsProxyAgent(process.env.FORWARD_PROXY_URL) } 
-        : {}
+        : { httpsAgent: new https.Agent({ keepAlive: true }) }
     );
   }
 
