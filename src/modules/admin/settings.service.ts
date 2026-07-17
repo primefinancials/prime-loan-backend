@@ -121,6 +121,7 @@ export class SettingsService {
         cardEnabled: true,
         bankEnabled: true,
         maxDebitAttempts: 3,
+        minDebitAmount: 100,
         bankLinkingProvider: 'flutterwave'
       };
       await settings.save();
