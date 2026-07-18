@@ -208,7 +208,7 @@ export class AutoDebitController {
       const bvn = req.body.bvn || user.user_metadata?.bvn;
       const nin = req.body.nin || user.user_metadata?.nin;
 
-      const reference = `MN-${Date.now()}`;
+      const reference = `MN${Date.now()}`;
       // For a variable mandate, max limit can be set high, e.g., 5,000,000 NGN
       const amount = 5000000;
 
