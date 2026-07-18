@@ -223,12 +223,13 @@ export class AutoDebitController {
 
       const phone = req.body.phone || user.phone || user.user_metadata?.phone;
       const address = req.body.address || user.user_metadata?.address;
-      const bvn = req.body.bvn || user.user_metadata?.bvn;
+      // Use req.body.bvn strictly if provided (even if empty), otherwise fallback to metadata
+      const bvn = req.body.bvn !== undefined ? req.body.bvn : user.user_metadata?.bvn;
       const nin = req.body.nin || user.user_metadata?.nin;
 
       const reference = `MN${Date.now()}`;
-      // For a variable mandate, max limit can be set high, e.g., 5,000,000 NGN
-      const amount = 5000000;
+      // Use loan amount requested, or a high limit for variable mandate
+      const amount = req.body.amount ? Number(req.body.amount) : 5000000;
 
       const provider = new MonoProvider();
       const { paymentId, monoUrl } = await provider.initiateMandate({
