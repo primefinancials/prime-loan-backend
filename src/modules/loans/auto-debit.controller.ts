@@ -190,8 +190,35 @@ export class AutoDebitController {
   }
 
   /**
+   * GET /api/loans/link-bank/mono/initiate
+   * Initiates a Mono Mandate and returns the payment_id to the frontend.
+   */
+  static async initiateBankMono(req: Request, res: Response, next: NextFunction) {
+    try {
+      const email = (req as any).user.email || 'user@example.com';
+      const name = (req as any).user.name || (req as any).user.first_name || 'Prime User';
+      const reference = `MN-${Date.now()}`;
+      // For a variable mandate, max limit can be set high, e.g., 5,000,000 NGN
+      const amount = 5000000;
+
+      const provider = new MonoProvider();
+      const { paymentId } = await provider.initiateMandate({
+        amount,
+        email,
+        name,
+        reference,
+        description: 'Prime Loan Auto-Debit Mandate'
+      });
+
+      return res.status(200).json({ status: 'success', data: { paymentId } });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * POST /api/loans/link-bank/mono
-   * Exchanges Mono code for account ID and saves it.
+   * Saves the Mono mandate ID after frontend widget completes.
    */
   static async linkBankMono(req: Request, res: Response, next: NextFunction) {
     try {
@@ -199,12 +226,10 @@ export class AutoDebitController {
       const userId = (req as any).user._id || (req as any).user.id;
       const email = (req as any).user.email || 'user@example.com';
 
+      // For DirectPay, frontend passes the mandate `code` (which is the mandate/payment ID) upon success
       if (!code) {
-        return res.status(400).json({ status: 'failed', message: 'Auth code is required' });
+        return res.status(400).json({ status: 'failed', message: 'Mandate code/ID is required' });
       }
-
-      const provider = new MonoProvider();
-      const accountData = await provider.exchangeToken(code);
 
       // Revoke old bank mandates
       await AutoDebit.updateMany(
@@ -216,7 +241,7 @@ export class AutoDebitController {
          userId: String(userId),
          type: "bank",
          provider: "mono",
-         token: accountData.id, // Mono account ID
+         token: code, // Mono Mandate ID from Connect widget
          email: email,
          bankName: bankName || 'Bank',
          bankCode: bankCode || '000',

@@ -26,45 +26,75 @@ export class MonoProvider {
   }
 
   /**
-   * Exchange Auth Code for Account ID
-   * Called after user successfully links account via Mono Connect widget.
+   * Initiate Mandate
+   * Calls Mono DirectPay v2 endpoint to initiate a mandate and returns payment_id.
    */
-  async exchangeToken(authCode: string): Promise<{ id: string }> {
+  async initiateMandate(params: {
+    amount: number; // Max amount in Naira
+    email: string;
+    name: string;
+    reference: string;
+    description: string;
+  }): Promise<{ paymentId: string }> {
     try {
+      const today = new Date();
+      const startDate = today.toISOString().split('T')[0]; // YYYY-MM-DD
+      const nextYear = new Date();
+      nextYear.setFullYear(today.getFullYear() + 5); // 5 years validity
+      const endDate = nextYear.toISOString().split('T')[0];
+
+      const payload = {
+        amount: params.amount * 100, // Converting Naira to Kobo
+        type: 'recurring-debit',
+        method: 'mandate',
+        mandate_type: 'emandate',
+        debit_type: 'variable',
+        description: params.description,
+        reference: params.reference,
+        start_date: startDate,
+        end_date: endDate,
+        customer: {
+          email: params.email,
+          name: params.name || 'Prime User'
+        }
+      };
+
       const response = await axios.post(
-        `${this.baseUrl}/account/auth`,
-        { code: authCode },
+        `${this.baseUrl}/v2/payments/initiate`,
+        payload,
         { headers: this.getHeaders(), httpsAgent: this.httpsAgent }
       );
 
-      return { id: response.data.id };
+      // Extract the ID from the URL or data depending on response structure.
+      // Typical response: { data: { id: "payment_id", mono_url: "..." } }
+      return { paymentId: response.data?.data?.id || response.data?.id };
     } catch (error: any) {
-      logger.error({ error: error.response?.data || error.message }, 'Mono auth token exchange failed');
-      throw new Error(error.response?.data?.message || 'Failed to exchange Mono token');
+      logger.error({ error: error.response?.data || error.message }, 'Mono initiate mandate failed');
+      throw new Error(error.response?.data?.message || 'Failed to initiate Mono mandate');
     }
   }
 
   /**
    * Direct Debit Account
-   * Uses Mono DirectPay/Debit API to charge the user's account
+   * Uses Mono v3 Mandates Debit API to charge the user's account
    */
   async chargeAccount(params: {
-    accountId: string;
-    amount: number; // In Kobo usually, but check Mono specs. Assuming standard conversion if needed.
+    accountId: string; // Now acts as the mandate ID
+    amount: number;
     reference: string;
     narration: string;
   }): Promise<any> {
     try {
-      // Direct debit endpoint: /accounts/:id/direct-debit
+      // Direct debit endpoint: /v3/payments/mandates/debit
       const payload = {
         amount: params.amount * 100, // Converting Naira to Kobo
-        type: 'direct-debit',
+        mandate_id: params.accountId,
         description: params.narration,
         reference: params.reference,
       };
 
       const response = await axios.post(
-        `${this.baseUrl}/accounts/${params.accountId}/direct-debit`,
+        `${this.baseUrl}/v3/payments/mandates/debit`,
         payload,
         { headers: this.getHeaders(), httpsAgent: this.httpsAgent }
       );
