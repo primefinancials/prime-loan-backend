@@ -199,7 +199,25 @@ export class AutoDebitController {
       
       const email = req.body.email || user.email || 'user@example.com';
       let name = user.name || user.first_name || 'Prime User';
-      if (req.body.first_name) {
+      
+      let profileName = name;
+      if (user.first_name || user.last_name) {
+          profileName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+      } else if (user.user_metadata?.first_name || user.user_metadata?.last_name) {
+          profileName = `${user.user_metadata.first_name || ''} ${user.user_metadata.last_name || ''}`.trim();
+      }
+
+      if (req.body.accountName) {
+        name = req.body.accountName;
+        if (process.env.NODE_ENV === 'production') {
+           const profileWords = profileName.toLowerCase().split(/\s+/).filter(Boolean);
+           const inputNameLower = name.toLowerCase();
+           const isValid = profileWords.every(word => inputNameLower.includes(word));
+           if (!isValid && profileWords.length > 0) {
+              return res.status(400).json({ status: 'failed', message: `The account name must contain your registered profile name (${profileName}).` });
+           }
+        }
+      } else if (req.body.first_name) {
         name = `${req.body.first_name} ${req.body.last_name || ''}`.trim();
       }
 

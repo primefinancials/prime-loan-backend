@@ -64,7 +64,7 @@ export class MonoProvider {
         reference: params.reference,
         start_date: startDate,
         end_date: endDate,
-        redirect_url: 'https://prime-loan-web-v2-staging.vercel.app/loans/new?step=bank-linked',
+        redirect_url: `${process.env.FRONTEND_URL || 'https://prime-loan-web-v2-staging.vercel.app'}/loans/new?step=bank-linked`,
         customer: {
           email: params.email,
           name: params.name || 'Prime User',
