@@ -213,7 +213,7 @@ export class AutoDebitController {
       const amount = 5000000;
 
       const provider = new MonoProvider();
-      const { paymentId } = await provider.initiateMandate({
+      const { paymentId, monoUrl } = await provider.initiateMandate({
         amount,
         email,
         name,
@@ -225,7 +225,7 @@ export class AutoDebitController {
         description: 'Prime Loan Auto-Debit Mandate'
       });
 
-      return res.status(200).json({ status: 'success', data: { paymentId } });
+      return res.status(200).json({ status: 'success', data: { paymentId, monoUrl } });
     } catch (error) {
       next(error);
     }

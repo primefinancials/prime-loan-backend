@@ -64,6 +64,7 @@ export class MonoProvider {
         reference: params.reference,
         start_date: startDate,
         end_date: endDate,
+        redirect_url: 'https://prime-loan-web-v2-staging.vercel.app/loans/new?step=bank-linked',
         customer: {
           email: params.email,
           name: params.name || 'Prime User',
@@ -82,7 +83,8 @@ export class MonoProvider {
       // Extract the ID from the URL or data depending on response structure.
       // Typical response: { data: { mandate_id: "...", mono_url: "..." } }
       const paymentId = response.data?.data?.id || response.data?.id || response.data?.data?.mandate_id || response.data?.data?.payment_id || response.data?.mandate_id || response.data?.payment_id;
-      return { paymentId };
+      const monoUrl = response.data?.data?.mono_url || response.data?.mono_url;
+      return { paymentId, monoUrl };
     } catch (error: any) {
       logger.error({ error: error.response?.data || error.message }, 'Mono initiate mandate failed');
       throw new Error(error.response?.data?.message || 'Failed to initiate Mono mandate');
