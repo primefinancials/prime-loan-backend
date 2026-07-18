@@ -33,6 +33,10 @@ export class MonoProvider {
     amount: number; // Max amount in Naira
     email: string;
     name: string;
+    phone?: string;
+    address?: string;
+    bvn?: string;
+    nin?: string;
     reference: string;
     description: string;
   }): Promise<{ paymentId: string }> {
@@ -42,6 +46,13 @@ export class MonoProvider {
       const nextYear = new Date();
       nextYear.setFullYear(today.getFullYear() + 5); // 5 years validity
       const endDate = nextYear.toISOString().split('T')[0];
+
+      let identity;
+      if (params.bvn) {
+        identity = { type: 'bvn', number: params.bvn };
+      } else if (params.nin) {
+        identity = { type: 'nin', number: params.nin };
+      }
 
       const payload = {
         amount: params.amount * 100, // Converting Naira to Kobo
@@ -55,7 +66,10 @@ export class MonoProvider {
         end_date: endDate,
         customer: {
           email: params.email,
-          name: params.name || 'Prime User'
+          name: params.name || 'Prime User',
+          phone: params.phone || '08000000000',
+          address: params.address || 'Lagos, Nigeria',
+          ...(identity ? { identity } : {})
         }
       };
 

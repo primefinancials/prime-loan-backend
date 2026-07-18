@@ -195,8 +195,14 @@ export class AutoDebitController {
    */
   static async initiateBankMono(req: Request, res: Response, next: NextFunction) {
     try {
-      const email = (req as any).user.email || 'user@example.com';
-      const name = (req as any).user.name || (req as any).user.first_name || 'Prime User';
+      const user = (req as any).user;
+      const email = user.email || 'user@example.com';
+      const name = user.name || user.first_name || 'Prime User';
+      const phone = user.phone || user.user_metadata?.phone;
+      const address = user.user_metadata?.address;
+      const bvn = user.user_metadata?.bvn;
+      const nin = user.user_metadata?.nin;
+
       const reference = `MN-${Date.now()}`;
       // For a variable mandate, max limit can be set high, e.g., 5,000,000 NGN
       const amount = 5000000;
@@ -206,6 +212,10 @@ export class AutoDebitController {
         amount,
         email,
         name,
+        phone,
+        address,
+        bvn,
+        nin,
         reference,
         description: 'Prime Loan Auto-Debit Mandate'
       });
