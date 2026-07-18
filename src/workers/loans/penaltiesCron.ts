@@ -335,6 +335,7 @@ export class LoanPenaltiesCron {
                     }
 
                     // ── 3c. Fintech Wallet attempt (OPay / Monnify)
+                    // Note: Fintech wallet is optional, so `walletMethod` may be undefined.
                     if (!wasSuccessful && walletMethod) {
                       const walletRef = `${baseRef}-wlt`;
                       try {
