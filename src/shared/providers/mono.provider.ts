@@ -39,7 +39,7 @@ export class MonoProvider {
     nin?: string;
     reference: string;
     description: string;
-  }): Promise<{ paymentId: string }> {
+  }): Promise<{ paymentId: string; monoUrl?: string }> {
     try {
       const today = new Date();
       const startDate = today.toISOString().split('T')[0]; // YYYY-MM-DD
