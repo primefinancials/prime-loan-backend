@@ -212,7 +212,7 @@ export class AutoDebitController {
         if (process.env.NODE_ENV === 'production') {
            const profileWords = profileName.toLowerCase().split(/\s+/).filter(Boolean);
            const inputNameLower = name.toLowerCase();
-           const isValid = profileWords.every(word => inputNameLower.includes(word));
+           const isValid = profileWords.every((word: string) => inputNameLower.includes(word));
            if (!isValid && profileWords.length > 0) {
               return res.status(400).json({ status: 'failed', message: `The account name must contain your registered profile name (${profileName}).` });
            }
