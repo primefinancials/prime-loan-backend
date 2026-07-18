@@ -196,12 +196,17 @@ export class AutoDebitController {
   static async initiateBankMono(req: Request, res: Response, next: NextFunction) {
     try {
       const user = (req as any).user;
-      const email = user.email || 'user@example.com';
-      const name = user.name || user.first_name || 'Prime User';
-      const phone = user.phone || user.user_metadata?.phone;
-      const address = user.user_metadata?.address;
-      const bvn = user.user_metadata?.bvn;
-      const nin = user.user_metadata?.nin;
+      
+      const email = req.body.email || user.email || 'user@example.com';
+      let name = user.name || user.first_name || 'Prime User';
+      if (req.body.first_name) {
+        name = `${req.body.first_name} ${req.body.last_name || ''}`.trim();
+      }
+
+      const phone = req.body.phone || user.phone || user.user_metadata?.phone;
+      const address = req.body.address || user.user_metadata?.address;
+      const bvn = req.body.bvn || user.user_metadata?.bvn;
+      const nin = req.body.nin || user.user_metadata?.nin;
 
       const reference = `MN-${Date.now()}`;
       // For a variable mandate, max limit can be set high, e.g., 5,000,000 NGN
