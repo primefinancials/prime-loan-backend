@@ -317,6 +317,12 @@ router.post(
   AutoDebitController.linkBankAuthorize as unknown as express.RequestHandler
 );
 
+router.get(
+  "/loans/link-bank/mono/initiate",
+  verifyJwtRest(),
+  AutoDebitController.initiateBankMono as unknown as express.RequestHandler
+);
+
 router.post(
   "/loans/link-bank/mono",
   verifyJwtRest(),
