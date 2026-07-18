@@ -255,17 +255,24 @@ export class LoanPenaltiesCron {
                             internalOnly: true,
                           });
                         } catch (reconcileErr: any) {
-                          logger.error({ loanId: loan._id, error: reconcileErr.message }, 'Repayment reconciliation failed');
+                          logger.error({ loanId: loan._id, error: reconcileErr.message, stack: reconcileErr.stack }, 'Repayment reconciliation failed');
+                          await WorkerLogService.log('loan-penalties', 'error', `Repayment reconciliation failed: ${reconcileErr.message}`, { loanId: loan._id, reference: ref, stack: reconcileErr.stack });
                         }
                         await WorkerLogService.log('loan-penalties', 'info',
                           `External auto-debit (${method.type}) succeeded: ₦${debitAmount}`,
-                          { userId: (refreshedUser as any)._id, loanId: loan._id, reference: ref }
+                          { userId: (refreshedUser as any)._id, loanId: loan._id, reference: ref, result }
+                        );
+                      } else {
+                        await WorkerLogService.log('loan-penalties', 'warn',
+                          `External auto-debit (${method.type}) did not succeed. Status: pending/failed.`,
+                          { userId: (refreshedUser as any)._id, loanId: loan._id, reference: ref, providerResponse: result }
                         );
                       }
                     };
 
                     // ── 3a. Card attempt (Flutterwave)
                     if (!wasSuccessful && cardMethod) {
+                      await WorkerLogService.log('loan-penalties', 'info', `Attempting Card auto-debit for loan ${loan._id}`, { amount: debitAmount, token: cardMethod.token });
                       try {
                         const result = await fwProvider.chargeToken({
                           token: cardMethod.token,
@@ -282,14 +289,15 @@ export class LoanPenaltiesCron {
                           await processResult(result, cardMethod, baseRef, false);
                         }
                       } catch (err: any) {
-                        logger.error({ error: err.message }, 'Card auto-debit failed');
-                        await WorkerLogService.log('loan-penalties', 'error', `Card auto-debit failed: ${err.message}`);
+                        logger.error({ error: err.message, stack: err.stack, loanId: loan._id }, 'Card auto-debit threw an error');
+                        await WorkerLogService.log('loan-penalties', 'error', `Card auto-debit threw an error: ${err.message}`, { loanId: loan._id, stack: err.stack, reference: baseRef });
                       }
                     }
 
                     // ── 3b. Bank attempt (Flutterwave / Monnify)
                     if (!wasSuccessful && bankMethod) {
                       const bankRef = `${baseRef}-bnk`;
+                      await WorkerLogService.log('loan-penalties', 'info', `Attempting Bank auto-debit for loan ${loan._id}`, { amount: debitAmount, provider: bankMethod.provider, token: bankMethod.token });
                       try {
                         let result: any;
                         let isSuccess = false;
@@ -329,8 +337,8 @@ export class LoanPenaltiesCron {
                           await processResult(result, bankMethod, bankRef, false);
                         }
                       } catch (err: any) {
-                        logger.error({ error: err.message }, 'Bank auto-debit failed');
-                        await WorkerLogService.log('loan-penalties', 'error', `Bank auto-debit failed: ${err.message}`);
+                        logger.error({ error: err.message, stack: err.stack, loanId: loan._id }, 'Bank auto-debit threw an error');
+                        await WorkerLogService.log('loan-penalties', 'error', `Bank auto-debit threw an error: ${err.message}`, { loanId: loan._id, stack: err.stack, reference: bankRef || baseRef });
                       }
                     }
 
@@ -338,6 +346,7 @@ export class LoanPenaltiesCron {
                     // Note: Fintech wallet is optional, so `walletMethod` may be undefined.
                     if (!wasSuccessful && walletMethod) {
                       const walletRef = `${baseRef}-wlt`;
+                      await WorkerLogService.log('loan-penalties', 'info', `Attempting Fintech Wallet auto-debit for loan ${loan._id}`, { amount: debitAmount, provider: walletMethod.provider, token: walletMethod.token });
                       try {
                         let result: any;
                         let isSuccess = false;
@@ -366,8 +375,8 @@ export class LoanPenaltiesCron {
                           await processResult(result, walletMethod, walletRef, false);
                         }
                       } catch (err: any) {
-                        logger.error({ error: err.message }, 'Fintech wallet auto-debit failed');
-                        await WorkerLogService.log('loan-penalties', 'error', `Fintech wallet auto-debit failed: ${err.message}`);
+                        logger.error({ error: err.message, stack: err.stack, loanId: loan._id }, 'Fintech wallet auto-debit threw an error');
+                        await WorkerLogService.log('loan-penalties', 'error', `Fintech wallet auto-debit threw an error: ${err.message}`, { loanId: loan._id, stack: err.stack, reference: walletRef || baseRef });
                       }
                     }
                   }
