@@ -102,16 +102,15 @@ export class MonoProvider {
     narration: string;
   }): Promise<any> {
     try {
-      // Direct debit endpoint: /v3/payments/mandates/debit
+      // Direct debit endpoint: /v3/payments/mandates/{mandate_id}/debit
       const payload = {
         amount: params.amount * 100, // Converting Naira to Kobo
-        mandate_id: params.accountId,
-        description: params.narration,
-        reference: params.reference,
+        narration: params.narration,
+        reference: params.reference.replace(/[^a-zA-Z0-9]/g, ''),
       };
 
       const response = await axios.post(
-        `${this.baseUrl}/v3/payments/mandates/debit`,
+        `${this.baseUrl}/v3/payments/mandates/${params.accountId}/debit`,
         payload,
         { headers: this.getHeaders(), httpsAgent: this.httpsAgent }
       );
@@ -119,7 +118,9 @@ export class MonoProvider {
       return response.data;
     } catch (error: any) {
       logger.error({ error: error.response?.data || error.message, reference: params.reference }, 'Mono chargeAccount failed');
-      throw new Error(error.response?.data?.message || 'Mono account charge failed');
+      // Throw a more detailed error string so the cron catches and logs the actual reason
+      const details = error.response?.data?.message || JSON.stringify(error.response?.data?.errors) || 'Mono account charge failed';
+      throw new Error(details);
     }
   }
 }
