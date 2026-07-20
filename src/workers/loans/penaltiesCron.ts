@@ -179,12 +179,7 @@ export class LoanPenaltiesCron {
                   const minDebit = settings.autoDebit?.minDebitAmount || 100;
 
                   if (debitAmount >= minDebit) {
-                    // Enforce maxDebitAttempts bug fix
-                    const maxAttempts = settings.autoDebit?.maxDebitAttempts || 4;
-                    const startOfDay = new Date(todayISO);
-                    const cardAttempts = await AutoDebitLog.countDocuments({ loanId: String(loan._id), type: 'card', createdAt: { $gte: startOfDay } });
-                    const bankAttempts = await AutoDebitLog.countDocuments({ loanId: String(loan._id), type: 'bank', createdAt: { $gte: startOfDay } });
-                    const walletAttempts = await AutoDebitLog.countDocuments({ loanId: String(loan._id), type: 'wallet', createdAt: { $gte: startOfDay } });
+
 
                     // Fetch all active payment methods for this user upfront
                     const linkedMethods = await AutoDebit.find({
@@ -212,7 +207,7 @@ export class LoanPenaltiesCron {
                     const monoProvider = new MonoProvider();
                     const opayProvider = new OPayProvider();
 
-                    const baseRef = `loanDebit${loan._id}${Date.now()}`;
+                    const baseRef = `LD${Date.now()}${String(loan._id).slice(-4)}`;
                     let debitResult: any = null;
                     let activeMethod: any = null;
                     let activeRef = baseRef;
@@ -265,7 +260,7 @@ export class LoanPenaltiesCron {
                     };
 
                     // ── 3a. Card attempt (Flutterwave)
-                    if (!wasSuccessful && cardMethod && cardAttempts < maxAttempts) {
+                    if (!wasSuccessful && cardMethod) {
                       await WorkerLogService.log('loan-penalties', 'info', `Attempting Card auto-debit for loan ${loan._id}`, { amount: debitAmount, token: cardMethod.token });
                       try {
                         const result = await fwProvider.chargeToken({
@@ -291,7 +286,7 @@ export class LoanPenaltiesCron {
                     }
 
                     // ── 3b. Bank attempt (Flutterwave / Monnify)
-                    if (!wasSuccessful && bankMethod && bankAttempts < maxAttempts) {
+                    if (!wasSuccessful && bankMethod) {
                       const bankRef = `${baseRef}bnk`;
                       await WorkerLogService.log('loan-penalties', 'info', `Attempting Bank auto-debit for loan ${loan._id}`, { amount: debitAmount, provider: bankMethod.provider, token: bankMethod.token });
                       try {
@@ -336,7 +331,7 @@ export class LoanPenaltiesCron {
 
                     // ── 3c. Fintech Wallet attempt (OPay / Monnify)
                     // Note: Fintech wallet is optional, so `walletMethod` may be undefined.
-                    if (!wasSuccessful && walletMethod && walletAttempts < maxAttempts) {
+                    if (!wasSuccessful && walletMethod) {
                       const walletRef = `${baseRef}wlt`;
                       await WorkerLogService.log('loan-penalties', 'info', `Attempting Fintech Wallet auto-debit for loan ${loan._id}`, { amount: debitAmount, provider: walletMethod.provider, token: walletMethod.token });
                       try {
@@ -436,10 +431,12 @@ export class LoanPenaltiesCron {
         }
       }
 
-      await WorkerLogService.log('loan-penalties', 'info',
-        `Finished cycle. Penalised ${penalizedUsers.length} users, wallet-deducted ${deductedUsers.length} users.`,
-        { penalizedUsers, deductedUsers }
-      );
+      if (penalizedUsers.length > 0 || deductedUsers.length > 0) {
+        await WorkerLogService.log('loan-penalties', 'info',
+          `Finished cycle. Penalised ${penalizedUsers.length} users, wallet-deducted ${deductedUsers.length} users.`,
+          { penalizedUsers, deductedUsers }
+        );
+      }
     } catch (err: any) {
       logger.error({ error: err.message }, 'Fatal error in loan penalties cron');
       await WorkerLogService.log('loan-penalties', 'error',
