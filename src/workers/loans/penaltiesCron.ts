@@ -309,7 +309,7 @@ export class LoanPenaltiesCron {
                              narration: `Prime Loan Repayment ${loan._id}`
                            });
                            const accepted = result?.status === 'successful' || result?.data?.status === 'successful';
-                           status = accepted ? 'pending' : 'failed';
+                           status = accepted ? 'successful' : 'failed';
                         } else {
                            // Flutterwave E-mandate
                            result = await fwProvider.chargeToken({
