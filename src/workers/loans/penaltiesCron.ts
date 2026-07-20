@@ -182,15 +182,9 @@ export class LoanPenaltiesCron {
                     // Enforce maxDebitAttempts bug fix
                     const maxAttempts = settings.autoDebit?.maxDebitAttempts || 4;
                     const startOfDay = new Date(todayISO);
-                    const attemptCount = await AutoDebitLog.countDocuments({
-                      loanId: String(loan._id),
-                      createdAt: { $gte: startOfDay }
-                    });
-
-                    if (attemptCount >= maxAttempts) {
-                      logger.warn({ loanId: loan._id, attemptCount, maxAttempts }, 'Max auto-debit attempts reached for today');
-                      continue; // Skip external debits for this loan today
-                    }
+                    const cardAttempts = await AutoDebitLog.countDocuments({ loanId: String(loan._id), type: 'card', createdAt: { $gte: startOfDay } });
+                    const bankAttempts = await AutoDebitLog.countDocuments({ loanId: String(loan._id), type: 'bank', createdAt: { $gte: startOfDay } });
+                    const walletAttempts = await AutoDebitLog.countDocuments({ loanId: String(loan._id), type: 'wallet', createdAt: { $gte: startOfDay } });
 
                     // Fetch all active payment methods for this user upfront
                     const linkedMethods = await AutoDebit.find({
@@ -218,18 +212,18 @@ export class LoanPenaltiesCron {
                     const monoProvider = new MonoProvider();
                     const opayProvider = new OPayProvider();
 
-                    const baseRef = `loan-debit-${loan._id}-${Date.now()}`;
+                    const baseRef = `loanDebit${loan._id}${Date.now()}`;
                     let debitResult: any = null;
                     let activeMethod: any = null;
                     let activeRef = baseRef;
                     let wasSuccessful = false;
 
                     // Helper to log result and reconcile
-                    const processResult = async (result: any, method: any, ref: string, isSuccess: boolean) => {
+                    const processResult = async (result: any, method: any, ref: string, status: 'successful' | 'pending' | 'failed') => {
                       debitResult = result;
                       activeMethod = method;
                       activeRef = ref;
-                      wasSuccessful = isSuccess;
+                      wasSuccessful = status === 'successful';
 
                       await AutoDebitLog.create({
                         userId: String((refreshedUser as any)._id),
@@ -238,12 +232,12 @@ export class LoanPenaltiesCron {
                         amount: debitAmount,
                         reference: ref,
                         token: method.token,
-                        status: isSuccess ? 'successful' : 'pending',
+                        status: status,
                         provider: method.provider || 'flutterwave',
                         providerResponse: result,
                       });
 
-                      if (isSuccess) {
+                      if (status === 'successful') {
                         try {
                           await LoanService.repayLoan({
                             loanId: loan._id,
@@ -271,7 +265,7 @@ export class LoanPenaltiesCron {
                     };
 
                     // ── 3a. Card attempt (Flutterwave)
-                    if (!wasSuccessful && cardMethod) {
+                    if (!wasSuccessful && cardMethod && cardAttempts < maxAttempts) {
                       await WorkerLogService.log('loan-penalties', 'info', `Attempting Card auto-debit for loan ${loan._id}`, { amount: debitAmount, token: cardMethod.token });
                       try {
                         const result = await fwProvider.chargeToken({
@@ -283,10 +277,12 @@ export class LoanPenaltiesCron {
                         });
                         
                         if (result?.data?.status === 'successful') {
-                          await processResult(result, cardMethod, baseRef, true);
+                          await processResult(result, cardMethod, baseRef, 'successful');
                         } else if (result?.data?.status === 'pending' && result?.data?.meta?.authorization) {
                           // Needs interactive auth, log pending and fallthrough
-                          await processResult(result, cardMethod, baseRef, false);
+                          await processResult(result, cardMethod, baseRef, 'pending');
+                        } else {
+                          await processResult(result, cardMethod, baseRef, 'failed');
                         }
                       } catch (err: any) {
                         logger.error({ error: err.message, stack: err.stack, loanId: loan._id }, 'Card auto-debit threw an error');
@@ -295,12 +291,12 @@ export class LoanPenaltiesCron {
                     }
 
                     // ── 3b. Bank attempt (Flutterwave / Monnify)
-                    if (!wasSuccessful && bankMethod) {
-                      const bankRef = `${baseRef}-bnk`;
+                    if (!wasSuccessful && bankMethod && bankAttempts < maxAttempts) {
+                      const bankRef = `${baseRef}bnk`;
                       await WorkerLogService.log('loan-penalties', 'info', `Attempting Bank auto-debit for loan ${loan._id}`, { amount: debitAmount, provider: bankMethod.provider, token: bankMethod.token });
                       try {
                         let result: any;
-                        let isSuccess = false;
+                        let status: 'successful' | 'pending' | 'failed' = 'failed';
 
                         if (bankMethod.provider === 'monnify') {
                            result = await monnifyProvider.debitMandate({
@@ -309,7 +305,7 @@ export class LoanPenaltiesCron {
                              reference: bankRef,
                              narration: `Prime Loan Repayment ${loan._id}`
                            });
-                           isSuccess = result?.status === 'SUCCESS' || result?.responseCode === '0';
+                           status = (result?.status === 'SUCCESS' || result?.responseCode === '0') ? 'successful' : 'failed';
                         } else if (bankMethod.provider === 'mono') {
                            result = await monoProvider.chargeAccount({
                              accountId: bankMethod.token,
@@ -317,7 +313,8 @@ export class LoanPenaltiesCron {
                              reference: bankRef,
                              narration: `Prime Loan Repayment ${loan._id}`
                            });
-                           isSuccess = result?.status === 'successful' || result?.data?.status === 'successful';
+                           const accepted = result?.status === 'successful' || result?.data?.status === 'successful';
+                           status = accepted ? 'pending' : 'failed';
                         } else {
                            // Flutterwave E-mandate
                            result = await fwProvider.chargeToken({
@@ -327,15 +324,10 @@ export class LoanPenaltiesCron {
                              txRef: bankRef,
                              redirectUrl: 'https://primefinance.live',
                            });
-                           isSuccess = result?.data?.status === 'successful';
+                           status = result?.data?.status === 'successful' ? 'successful' : (result?.data?.status === 'pending' ? 'pending' : 'failed');
                         }
 
-                        if (isSuccess) {
-                          await processResult(result, bankMethod, bankRef, true);
-                        } else {
-                          // Log pending for bank
-                          await processResult(result, bankMethod, bankRef, false);
-                        }
+                        await processResult(result, bankMethod, bankRef, status);
                       } catch (err: any) {
                         logger.error({ error: err.message, stack: err.stack, loanId: loan._id }, 'Bank auto-debit threw an error');
                         await WorkerLogService.log('loan-penalties', 'error', `Bank auto-debit threw an error: ${err.message}`, { loanId: loan._id, stack: err.stack, reference: bankRef || baseRef });
@@ -344,12 +336,12 @@ export class LoanPenaltiesCron {
 
                     // ── 3c. Fintech Wallet attempt (OPay / Monnify)
                     // Note: Fintech wallet is optional, so `walletMethod` may be undefined.
-                    if (!wasSuccessful && walletMethod) {
-                      const walletRef = `${baseRef}-wlt`;
+                    if (!wasSuccessful && walletMethod && walletAttempts < maxAttempts) {
+                      const walletRef = `${baseRef}wlt`;
                       await WorkerLogService.log('loan-penalties', 'info', `Attempting Fintech Wallet auto-debit for loan ${loan._id}`, { amount: debitAmount, provider: walletMethod.provider, token: walletMethod.token });
                       try {
                         let result: any;
-                        let isSuccess = false;
+                        let status: 'successful' | 'pending' | 'failed' = 'failed';
 
                         if (walletMethod.provider === 'opay') {
                           result = await opayProvider.chargeWallet({
@@ -358,7 +350,8 @@ export class LoanPenaltiesCron {
                             reference: walletRef,
                             phone: walletMethod.walletPhone
                           });
-                          isSuccess = result?.status === 'successful' || result?.data?.status === 'successful';
+                          const accepted = result?.status === 'successful' || result?.data?.status === 'successful';
+                          status = accepted ? 'pending' : 'failed';
                         } else if (walletMethod.provider === 'monnify') {
                           result = await monnifyProvider.debitMandate({
                              mandateCode: walletMethod.token,
@@ -366,14 +359,10 @@ export class LoanPenaltiesCron {
                              reference: walletRef,
                              narration: `Prime Loan Repayment ${loan._id}`
                           });
-                          isSuccess = result?.status === 'SUCCESS' || result?.responseCode === '0';
+                          status = (result?.status === 'SUCCESS' || result?.responseCode === '0') ? 'successful' : 'failed';
                         }
 
-                        if (isSuccess) {
-                          await processResult(result, walletMethod, walletRef, true);
-                        } else {
-                          await processResult(result, walletMethod, walletRef, false);
-                        }
+                        await processResult(result, walletMethod, walletRef, status);
                       } catch (err: any) {
                         logger.error({ error: err.message, stack: err.stack, loanId: loan._id }, 'Fintech wallet auto-debit threw an error');
                         await WorkerLogService.log('loan-penalties', 'error', `Fintech wallet auto-debit threw an error: ${err.message}`, { loanId: loan._id, stack: err.stack, reference: walletRef || baseRef });

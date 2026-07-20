@@ -106,7 +106,7 @@ export class MonoProvider {
       const payload = {
         amount: params.amount * 100, // Converting Naira to Kobo
         narration: params.narration,
-        reference: params.reference.replace(/[^a-zA-Z0-9]/g, ''),
+        reference: params.reference,
       };
 
       const response = await axios.post(

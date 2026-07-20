@@ -30,4 +30,12 @@ router.post(
   FintechWalletController.handleMonnifyWebhook
 );
 
+/* ---------- Mono Webhooks ---------- */
+import { MonoWebhookController } from '../modules/webhooks/mono-webhook.controller';
+router.post(
+  '/mono',
+  MonoWebhookController.verifySignature,
+  MonoWebhookController.handleWebhook
+);
+
 export default router;

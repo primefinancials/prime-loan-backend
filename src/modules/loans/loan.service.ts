@@ -184,7 +184,7 @@ export class LoanService {
     const headers = {
       accept: "application/json",
       "content-type": "application/json",
-      "mono-sec-key": process.env.MONO_SEC_KEY || "live_sk_axio44pdonk6lb6rdhxa"
+      "mono-sec-key": process.env.MONO_SECRET_KEY || "live_sk_axio44pdonk6lb6rdhxa"
     };
     const options: AxiosRequestConfig = {
       url,

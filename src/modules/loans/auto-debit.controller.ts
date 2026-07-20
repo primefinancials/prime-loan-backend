@@ -280,7 +280,7 @@ export class AutoDebitController {
          bankName: bankName || 'Bank',
          bankCode: bankCode || '000',
          accountNumber: accountNumber || '0000000000',
-         status: "active",
+         status: "pending",
       });
 
       return res.status(201).json({

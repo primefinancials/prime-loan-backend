@@ -24,7 +24,7 @@ const AutoDebitLogSchema = new Schema<IAutoDebitLog>(
   {
     userId: { type: String, required: true, index: true },
     loanId: { type: String },
-    type: { type: String, enum: ['card', 'bank'], required: true },
+    type: { type: String, enum: ['card', 'bank', 'wallet'], required: true },
     amount: { type: Number, required: true },
     reference: { type: String, required: true, unique: true },
     token: { type: String, required: true },
