@@ -531,6 +531,86 @@ export class LoanService {
 
 
   /* ---------------------
+   * Reverse Repayment
+   * - Used when a webhook indicates an optimistically accepted debit actually failed
+   * - Restores loan outstanding balance
+   * - Reverses ledger entry
+   * --------------------- */
+  static async reverseRepayment(params: { loanId: string; userId: string; amount: number; reference: string }) {
+    const session = await DatabaseService.startSession();
+    try {
+      const result = await DatabaseService.withTransaction(session, async () => {
+        const loan = await Loan.findById(params.loanId);
+        if (!loan) throw new NotFoundError("Loan not found");
+
+        const newOutstanding = Number(loan.outstanding) + Number(params.amount);
+        
+        loan.outstanding = newOutstanding;
+        if (loan.loan_payment_status === 'complete') {
+          loan.loan_payment_status = 'in-progress';
+        }
+
+        const now = new Date();
+        loan.repayment_history = [...(loan.repayment_history || []), {
+          amount: -Number(params.amount),
+          outstanding: newOutstanding,
+          action: "reversal",
+          date: now.toISOString()
+        }];
+
+        await loan.save({ session });
+
+        const traceId = UuidService.generateTraceId();
+        const transferRef = `reversal-${params.reference}`;
+
+        const internalTransfer = new Transfer({
+          userId: String(params.userId),
+          traceId,
+          fromAccount: "loan_repayment",
+          toAccount: "bank_account",
+          amount: Number(params.amount),
+          transferType: "inter",
+          status: "COMPLETED",
+          reference: transferRef,
+          remark: `Reversal of failed external repayment ${params.reference}`,
+          processedAt: now,
+          idempotencyKey: `reversal-${params.reference}`
+        });
+
+        await internalTransfer.save({ session });
+
+        await LedgerService.createDoubleEntry(
+          traceId,
+          "loan_repayment",
+          `user_wallet:${params.userId}`,
+          Number(params.amount),
+          "loan",
+          {
+            userId: params.userId,
+            subtype: "reversal",
+            idempotencyKey: `reversal-${params.reference}`,
+            session
+          }
+        );
+
+        logger.info({
+          loanId: loan._id,
+          userId: params.userId,
+          amount: params.amount,
+          newOutstanding: loan.outstanding,
+          traceId,
+          transferRef
+        }, "Loan repayment reversed successfully");
+
+        return { loan, trxnRes: internalTransfer };
+      });
+      return result;
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  /* ---------------------
    * Repay loan
    * - ledger-first: initiate internal transfer record (user -> platform)
    * - call provider

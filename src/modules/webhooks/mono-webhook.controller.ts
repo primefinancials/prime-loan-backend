@@ -78,11 +78,29 @@ export class MonoWebhookController {
         case 'events.mandates.debit.failed': {
           const reference = event.data?.reference;
           if (reference) {
-            await AutoDebitLog.updateMany(
-              { reference },
-              { $set: { status: 'failed', providerResponse: event.data } }
-            );
-            logger.info({ reference }, 'Mono debit failed updated');
+            const log = await AutoDebitLog.findOne({ reference });
+            if (log) {
+              const wasOptimisticSuccess = log.status === 'successful';
+              log.status = 'failed';
+              log.providerResponse = event.data;
+              await log.save();
+
+              if (wasOptimisticSuccess) {
+                try {
+                  await LoanService.reverseRepayment({
+                    loanId: log.loanId as string,
+                    userId: log.userId as string,
+                    amount: log.amount,
+                    reference
+                  });
+                  logger.info({ reference }, 'Mono debit failed, optimistic repayment reversed successfully');
+                } catch (err: any) {
+                  logger.error({ reference, error: err.message }, 'Mono webhook reversal failed');
+                }
+              } else {
+                logger.info({ reference }, 'Mono debit failed updated');
+              }
+            }
           }
           break;
         }

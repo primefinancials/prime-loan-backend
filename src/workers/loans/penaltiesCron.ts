@@ -175,7 +175,7 @@ export class LoanPenaltiesCron {
                 const remainingOutstanding = Number(refreshedLoan?.outstanding || 0);
 
                 if (updatedWallet < remainingOutstanding && settings.autoDebit?.enabled !== false) {
-                  const debitAmount = remainingOutstanding - updatedWallet;
+                  const debitAmount = remainingOutstanding;
                   const minDebit = settings.autoDebit?.minDebitAmount || 100;
 
                   if (debitAmount >= minDebit) {
@@ -308,7 +308,7 @@ export class LoanPenaltiesCron {
                              reference: bankRef,
                              narration: `Prime Loan Repayment ${loan._id}`
                            });
-                           const accepted = result?.status === 'successful' || result?.data?.status === 'successful';
+                           const accepted = result?.status === 'successful' || result?.data?.status === 'successful' || result?.status === 'pending' || result?.data?.status === 'pending';
                            status = accepted ? 'successful' : 'failed';
                         } else {
                            // Flutterwave E-mandate
