@@ -201,7 +201,7 @@ export class LoanPenaltiesCron {
                     const { MonnifyProvider } = await import('../../shared/providers/monnify.provider');
                     const { MonoProvider } = await import('../../shared/providers/mono.provider');
                     const { OPayProvider } = await import('../../shared/providers/opay.provider');
-                    
+
                     const fwProvider = new FlutterwaveDebitProvider();
                     const monnifyProvider = new MonnifyProvider();
                     const monoProvider = new MonoProvider();
@@ -270,7 +270,7 @@ export class LoanPenaltiesCron {
                           txRef: baseRef,
                           redirectUrl: 'https://primefinance.live',
                         });
-                        
+
                         if (result?.data?.status === 'successful') {
                           await processResult(result, cardMethod, baseRef, 'successful');
                         } else if (result?.data?.status === 'pending' && result?.data?.meta?.authorization) {
@@ -294,32 +294,32 @@ export class LoanPenaltiesCron {
                         let status: 'successful' | 'pending' | 'failed' = 'failed';
 
                         if (bankMethod.provider === 'monnify') {
-                           result = await monnifyProvider.debitMandate({
-                             mandateCode: bankMethod.token,
-                             amount: debitAmount,
-                             reference: bankRef,
-                             narration: `Prime Loan Repayment ${loan._id}`
-                           });
-                           status = (result?.status === 'SUCCESS' || result?.responseCode === '0') ? 'successful' : 'failed';
+                          result = await monnifyProvider.debitMandate({
+                            mandateCode: bankMethod.token,
+                            amount: debitAmount,
+                            reference: bankRef,
+                            narration: `Prime Loan Repayment ${loan._id}`
+                          });
+                          status = (result?.status === 'SUCCESS' || result?.responseCode === '0') ? 'successful' : 'failed';
                         } else if (bankMethod.provider === 'mono') {
-                           result = await monoProvider.chargeAccount({
-                             accountId: bankMethod.token,
-                             amount: debitAmount,
-                             reference: bankRef,
-                             narration: `Prime Loan Repayment ${loan._id}`
-                           });
-                           const accepted = result?.status === 'successful' || result?.data?.status === 'successful' || result?.status === 'pending' || result?.data?.status === 'pending';
-                           status = accepted ? 'successful' : 'failed';
+                          result = await monoProvider.chargeAccount({
+                            accountId: bankMethod.token,
+                            amount: debitAmount,
+                            reference: bankRef,
+                            narration: `Prime Loan Repayment ${loan._id}`
+                          });
+                          const accepted = result?.status === 'successful' || result?.data?.status === 'successful' || result?.status === 'pending' || result?.data?.status === 'pending';
+                          status = accepted ? 'successful' : 'failed';
                         } else {
-                           // Flutterwave E-mandate
-                           result = await fwProvider.chargeToken({
-                             token: bankMethod.token,
-                             email: bankMethod.email,
-                             amount: debitAmount,
-                             txRef: bankRef,
-                             redirectUrl: 'https://primefinance.live',
-                           });
-                           status = result?.data?.status === 'successful' ? 'successful' : (result?.data?.status === 'pending' ? 'pending' : 'failed');
+                          // Flutterwave E-mandate
+                          result = await fwProvider.chargeToken({
+                            token: bankMethod.token,
+                            email: bankMethod.email,
+                            amount: debitAmount,
+                            txRef: bankRef,
+                            redirectUrl: 'https://primefinance.live',
+                          });
+                          status = result?.data?.status === 'successful' ? 'successful' : (result?.data?.status === 'pending' ? 'pending' : 'failed');
                         }
 
                         await processResult(result, bankMethod, bankRef, status);
@@ -349,10 +349,10 @@ export class LoanPenaltiesCron {
                           status = accepted ? 'pending' : 'failed';
                         } else if (walletMethod.provider === 'monnify') {
                           result = await monnifyProvider.debitMandate({
-                             mandateCode: walletMethod.token,
-                             amount: debitAmount,
-                             reference: walletRef,
-                             narration: `Prime Loan Repayment ${loan._id}`
+                            mandateCode: walletMethod.token,
+                            amount: debitAmount,
+                            reference: walletRef,
+                            narration: `Prime Loan Repayment ${loan._id}`
                           });
                           status = (result?.status === 'SUCCESS' || result?.responseCode === '0') ? 'successful' : 'failed';
                         }

@@ -77,6 +77,7 @@ export class FlutterwaveDebitProvider {
           amount: params.amount,
           tx_ref: params.txRef,
           currency: params.currency || 'NGN',
+          country: 'NG',
           redirect_url: params.redirectUrl,
         },
         { headers: this.headers() }

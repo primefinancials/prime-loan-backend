@@ -154,8 +154,21 @@ export class TestIntegrationsController {
    */
   static async testAutoDebit(req: Request, res: Response, next: NextFunction) {
     try {
-      const { userId, amount, methodId } = req.body;
+      const { userId, amount, methodId, loanId } = req.body;
       if (!userId) return res.status(400).json({ status: 'failed', message: 'User ID is required' });
+
+      if (loanId) {
+        const LoanModel = (await import('../../modules/loans/loan.model')).default;
+        const loan = await LoanModel.findById(loanId);
+        if (!loan) return res.status(404).json({ status: 'failed', message: 'Loan not found' });
+        
+        if (loan.status !== 'accepted') {
+          return res.status(400).json({ status: 'failed', message: `Cannot auto-debit: Loan status is ${loan.status}` });
+        }
+        if (loan.loan_payment_status === 'complete') {
+          return res.status(400).json({ status: 'failed', message: 'Cannot auto-debit: Loan is already fully repaid' });
+        }
+      }
 
       const { AutoDebit } = await import('../../modules/loans/auto-debit.model');
       const { FlutterwaveDebitProvider } = await import('../../shared/providers/flutterwave-debit.provider');
@@ -839,7 +852,7 @@ export class TestIntegrationsController {
       const LoanModel = (await import('../../modules/loans/loan.model')).default;
       
       const loans = await LoanModel.find({
-        user: userId,
+        userId: String(userId),
         status: 'accepted'
       }).sort({ createdAt: -1 });
 
