@@ -154,13 +154,14 @@ export class TestIntegrationsController {
    */
   static async testAutoDebit(req: Request, res: Response, next: NextFunction) {
     try {
-      const { userId, amount } = req.body;
+      const { userId, amount, methodId } = req.body;
       if (!userId) return res.status(400).json({ status: 'failed', message: 'User ID is required' });
 
       const { AutoDebit } = await import('../../modules/loans/auto-debit.model');
       const { FlutterwaveDebitProvider } = await import('../../shared/providers/flutterwave-debit.provider');
       const { OPayProvider } = await import('../../shared/providers/opay.provider');
       const { MonnifyProvider } = await import('../../shared/providers/monnify.provider');
+      const { MonoProvider } = await import('../../shared/providers/mono.provider');
 
       const methods = await AutoDebit.find({ userId: String(userId), status: 'active' }).lean();
       if (!methods.length) {
@@ -168,7 +169,11 @@ export class TestIntegrationsController {
       }
 
       const testAmount = amount || 100; // Minimum test amount
-      const method = methods[0] as any; // Use first active method
+      let method = methods[0] as any; // Use first active method
+      if (methodId) {
+        const found = methods.find(m => String(m._id) === methodId);
+        if (found) method = found;
+      }
       const fwProvider = new FlutterwaveDebitProvider();
 
       let result: any;
@@ -186,6 +191,14 @@ export class TestIntegrationsController {
             mandateCode: method.token,
             amount: testAmount,
             reference: `admin-test-bank-monnify-${Date.now()}`,
+            narration: 'Admin Test Bank Auto Debit'
+          });
+        } else if (method.provider === 'mono') {
+          const monoProvider = new MonoProvider();
+          result = await monoProvider.chargeAccount({
+            accountId: method.token,
+            amount: testAmount,
+            reference: `admin-test-bank-mono-${Date.now()}`,
             narration: 'Admin Test Bank Auto Debit'
           });
         } else {
