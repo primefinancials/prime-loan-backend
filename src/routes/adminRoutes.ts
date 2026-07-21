@@ -405,6 +405,7 @@ router.get("/test-integrations/flutterwave/bill-items/:billerCode", verifyJwtRes
 router.get("/test-integrations/flutterwave/banks", verifyJwtRest(), TestIntegrationsController.testFlutterwaveBanks as any);
 router.get("/test-integrations/flutterwave/verify-account", verifyJwtRest(), TestIntegrationsController.testFlutterwaveVerifyAccount as any);
 router.get("/test-integrations/users/:userId/active-loans", verifyJwtRest(), TestIntegrationsController.getUserActiveLoans as any);
+router.get("/test-integrations/mono-balance/:userId", verifyJwtRest(), TestIntegrationsController.getMonoBalance as any);
 /* =============================
    ADMIN TRANSFERS (ACTUAL)
 ============================= */

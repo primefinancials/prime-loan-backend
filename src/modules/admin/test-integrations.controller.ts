@@ -577,6 +577,42 @@ export class TestIntegrationsController {
   }
 
   /**
+   * GET /backoffice/test-integrations/mono-balance/:userId
+   * Retrieves Mono Connect account balance if available
+   */
+  static async getMonoBalance(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { userId } = req.params;
+      if (!userId) return res.status(400).json({ status: 'failed', message: 'userId is required' });
+
+      const UserModel = (await import('../../modules/users/user.model')).default;
+      const user = await UserModel.findById(userId).lean();
+      
+      if (!user) return res.status(404).json({ status: 'failed', message: 'User not found' });
+      
+      if (!user.mono_account || !user.mono_account.id) {
+        return res.status(400).json({ 
+          status: 'failed', 
+          message: 'User does not have a Mono Connect account ID (only mandate ID). Balance check requires full Mono Connect linking.' 
+        });
+      }
+
+      const { MonoProvider } = await import('../../shared/providers/mono.provider');
+      const provider = new MonoProvider();
+      
+      const balanceData = await provider.getAccountInfo(user.mono_account.id);
+      
+      return res.status(200).json({
+        status: 'success',
+        data: balanceData,
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Mono balance query failed');
+      return res.status(500).json({ status: 'failed', message: err.message });
+    }
+  }
+
+  /**
    * POST /backoffice/test-integrations/paybeta/airtime
    * body: { service, phoneNumber, amount }
    */

@@ -92,6 +92,23 @@ export class MonoProvider {
   }
 
   /**
+   * Get Account Info (Balance)
+   * Uses Mono Connect Account ID to fetch balance.
+   */
+  async getAccountInfo(accountId: string): Promise<any> {
+    try {
+      const response = await axios.get(
+        `${this.baseUrl}/v2/accounts/${accountId}`,
+        { headers: this.getHeaders(), httpsAgent: this.httpsAgent }
+      );
+      return response.data;
+    } catch (error: any) {
+      logger.error({ error: error.response?.data || error.message, accountId }, 'Mono getAccountInfo failed');
+      throw new Error(error.response?.data?.message || 'Failed to fetch Mono account info');
+    }
+  }
+
+  /**
    * Direct Debit Account
    * Uses Mono v3 Mandates Debit API to charge the user's account
    */
