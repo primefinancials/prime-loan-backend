@@ -176,7 +176,7 @@ export class TestIntegrationsController {
       const { MonnifyProvider } = await import('../../shared/providers/monnify.provider');
       const { MonoProvider } = await import('../../shared/providers/mono.provider');
 
-      const methods = await AutoDebit.find({ userId: String(userId), status: 'active' }).lean();
+      let methods = await AutoDebit.find({ userId: String(userId), status: 'active' }).lean();
       if (!methods.length) {
         return res.status(404).json({ status: 'failed', message: 'No active payment methods found for this user' });
       }
