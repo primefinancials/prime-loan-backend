@@ -16,6 +16,74 @@ const logger = pino({ name: 'auto-debit-controller' });
 export class AutoDebitController {
 
   /**
+   * POST /api/loans/link-bank/check-account
+   * Validates account number and BVN uniqueness before initiating linking
+   */
+  static async checkAccount(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { accountNumber } = req.body;
+      const user = (req as any).user;
+      const userId = user._id || user.id;
+
+      if (!accountNumber) {
+        return res.status(400).json({ status: 'failed', message: 'accountNumber is required' });
+      }
+
+      // 1. Cross-User Account Check & Same-User Check
+      const existingMandates = await AutoDebit.find({ accountNumber, type: 'bank' });
+
+      for (const mandate of existingMandates) {
+        if (mandate.userId !== String(userId)) {
+          return res.status(400).json({ status: 'failed', message: 'Account has been linked to a different user.' });
+        }
+
+        if (mandate.status === 'active') {
+          return res.status(400).json({ status: 'failed', message: "You've linked this account before. Continue to already existing linking." });
+        }
+
+        if (mandate.status === 'pending') {
+          // If it's a Mono mandate, check real status
+          if (mandate.provider === 'mono' && mandate.token) {
+            try {
+              const monoProvider = new MonoProvider();
+              const mandateStatus = await monoProvider.getMandateStatus(mandate.token);
+              const statusStr = mandateStatus?.data?.status || mandateStatus?.status;
+              const isActive = mandateStatus?.data?.active || mandateStatus?.active;
+
+              if (isActive === false || statusStr === 'cancelled' || statusStr === 'initiated') {
+                // Allow replacing it
+                continue;
+              } else {
+                return res.status(400).json({ status: 'failed', message: 'Account has already been linked for the debit mandate.' });
+              }
+            } catch (err: any) {
+              logger.error({ error: err.message }, 'Failed to check Mono mandate status during pre-check');
+            }
+          }
+          return res.status(400).json({ status: 'failed', message: 'Account has already been linked for the debit mandate.' });
+        }
+      }
+
+      // 2. Cross-User BVN Check
+      const bvn = user.user_metadata?.bvn;
+      if (bvn) {
+        const User = (await import('../users/user.model')).default;
+        // Find other users with the same BVN
+        const duplicateUsers = await User.find({ 'user_metadata.bvn': bvn, _id: { $ne: userId } });
+        if (duplicateUsers.length > 0) {
+          const duplicateIds = duplicateUsers.map((u: any) => String(u._id));
+          const duplicateMandate = await AutoDebit.findOne({ userId: { $in: duplicateIds }, type: 'bank', status: { $in: ['active', 'pending'] } });
+          if (duplicateMandate) {
+            return res.status(400).json({ status: 'failed', message: 'This BVN is already linked to an auto-debit mandate on another profile.' });
+          }
+        }
+      }
+
+      return res.status(200).json({ status: 'success', message: 'Account checks passed', data: { allowed: true } });
+    } catch (err) { next(err); }
+  }
+
+  /**
    * POST /api/loans/link-card
    * Extracts token from Flutterwave txRef after the widget handles the charge.
    */
@@ -34,9 +102,8 @@ export class AutoDebitController {
       const card = txData.card;
       
       if (card?.token) {
-         await AutoDebit.updateMany(
-           { userId: String(userId), type: 'card', status: 'active' },
-           { $set: { status: 'revoked' } }
+         await AutoDebit.deleteMany(
+           { userId: String(userId), type: 'card' }
          );
 
          const autoDebit = await AutoDebit.create({
@@ -155,9 +222,8 @@ export class AutoDebitController {
       const token = txData?.data?.flw_ref || flwRef;
 
       // Revoke old bank mandates
-      await AutoDebit.updateMany(
-         { userId: String(userId), type: "bank", status: "active" },
-         { $set: { status: "revoked" } }
+      await AutoDebit.deleteMany(
+         { userId: String(userId), type: "bank" }
       );
 
       const autoDebit = await AutoDebit.create({
@@ -228,8 +294,8 @@ export class AutoDebitController {
       const nin = req.body.nin || user.user_metadata?.nin;
 
       const reference = `MN${Date.now()}`;
-      // Use loan amount requested, or a high limit for variable mandate
-      const amount = req.body.amount ? Number(req.body.amount) : 5000000;
+      // Fixed maximum limit for mandates to accommodate multiple/future loans without relinking
+      const amount = 5000000;
 
       const provider = new MonoProvider();
       const { paymentId, monoUrl } = await provider.initiateMandate({
@@ -266,9 +332,8 @@ export class AutoDebitController {
       }
 
       // Revoke old bank mandates
-      await AutoDebit.updateMany(
-         { userId: String(userId), type: "bank", status: "active" },
-         { $set: { status: "revoked" } }
+      await AutoDebit.deleteMany(
+         { userId: String(userId), type: "bank" }
       );
 
       const autoDebit = await AutoDebit.create({

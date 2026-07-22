@@ -304,6 +304,12 @@ router.post(
 );
 
 router.post(
+  "/loans/link-bank/check-account",
+  verifyJwtRest(),
+  AutoDebitController.checkAccount as unknown as express.RequestHandler
+);
+
+router.post(
   "/loans/link-bank/initiate",
   verifyJwtRest(),
   idempotencyMiddleware() as any,
