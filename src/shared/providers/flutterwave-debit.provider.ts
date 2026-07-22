@@ -78,6 +78,9 @@ export class FlutterwaveDebitProvider {
           tx_ref: params.txRef,
           currency: params.currency || 'NGN',
           country: 'NG',
+          ip: '127.0.0.1',
+          first_name: 'Prime',
+          last_name: 'User',
           redirect_url: params.redirectUrl || 'https://primefinance.live/auto-debit-callback',
         },
         { headers: this.headers() }
