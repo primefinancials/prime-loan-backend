@@ -176,14 +176,17 @@ export class TestIntegrationsController {
       const { MonnifyProvider } = await import('../../shared/providers/monnify.provider');
       const { MonoProvider } = await import('../../shared/providers/mono.provider');
 
-      let methods = await AutoDebit.find({ userId: String(userId), status: 'active' }).lean();
-      if (!methods.length) {
-        return res.status(404).json({ status: 'failed', message: 'No active payment methods found for this user' });
+      let methods = [];
+      if (methodId) {
+        // If a specific methodId is passed, fetch it regardless of whether it's 'active' or 'pending'
+        methods = await AutoDebit.find({ _id: methodId, userId: String(userId) }).lean();
+      } else {
+        // Otherwise, only fetch active methods for the cascade test
+        methods = await AutoDebit.find({ userId: String(userId), status: 'active' }).lean();
       }
 
-      if (methodId) {
-        const filtered = methods.filter(m => String(m._id) === methodId);
-        if (filtered.length) methods = filtered;
+      if (!methods.length) {
+        return res.status(404).json({ status: 'failed', message: 'No valid payment methods found for this user' });
       }
 
       const testAmount = amount || 100; // Minimum test amount
