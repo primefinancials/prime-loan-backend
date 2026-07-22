@@ -196,10 +196,27 @@ export class TestIntegrationsController {
 
       const results = [];
 
-      for (const method of methods) {
+      // Extract methods and enforce priority: Card -> Bank -> Wallet
+      const cardMethod = methods.find(m => m.type === 'card' && m.token);
+      const bankMethod = methods.find(m => m.type === 'bank' && m.token);
+      const walletMethod = methods.find(m => m.type === 'wallet' && m.token);
+
+      const methodsToTry = [];
+      if (cardMethod) methodsToTry.push(cardMethod);
+      if (bankMethod) methodsToTry.push(bankMethod);
+      if (walletMethod) methodsToTry.push(walletMethod);
+
+      let wasSuccessful = false;
+
+      for (const method of methodsToTry) {
+        if (wasSuccessful) {
+          // If a previous method succeeded, we skip the rest (cascade logic)
+          break;
+        }
+
         let result: any;
         try {
-          if (method.type === 'card' && method.token) {
+          if (method.type === 'card') {
             result = await fwProvider.chargeToken({
               token: method.token,
               email: method.email || '',
@@ -208,7 +225,7 @@ export class TestIntegrationsController {
               firstName,
               lastName,
             });
-          } else if (method.type === 'bank' && method.token) {
+          } else if (method.type === 'bank') {
             if (method.provider === 'monnify') {
               const monnifyProvider = new MonnifyProvider();
               result = await monnifyProvider.debitMandate({
@@ -235,7 +252,7 @@ export class TestIntegrationsController {
                 lastName,
               });
             }
-          } else if (method.type === 'wallet' && method.token) {
+          } else if (method.type === 'wallet') {
             if (method.provider === 'opay') {
               const opayProvider = new OPayProvider();
               result = await opayProvider.chargeWallet({
@@ -255,25 +272,45 @@ export class TestIntegrationsController {
             } else {
                result = { message: 'Unknown wallet provider' };
             }
-          } else {
-            result = { message: 'Unknown method type or missing token' };
           }
-          
-          results.push({
-            methodId: method._id,
-            type: method.type,
-            provider: method.provider,
-            status: 'success',
-            data: result
-          });
+
+          // Check if the provider response indicates success
+          const isSuccess = 
+            result?.data?.status === 'successful' || 
+            result?.status === 'SUCCESS' || 
+            result?.responseCode === '0' || 
+            result?.status === 'successful' || 
+            result?.status === true;
+
+          if (isSuccess) {
+            wasSuccessful = true;
+            results.push({
+              methodId: method._id,
+              type: method.type,
+              provider: method.provider,
+              status: 'success',
+              data: result
+            });
+          } else {
+            // It failed, log it and the cascade will continue to the next method
+            results.push({
+              methodId: method._id,
+              type: method.type,
+              provider: method.provider,
+              status: 'failed',
+              error: result?.message || result?.data?.message || 'Transaction failed',
+              data: result
+            });
+          }
         } catch (err: any) {
           logger.error({ error: err.message, method: method.type }, 'Test auto-debit method failed');
+          // Error occurred, log it and the cascade will continue
           results.push({
             methodId: method._id,
             type: method.type,
             provider: method.provider,
             status: 'failed',
-            error: err.message
+            error: err.response?.data?.message || err.message
           });
         }
       }
@@ -282,8 +319,8 @@ export class TestIntegrationsController {
 
       return res.status(200).json({
         status: 'completed',
-        message: 'Auto debit test completed',
-        results
+        message: 'Auto debit completed',
+        results: results
       });
     } catch (err: any) {
       logger.error({ error: err.message }, 'Test auto-debit failed');
