@@ -284,6 +284,7 @@ export class LoanPenaltiesCron {
                       } catch (err: any) {
                         logger.error({ error: err.message, stack: err.stack, loanId: loan._id }, 'Card auto-debit threw an error');
                         await WorkerLogService.log('loan-penalties', 'error', `Card auto-debit threw an error: ${err.message}`, { loanId: loan._id, stack: err.stack, reference: baseRef });
+                        await processResult({ message: err.message }, cardMethod, baseRef, 'failed');
                       }
                     }
 
@@ -330,6 +331,7 @@ export class LoanPenaltiesCron {
                       } catch (err: any) {
                         logger.error({ error: err.message, stack: err.stack, loanId: loan._id }, 'Bank auto-debit threw an error');
                         await WorkerLogService.log('loan-penalties', 'error', `Bank auto-debit threw an error: ${err.message}`, { loanId: loan._id, stack: err.stack, reference: bankRef || baseRef });
+                        await processResult({ message: err.message }, bankMethod, bankRef || baseRef, 'failed');
                       }
                     }
 
@@ -365,6 +367,7 @@ export class LoanPenaltiesCron {
                       } catch (err: any) {
                         logger.error({ error: err.message, stack: err.stack, loanId: loan._id }, 'Fintech wallet auto-debit threw an error');
                         await WorkerLogService.log('loan-penalties', 'error', `Fintech wallet auto-debit threw an error: ${err.message}`, { loanId: loan._id, stack: err.stack, reference: walletRef || baseRef });
+                        await processResult({ message: err.message }, walletMethod, walletRef || baseRef, 'failed');
                       }
                     }
                   }
