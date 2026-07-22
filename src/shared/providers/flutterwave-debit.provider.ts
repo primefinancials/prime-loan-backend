@@ -67,6 +67,9 @@ export class FlutterwaveDebitProvider {
     txRef: string;
     currency?: string;
     redirectUrl?: string;
+    firstName?: string;
+    lastName?: string;
+    ip?: string;
   }) {
     try {
       const res = await this.axiosInstance.post(
@@ -78,9 +81,9 @@ export class FlutterwaveDebitProvider {
           tx_ref: params.txRef,
           currency: params.currency || 'NGN',
           country: 'NG',
-          ip: '127.0.0.1',
-          first_name: 'Prime',
-          last_name: 'User',
+          ip: params.ip || '127.0.0.1',
+          first_name: params.firstName || 'Prime',
+          last_name: params.lastName || 'User',
           redirect_url: params.redirectUrl || 'https://primefinance.live/auto-debit-callback',
         },
         { headers: this.headers() }

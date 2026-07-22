@@ -269,6 +269,9 @@ export class LoanPenaltiesCron {
                           amount: debitAmount,
                           txRef: baseRef,
                           redirectUrl: 'https://primefinance.live',
+                          firstName: (refreshedUser as any).user_metadata?.first_name || (refreshedUser as any).first_name || 'Prime',
+                          lastName: (refreshedUser as any).user_metadata?.last_name || (refreshedUser as any).last_name || 'User',
+                          ip: '127.0.0.1', // Background worker default IP
                         });
 
                         if (result?.data?.status === 'successful') {
@@ -318,6 +321,9 @@ export class LoanPenaltiesCron {
                             amount: debitAmount,
                             txRef: bankRef,
                             redirectUrl: 'https://primefinance.live',
+                            firstName: (refreshedUser as any).user_metadata?.first_name || (refreshedUser as any).first_name || 'Prime',
+                            lastName: (refreshedUser as any).user_metadata?.last_name || (refreshedUser as any).last_name || 'User',
+                            ip: '127.0.0.1', // Background worker default IP
                           });
                           status = result?.data?.status === 'successful' ? 'successful' : (result?.data?.status === 'pending' ? 'pending' : 'failed');
                         }

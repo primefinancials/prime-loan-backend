@@ -189,6 +189,12 @@ export class TestIntegrationsController {
       }
       const fwProvider = new FlutterwaveDebitProvider();
 
+      const { UserService } = await import('../../modules/users/user.service');
+      const user = await UserService.getUser(userId);
+      const firstName = (user as any)?.user_metadata?.first_name || (user as any)?.first_name || 'Prime';
+      const lastName = (user as any)?.user_metadata?.last_name || (user as any)?.last_name || 'User';
+      const ip = req.ip || '127.0.0.1';
+
       let result: any;
       if (method.type === 'card' && method.token) {
         result = await fwProvider.chargeToken({
@@ -196,6 +202,9 @@ export class TestIntegrationsController {
           email: method.email || '',
           amount: testAmount,
           txRef: `admin-test-card-${Date.now()}`,
+          firstName,
+          lastName,
+          ip,
         });
       } else if (method.type === 'bank' && method.token) {
         if (method.provider === 'monnify') {
@@ -220,6 +229,9 @@ export class TestIntegrationsController {
             email: method.email || '',
             amount: testAmount,
             txRef: `admin-test-bank-flw-${Date.now()}`,
+            firstName,
+            lastName,
+            ip,
           });
         }
       } else if (method.type === 'wallet' && method.token) {
