@@ -176,12 +176,10 @@ export class TestIntegrationsController {
       const { MonnifyProvider } = await import('../../shared/providers/monnify.provider');
       const { MonoProvider } = await import('../../shared/providers/mono.provider');
 
-      let methods = [];
+      let methods: any[] = [];
       if (methodId) {
-        // If a specific methodId is passed, fetch it regardless of whether it's 'active' or 'pending'
         methods = await AutoDebit.find({ _id: methodId, userId: String(userId) }).lean();
       } else {
-        // Otherwise, only fetch active methods for the cascade test
         methods = await AutoDebit.find({ userId: String(userId), status: 'active' }).lean();
       }
 
@@ -197,124 +195,119 @@ export class TestIntegrationsController {
       const firstName = (user as any)?.user_metadata?.first_name || (user as any)?.first_name || 'Prime';
       const lastName = (user as any)?.user_metadata?.last_name || (user as any)?.last_name || 'User';
 
-      const results = [];
+      const results: any[] = [];
+      let wasSuccessful = false;
 
-      // Extract methods and enforce priority: Card -> Bank -> Wallet
       const cardMethod = methods.find(m => m.type === 'card' && m.token);
       const bankMethod = methods.find(m => m.type === 'bank' && m.token);
       const walletMethod = methods.find(m => m.type === 'wallet' && m.token);
 
-      const methodsToTry = [];
-      if (cardMethod) methodsToTry.push(cardMethod);
-      if (bankMethod) methodsToTry.push(bankMethod);
-      if (walletMethod) methodsToTry.push(walletMethod);
-
-      let wasSuccessful = false;
-
-      for (const method of methodsToTry) {
-        if (wasSuccessful) {
-          // If a previous method succeeded, we skip the rest (cascade logic)
-          break;
+      const processTestResult = (result: any, method: any, status: 'successful' | 'failed', errorMsg?: string) => {
+        if (status === 'successful') {
+          wasSuccessful = true;
+          results.push({ methodId: method._id, type: method.type, provider: method.provider, status: 'success', data: result });
+        } else {
+          results.push({ methodId: method._id, type: method.type, provider: method.provider, status: 'failed', error: errorMsg || result?.message || result?.data?.message || 'Transaction failed', data: result });
         }
+      };
 
-        let result: any;
+      // ── 1. Card attempt
+      if (!wasSuccessful && cardMethod) {
         try {
-          if (method.type === 'card') {
-            result = await fwProvider.chargeToken({
-              token: method.token,
-              email: method.email || '',
+          const result = await fwProvider.chargeToken({
+            token: cardMethod.token,
+            email: cardMethod.email || '',
+            amount: testAmount,
+            txRef: `admin-test-card-${Date.now()}-${cardMethod._id}`,
+            firstName,
+            lastName,
+          });
+
+          if (result?.data?.status === 'successful' || result?.status === 'SUCCESS' || result?.status === 'successful') {
+            processTestResult(result, cardMethod, 'successful');
+          } else {
+            processTestResult(result, cardMethod, 'failed');
+          }
+        } catch (err: any) {
+          logger.error({ error: err.message }, 'Card auto-debit test threw an error');
+          processTestResult({ message: err.message }, cardMethod, 'failed', err.response?.data?.message || err.message);
+        }
+      }
+
+      // ── 2. Bank attempt
+      if (!wasSuccessful && bankMethod) {
+        try {
+          let result: any;
+          if (bankMethod.provider === 'monnify') {
+            const monnifyProvider = new MonnifyProvider();
+            result = await monnifyProvider.debitMandate({
+              mandateCode: bankMethod.token,
               amount: testAmount,
-              txRef: `admin-test-card-${Date.now()}-${method._id}`,
+              reference: `admin-test-bank-monnify-${Date.now()}-${bankMethod._id}`,
+              narration: 'Admin Test Bank Auto Debit'
+            });
+          } else if (bankMethod.provider === 'mono') {
+            const monoProvider = new MonoProvider();
+            result = await monoProvider.chargeAccount({
+              accountId: bankMethod.token,
+              amount: testAmount,
+              reference: `admin-test-bank-mono-${Date.now()}-${bankMethod._id}`,
+              narration: 'Admin Test Bank Auto Debit'
+            });
+          } else {
+            result = await fwProvider.chargeToken({
+              token: bankMethod.token,
+              email: bankMethod.email || '',
+              amount: testAmount,
+              txRef: `admin-test-bank-flw-${Date.now()}-${bankMethod._id}`,
               firstName,
               lastName,
             });
-          } else if (method.type === 'bank') {
-            if (method.provider === 'monnify') {
-              const monnifyProvider = new MonnifyProvider();
-              result = await monnifyProvider.debitMandate({
-                mandateCode: method.token,
-                amount: testAmount,
-                reference: `admin-test-bank-monnify-${Date.now()}-${method._id}`,
-                narration: 'Admin Test Bank Auto Debit'
-              });
-            } else if (method.provider === 'mono') {
-              const monoProvider = new MonoProvider();
-              result = await monoProvider.chargeAccount({
-                accountId: method.token,
-                amount: testAmount,
-                reference: `admin-test-bank-mono-${Date.now()}-${method._id}`,
-                narration: 'Admin Test Bank Auto Debit'
-              });
-            } else {
-              result = await fwProvider.chargeToken({
-                token: method.token,
-                email: method.email || '',
-                amount: testAmount,
-                txRef: `admin-test-bank-flw-${Date.now()}-${method._id}`,
-                firstName,
-                lastName,
-              });
-            }
-          } else if (method.type === 'wallet') {
-            if (method.provider === 'opay') {
-              const opayProvider = new OPayProvider();
-              result = await opayProvider.chargeWallet({
-                token: method.token,
-                amount: testAmount,
-                reference: `admin-test-opay-${Date.now()}-${method._id}`,
-                phone: (method as any).walletPhone
-              });
-            } else if (method.provider === 'monnify') {
-              const monnifyProvider = new MonnifyProvider();
-              result = await monnifyProvider.debitMandate({
-                mandateCode: method.token,
-                amount: testAmount,
-                reference: `admin-test-moniepoint-${Date.now()}-${method._id}`,
-                narration: 'Admin Test Wallet Auto Debit'
-              });
-            } else {
-               result = { message: 'Unknown wallet provider' };
-            }
           }
 
-          // Check if the provider response indicates success
-          const isSuccess = 
-            result?.data?.status === 'successful' || 
-            result?.status === 'SUCCESS' || 
-            result?.responseCode === '0' || 
-            result?.status === 'successful' || 
-            result?.status === true;
-
-          if (isSuccess) {
-            wasSuccessful = true;
-            results.push({
-              methodId: method._id,
-              type: method.type,
-              provider: method.provider,
-              status: 'success',
-              data: result
-            });
+          if (result?.data?.status === 'successful' || result?.status === 'SUCCESS' || result?.responseCode === '0' || result?.status === 'successful' || result?.status === true) {
+            processTestResult(result, bankMethod, 'successful');
           } else {
-            // It failed, log it and the cascade will continue to the next method
-            results.push({
-              methodId: method._id,
-              type: method.type,
-              provider: method.provider,
-              status: 'failed',
-              error: result?.message || result?.data?.message || 'Transaction failed',
-              data: result
-            });
+            processTestResult(result, bankMethod, 'failed');
           }
         } catch (err: any) {
-          logger.error({ error: err.message, method: method.type }, 'Test auto-debit method failed');
-          // Error occurred, log it and the cascade will continue
-          results.push({
-            methodId: method._id,
-            type: method.type,
-            provider: method.provider,
-            status: 'failed',
-            error: err.response?.data?.message || err.message
-          });
+          logger.error({ error: err.message }, 'Bank auto-debit test threw an error');
+          processTestResult({ message: err.message }, bankMethod, 'failed', err.response?.data?.message || err.message);
+        }
+      }
+
+      // ── 3. Wallet attempt
+      if (!wasSuccessful && walletMethod) {
+        try {
+          let result: any;
+          if (walletMethod.provider === 'opay') {
+            const opayProvider = new OPayProvider();
+            result = await opayProvider.chargeWallet({
+              token: walletMethod.token,
+              amount: testAmount,
+              reference: `admin-test-opay-${Date.now()}-${walletMethod._id}`,
+              phone: (walletMethod as any).walletPhone
+            });
+          } else if (walletMethod.provider === 'monnify') {
+            const monnifyProvider = new MonnifyProvider();
+            result = await monnifyProvider.debitMandate({
+              mandateCode: walletMethod.token,
+              amount: testAmount,
+              reference: `admin-test-moniepoint-${Date.now()}-${walletMethod._id}`,
+              narration: 'Admin Test Wallet Auto Debit'
+            });
+          } else {
+            result = { message: 'Unknown wallet provider' };
+          }
+
+          if (result?.data?.status === 'successful' || result?.status === 'SUCCESS' || result?.responseCode === '0' || result?.status === 'successful' || result?.status === true) {
+            processTestResult(result, walletMethod, 'successful');
+          } else {
+            processTestResult(result, walletMethod, 'failed');
+          }
+        } catch (err: any) {
+          logger.error({ error: err.message }, 'Wallet auto-debit test threw an error');
+          processTestResult({ message: err.message }, walletMethod, 'failed', err.response?.data?.message || err.message);
         }
       }
 
