@@ -181,12 +181,12 @@ export class TestIntegrationsController {
         return res.status(404).json({ status: 'failed', message: 'No active payment methods found for this user' });
       }
 
-      const testAmount = amount || 100; // Minimum test amount
-      let method = methods[0] as any; // Use first active method
       if (methodId) {
-        const found = methods.find(m => String(m._id) === methodId);
-        if (found) method = found;
+        const filtered = methods.filter(m => String(m._id) === methodId);
+        if (filtered.length) methods = filtered;
       }
+
+      const testAmount = amount || 100; // Minimum test amount
       const fwProvider = new FlutterwaveDebitProvider();
 
       const { UserService } = await import('../../modules/users/user.service');
@@ -194,78 +194,96 @@ export class TestIntegrationsController {
       const firstName = (user as any)?.user_metadata?.first_name || (user as any)?.first_name || 'Prime';
       const lastName = (user as any)?.user_metadata?.last_name || (user as any)?.last_name || 'User';
 
-      let result: any;
-      if (method.type === 'card' && method.token) {
-        result = await fwProvider.chargeToken({
-          token: method.token,
-          email: method.email || '',
-          amount: testAmount,
-          txRef: `admin-test-card-${Date.now()}`,
-          firstName,
-          lastName,
-        });
-      } else if (method.type === 'bank' && method.token) {
-        if (method.provider === 'monnify') {
-          const monnifyProvider = new MonnifyProvider();
-          result = await monnifyProvider.debitMandate({
-            mandateCode: method.token,
-            amount: testAmount,
-            reference: `admin-test-bank-monnify-${Date.now()}`,
-            narration: 'Admin Test Bank Auto Debit'
+      const results = [];
+
+      for (const method of methods) {
+        let result: any;
+        try {
+          if (method.type === 'card' && method.token) {
+            result = await fwProvider.chargeToken({
+              token: method.token,
+              email: method.email || '',
+              amount: testAmount,
+              txRef: `admin-test-card-${Date.now()}-${method._id}`,
+              firstName,
+              lastName,
+            });
+          } else if (method.type === 'bank' && method.token) {
+            if (method.provider === 'monnify') {
+              const monnifyProvider = new MonnifyProvider();
+              result = await monnifyProvider.debitMandate({
+                mandateCode: method.token,
+                amount: testAmount,
+                reference: `admin-test-bank-monnify-${Date.now()}-${method._id}`,
+                narration: 'Admin Test Bank Auto Debit'
+              });
+            } else if (method.provider === 'mono') {
+              const monoProvider = new MonoProvider();
+              result = await monoProvider.chargeAccount({
+                accountId: method.token,
+                amount: testAmount,
+                reference: `admin-test-bank-mono-${Date.now()}-${method._id}`,
+                narration: 'Admin Test Bank Auto Debit'
+              });
+            } else {
+              result = await fwProvider.chargeToken({
+                token: method.token,
+                email: method.email || '',
+                amount: testAmount,
+                txRef: `admin-test-bank-flw-${Date.now()}-${method._id}`,
+                firstName,
+                lastName,
+              });
+            }
+          } else if (method.type === 'wallet' && method.token) {
+            if (method.provider === 'opay') {
+              const opayProvider = new OPayProvider();
+              result = await opayProvider.chargeWallet({
+                token: method.token,
+                amount: testAmount,
+                reference: `admin-test-opay-${Date.now()}-${method._id}`,
+                phone: (method as any).walletPhone
+              });
+            } else if (method.provider === 'monnify') {
+              const monnifyProvider = new MonnifyProvider();
+              result = await monnifyProvider.debitMandate({
+                mandateCode: method.token,
+                amount: testAmount,
+                reference: `admin-test-moniepoint-${Date.now()}-${method._id}`,
+                narration: 'Admin Test Wallet Auto Debit'
+              });
+            } else {
+               result = { message: 'Unknown wallet provider' };
+            }
+          } else {
+            result = { message: 'Unknown method type or missing token' };
+          }
+          
+          results.push({
+            methodId: method._id,
+            type: method.type,
+            provider: method.provider,
+            status: 'success',
+            data: result
           });
-        } else if (method.provider === 'mono') {
-          const monoProvider = new MonoProvider();
-          result = await monoProvider.chargeAccount({
-            accountId: method.token,
-            amount: testAmount,
-            reference: `admin-test-bank-mono-${Date.now()}`,
-            narration: 'Admin Test Bank Auto Debit'
-          });
-        } else {
-          result = await fwProvider.chargeToken({
-            token: method.token,
-            email: method.email || '',
-            amount: testAmount,
-            txRef: `admin-test-bank-flw-${Date.now()}`,
-            firstName,
-            lastName,
+        } catch (err: any) {
+          logger.error({ error: err.message, method: method.type }, 'Test auto-debit method failed');
+          results.push({
+            methodId: method._id,
+            type: method.type,
+            provider: method.provider,
+            status: 'failed',
+            error: err.message
           });
         }
-      } else if (method.type === 'wallet' && method.token) {
-        if (method.provider === 'opay') {
-          const opayProvider = new OPayProvider();
-          result = await opayProvider.chargeWallet({
-            token: method.token,
-            amount: testAmount,
-            reference: `admin-test-opay-${Date.now()}`,
-            phone: method.walletPhone
-          });
-        } else if (method.provider === 'monnify') {
-          const monnifyProvider = new MonnifyProvider();
-          result = await monnifyProvider.debitMandate({
-            mandateCode: method.token,
-            amount: testAmount,
-            reference: `admin-test-moniepoint-${Date.now()}`,
-            narration: 'Admin Test Wallet Auto Debit'
-          });
-        } else {
-           result = { message: 'Unknown wallet provider', method };
-        }
-      } else {
-        result = { message: 'Unknown method type', method };
       }
 
-      logger.info({ userId, amount: testAmount }, 'Admin test auto-debit initiated');
+      logger.info({ userId, amount: testAmount }, 'Admin test auto-debit completed');
 
       return res.status(200).json({
-        status: 'success',
-        data: {
-          userId,
-          methodType: method.type,
-          testAmount,
-          result,
-          timestamp: new Date().toISOString(),
-        },
+        status: 'completed',
+        message: 'Auto debit test completed',
+        results
       });
     } catch (err: any) {
       logger.error({ error: err.message }, 'Test auto-debit failed');
