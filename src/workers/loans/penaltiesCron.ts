@@ -181,20 +181,15 @@ export class LoanPenaltiesCron {
                   if (debitAmount >= minDebit) {
 
 
-                    // Fetch all active payment methods for this user upfront
+                    // Fetch active and pending payment methods for this user upfront
                     const linkedMethods = await AutoDebit.find({
                       userId: String((refreshedUser as any)._id),
-                      status: 'active',
+                      status: { $in: ['active', 'pending'] },
                     });
 
-                    const cardMethod = linkedMethods.find(m => m.type === 'card');
-                    const bankMethod = linkedMethods.find(m => m.type === 'bank');
-                    const walletMethod = linkedMethods.find(m => m.type === 'wallet');
-
-                    if (!cardMethod && !bankMethod && !walletMethod) {
-                      logger.info({ loanId: loan._id }, 'No active payment method found — skipping external auto-debit');
-                      continue;
-                    }
+                    const cardMethod = linkedMethods.find(m => m.type === 'card' && m.status === 'active');
+                    let bankMethod = linkedMethods.find(m => m.type === 'bank');
+                    const walletMethod = linkedMethods.find(m => m.type === 'wallet' && m.status === 'active');
 
                     // Dynamically import providers
                     const { FlutterwaveDebitProvider } = await import('../../shared/providers/flutterwave-debit.provider');
@@ -206,6 +201,36 @@ export class LoanPenaltiesCron {
                     const monnifyProvider = new MonnifyProvider();
                     const monoProvider = new MonoProvider();
                     const opayProvider = new OPayProvider();
+
+                    if (bankMethod && bankMethod.provider === 'mono' && bankMethod.status === 'pending') {
+                      logger.info({ loanId: loan._id, mandateId: bankMethod.token }, 'Checking Mono endpoint for pending mandate status in cron');
+                      try {
+                        const mandateStatus = await monoProvider.getMandateStatus(bankMethod.token);
+
+                        if (mandateStatus?.data?.status === 'active' || mandateStatus?.status === 'active') {
+                          bankMethod.status = 'active';
+                          await bankMethod.save();
+                          logger.info({ loanId: loan._id, mandateId: bankMethod.token }, 'Mono mandate is now active in cron');
+                          await WorkerLogService.log('loan-penalties', 'info', `Checked Mono endpoint: mandate is now active`, { loanId: loan._id, mandateId: bankMethod.token, response: mandateStatus });
+                        } else {
+                          await WorkerLogService.log('loan-penalties', 'warn', `Mandate is still pending on Mono, skipping debit`, { loanId: loan._id, mandateId: bankMethod.token, response: mandateStatus });
+                          bankMethod = undefined;
+                        }
+                      } catch (err: any) {
+                        logger.error({ loanId: loan._id, error: err.message }, 'Failed to check Mono mandate status in cron');
+                        await WorkerLogService.log('loan-penalties', 'error', `Failed to check Mono mandate status`, { loanId: loan._id, error: err.message });
+                        bankMethod = undefined;
+                      }
+                    } else if (bankMethod && bankMethod.status !== 'active') {
+                      bankMethod = undefined;
+                    }
+
+                    if (!cardMethod && !bankMethod && !walletMethod) {
+                      logger.info({ loanId: loan._id }, 'No active payment method found — skipping external auto-debit');
+                      continue;
+                    }
+
+
 
                     const baseRef = `LD${Date.now()}${String(loan._id).slice(-4)}`;
                     let debitResult: any = null;

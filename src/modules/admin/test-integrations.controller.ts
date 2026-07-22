@@ -180,7 +180,7 @@ export class TestIntegrationsController {
       if (methodId) {
         methods = await AutoDebit.find({ _id: methodId, userId: String(userId) }).lean();
       } else {
-        methods = await AutoDebit.find({ userId: String(userId), status: 'active' }).lean();
+        methods = await AutoDebit.find({ userId: String(userId), status: { $in: ['active', 'pending'] } }).lean();
       }
 
       if (!methods.length) {
@@ -198,9 +198,32 @@ export class TestIntegrationsController {
       const results: any[] = [];
       let wasSuccessful = false;
 
-      const cardMethod = methods.find(m => m.type === 'card' && m.token);
-      const bankMethod = methods.find(m => m.type === 'bank' && m.token);
-      const walletMethod = methods.find(m => m.type === 'wallet' && m.token);
+      const cardMethod = methods.find(m => m.type === 'card' && m.token && (m.status === 'active' || methodId));
+      let bankMethod = methods.find(m => m.type === 'bank' && m.token);
+      const walletMethod = methods.find(m => m.type === 'wallet' && m.token && (m.status === 'active' || methodId));
+
+      if (bankMethod && bankMethod.provider === 'mono' && bankMethod.status === 'pending') {
+        logger.info({ mandateId: bankMethod.token }, 'Checking Mono endpoint for mandate status on admin');
+        try {
+          const monoProvider = new MonoProvider();
+          const mandateStatus = await monoProvider.getMandateStatus(bankMethod.token);
+          if (mandateStatus?.data?.status === 'active' || mandateStatus?.status === 'active') {
+            await AutoDebit.findByIdAndUpdate(bankMethod._id, { status: 'active' });
+            bankMethod.status = 'active';
+            logger.info({ mandateId: bankMethod.token }, 'Mono mandate is now active');
+            results.push({ methodId: bankMethod._id, type: 'bank', provider: 'mono', status: 'info', message: 'Checked Mono endpoint: mandate is now active', data: mandateStatus });
+          } else {
+            results.push({ methodId: bankMethod._id, type: 'bank', provider: 'mono', status: 'failed', error: 'Mandate is still pending on Mono', data: mandateStatus });
+            bankMethod = undefined; // Do not attempt to charge
+          }
+        } catch (err: any) {
+          logger.error({ error: err.message }, 'Failed to check Mono mandate status');
+          results.push({ methodId: bankMethod._id, type: 'bank', provider: 'mono', status: 'failed', error: 'Failed to check Mono mandate status', data: { message: err.message } });
+          bankMethod = undefined;
+        }
+      } else if (bankMethod && bankMethod.status !== 'active' && !methodId) {
+        bankMethod = undefined;
+      }
 
       const processTestResult = (result: any, method: any, status: 'successful' | 'failed', errorMsg?: string) => {
         if (status === 'successful') {

@@ -140,4 +140,21 @@ export class MonoProvider {
       throw new Error(details);
     }
   }
+
+  /**
+   * Get Mandate Status
+   * Fetches the current status of a Mono mandate
+   */
+  async getMandateStatus(mandateId: string): Promise<any> {
+    try {
+      const response = await axios.get(
+        `${this.baseUrl}/v3/payments/mandates/${mandateId}`,
+        { headers: this.getHeaders(), httpsAgent: this.httpsAgent }
+      );
+      return response.data;
+    } catch (error: any) {
+      logger.error({ error: error.response?.data || error.message, mandateId }, 'Mono getMandateStatus failed');
+      throw new Error(error.response?.data?.message || 'Failed to fetch Mono mandate status');
+    }
+  }
 }
