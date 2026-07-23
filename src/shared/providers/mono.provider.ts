@@ -157,4 +157,23 @@ export class MonoProvider {
       throw new Error(error.response?.data?.message || 'Failed to fetch Mono mandate status');
     }
   }
+
+  /**
+   * Cancel Mandate
+   * Revokes an existing Mono mandate using PATCH /v3/payments/mandates/{id}/cancel
+   */
+  async cancelMandate(mandateId: string): Promise<any> {
+    try {
+      const response = await axios.patch(
+        `${this.baseUrl}/v3/payments/mandates/${mandateId}/cancel`,
+        {},
+        { headers: this.getHeaders(), httpsAgent: this.httpsAgent }
+      );
+      return response.data;
+    } catch (error: any) {
+      logger.error({ error: error.response?.data || error.message, mandateId }, 'Mono cancelMandate failed');
+      // We don't throw here to ensure it doesn't block users from linking new accounts if cancellation fails
+      return null;
+    }
+  }
 }

@@ -331,10 +331,32 @@ export class AutoDebitController {
         return res.status(400).json({ status: 'failed', message: 'Mandate code/ID is required' });
       }
 
-      // Revoke old bank mandates
+      // Revoke old Mono mandates before deleting them
+      const oldMonoMandates = await AutoDebit.find({ userId: String(userId), type: "bank", provider: "mono" });
+      const provider = new MonoProvider();
+      for (const old of oldMonoMandates) {
+        if (old.token) {
+           await provider.cancelMandate(old.token);
+        }
+      }
+
+      // Revoke old bank mandates from DB
       await AutoDebit.deleteMany(
          { userId: String(userId), type: "bank" }
       );
+
+      // Check the actual status of the new mandate
+      let currentStatus = "pending";
+      try {
+         const statusRes = await provider.getMandateStatus(code);
+         // Mono typically returns status in statusRes.data.status or statusRes.status
+         const statusText = statusRes?.data?.status || statusRes?.status || "pending";
+         if (['active', 'approved', 'successful'].includes(statusText.toLowerCase())) {
+            currentStatus = "active";
+         }
+      } catch (err) {
+         // keep it pending if we couldn't fetch status
+      }
 
       const autoDebit = await AutoDebit.create({
          userId: String(userId),
@@ -345,7 +367,7 @@ export class AutoDebitController {
          bankName: bankName || 'Bank',
          bankCode: bankCode || '000',
          accountNumber: accountNumber || '0000000000',
-         status: "pending",
+         status: currentStatus,
       });
 
       return res.status(201).json({
