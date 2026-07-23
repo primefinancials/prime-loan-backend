@@ -263,7 +263,9 @@ export class LoanService {
     }
 
     // perform credit lookup (best-effort)
-    const mono = await this.monoCreditLookup(params.bvn || user.user_metadata?.bvn);
+    // TEMPORARILY DISABLED to save API costs
+    // const mono = await this.monoCreditLookup(params.bvn || user.user_metadata?.bvn);
+    const mono: any = null;
     const creditScoreObj = this.convertToCreditScore(mono);
 
     const loanDate = new Date();
