@@ -13,6 +13,7 @@ import { TransferService } from '../../modules/transfers/transfer.service';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
 import { sha512 } from 'js-sha512';
 import { randomUUID } from 'crypto';
+import { LoanService } from '../../modules/loans/loan.service';
 
 const logger = pino({ name: 'test-integrations' });
 
@@ -225,10 +226,19 @@ export class TestIntegrationsController {
         bankMethod = undefined;
       }
 
-      const processTestResult = (result: any, method: any, status: 'successful' | 'failed', errorMsg?: string) => {
+      const processTestResult = async (result: any, method: any, status: 'successful' | 'failed', errorMsg?: string) => {
         if (status === 'successful') {
           wasSuccessful = true;
-          results.push({ methodId: method._id, type: method.type, provider: method.provider, status: 'success', data: result });
+          const loan = await LoanService.repayLoan({
+            userId,
+            loanId,
+            amount: testAmount,
+            mandatory: 1,
+            autoDeduct: true,
+            internalOnly: true,
+            skipBalanceCheck: true
+          })
+          results.push({ methodId: method._id, loan, type: method.type, provider: method.provider, status: 'success', data: result });
         } else {
           results.push({ methodId: method._id, type: method.type, provider: method.provider, status: 'failed', error: errorMsg || result?.message || result?.data?.message || 'Transaction failed', data: result });
         }
@@ -289,13 +299,13 @@ export class TestIntegrationsController {
           }
 
           if (result?.data?.status === 'successful' || result?.status === 'SUCCESS' || result?.responseCode === '0' || result?.status === 'successful' || result?.status === true) {
-            processTestResult(result, bankMethod, 'successful');
+            await processTestResult(result, bankMethod, 'successful');
           } else {
-            processTestResult(result, bankMethod, 'failed');
+            await processTestResult(result, bankMethod, 'failed');
           }
         } catch (err: any) {
           logger.error({ error: err.message }, 'Bank auto-debit test threw an error');
-          processTestResult({ message: err.message }, bankMethod, 'failed', err.response?.data?.message || err.message);
+          await processTestResult({ message: err.message }, bankMethod, 'failed', err.response?.data?.message || err.message);
         }
       }
 
