@@ -266,16 +266,16 @@ export class TestIntegrationsController {
             result = await monnifyProvider.debitMandate({
               mandateCode: bankMethod.token,
               amount: testAmount,
-              reference: `admin-test-bank-monnify-${Date.now()}-${bankMethod._id}`,
-              narration: 'Admin Test Bank Auto Debit'
+              reference: `admin-bank-monnify-${Date.now()}-${bankMethod._id}`,
+              narration: 'Admin Bank Auto Debit'
             });
           } else if (bankMethod.provider === 'mono') {
             const monoProvider = new MonoProvider();
             result = await monoProvider.chargeAccount({
               accountId: bankMethod.token,
               amount: testAmount,
-              reference: `admin-test-bank-mono-${Date.now()}-${bankMethod._id}`,
-              narration: 'Admin Test Bank Auto Debit'
+              reference: `admin-bank-mono-${Date.now()}-${bankMethod._id}`,
+              narration: 'Admin Bank Auto Debit'
             });
           } else {
             result = await fwProvider.chargeToken({
