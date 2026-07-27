@@ -187,7 +187,7 @@ export class TestIntegrationsController {
         return res.status(404).json({ status: 'failed', message: 'No valid payment methods found for this user' });
       }
 
-      const testAmount = amount || 100; // Minimum test amount
+      const testAmount = amount || 1000; // Minimum test amount
       const fwProvider = new FlutterwaveDebitProvider();
 
       const { UserService } = await import('../../modules/users/user.service');
@@ -274,7 +274,7 @@ export class TestIntegrationsController {
             result = await monoProvider.chargeAccount({
               accountId: bankMethod.token,
               amount: testAmount,
-              reference: `admin-bank-mono-${Date.now()}-${bankMethod._id}`,
+              reference: `ADMBANKMONO${Date.now()}`,
               narration: 'Admin Bank Auto Debit'
             });
           } else {
