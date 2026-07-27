@@ -161,7 +161,7 @@ export class TestIntegrationsController {
         const LoanModel = (await import('../../modules/loans/loan.model')).default;
         const loan = await LoanModel.findById(loanId);
         if (!loan) return res.status(404).json({ status: 'failed', message: 'Loan not found' });
-        
+
         if (loan.status !== 'accepted') {
           return res.status(400).json({ status: 'failed', message: `Cannot auto-debit: Loan status is ${loan.status}` });
         }
@@ -207,7 +207,7 @@ export class TestIntegrationsController {
         try {
           const monoProvider = new MonoProvider();
           const mandateStatus = await monoProvider.getMandateStatus(bankMethod.token);
-          if (mandateStatus?.data?.status === 'active' || mandateStatus?.status === 'active') {
+          if (mandateStatus?.data?.data && (mandateStatus?.data?.data?.ready_to_debit || mandateStatus?.data?.data?.approved || mandateStatus?.data?.data?.status === "approved")) {
             await AutoDebit.findByIdAndUpdate(bankMethod._id, { status: 'active' });
             bankMethod.status = 'active';
             logger.info({ mandateId: bankMethod.token }, 'Mono mandate is now active');
@@ -458,8 +458,8 @@ export class TestIntegrationsController {
         message: 'Raw VFD getBanks response'
       });
     } catch (err: any) {
-      return res.status(500).json({ 
-        status: 'failed', 
+      return res.status(500).json({
+        status: 'failed',
         message: err.message,
         response: err.response?.data
       });
@@ -482,8 +482,8 @@ export class TestIntegrationsController {
       const transferType = 'intra';
 
       if (!toAccount || !numAmount) {
-        return res.status(400).json({ 
-          status: 'failed', 
+        return res.status(400).json({
+          status: 'failed',
           message: 'toAccount and amount (positive number) are required',
           received: { toAccount, amount }
         });
@@ -537,7 +537,7 @@ export class TestIntegrationsController {
       // 5. Execute VFD Transfer
       const transferReq = {
         fromAccount: fromData.accountNo,
-        uniqueSenderAccountId: fromAccount ? fromData.accountId : "", 
+        uniqueSenderAccountId: fromAccount ? fromData.accountId : "",
         fromClientId: fromData.clientId,
         fromClient: fromData.client,
         fromSavingsId: fromData.accountId,
@@ -569,7 +569,7 @@ export class TestIntegrationsController {
       });
     } catch (err: any) {
       logger.error({ error: err.message, stack: err.stack }, 'Test transfer failed');
-      
+
       // Handle Axios errors from VFD
       if (err.isAxiosError && err.response) {
         return res.status(err.response.status || 400).json({
@@ -670,21 +670,21 @@ export class TestIntegrationsController {
 
       const UserModel = (await import('../../modules/users/user.model')).default;
       const user = await UserModel.findById(userId).lean();
-      
+
       if (!user) return res.status(404).json({ status: 'failed', message: 'User not found' });
-      
+
       if (!user.mono_account || !user.mono_account.id) {
-        return res.status(400).json({ 
-          status: 'failed', 
-          message: 'User does not have a Mono Connect account ID (only mandate ID). Balance check requires full Mono Connect linking.' 
+        return res.status(400).json({
+          status: 'failed',
+          message: 'User does not have a Mono Connect account ID (only mandate ID). Balance check requires full Mono Connect linking.'
         });
       }
 
       const { MonoProvider } = await import('../../shared/providers/mono.provider');
       const provider = new MonoProvider();
-      
+
       const balanceData = await provider.getAccountInfo(user.mono_account.id);
-      
+
       return res.status(200).json({
         status: 'success',
         data: balanceData,
@@ -791,8 +791,8 @@ export class TestIntegrationsController {
       const numAmount = Number(amount);
 
       if (!bankCode || !accountNumber || !numAmount) {
-        return res.status(400).json({ 
-          status: 'failed', 
+        return res.status(400).json({
+          status: 'failed',
           message: 'bankCode, accountNumber, and amount (positive number) are required',
         });
       }
@@ -801,9 +801,9 @@ export class TestIntegrationsController {
       const provider = new FlutterwavePayoutProvider();
 
       const reference = `admin-payout-${Date.now()}`;
-      
+
       logger.info({ bankCode, accountNumber, amount: numAmount, reference }, 'Admin Flutterwave transfer initiated');
-      
+
       const result = await provider.createTransfer({
         bankCode,
         accountNumber,
@@ -836,8 +836,8 @@ export class TestIntegrationsController {
       const { billerCode, itemCode, customer, amount } = req.body;
 
       if (!billerCode || !itemCode || !customer || !amount) {
-        return res.status(400).json({ 
-          status: 'failed', 
+        return res.status(400).json({
+          status: 'failed',
           message: 'billerCode, itemCode, customer, and amount are required',
         });
       }
@@ -845,13 +845,13 @@ export class TestIntegrationsController {
       // We'll dynamically construct the API request since we don't have a dedicated FLW Bill provider yet
       const axios = (await import('axios')).default;
       const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
-      
+
       if (!secretKey) {
         throw new Error('FLUTTERWAVE_SECRET_KEY is not configured');
       }
 
       const reference = `admin-bill-${Date.now()}`;
-      
+
       logger.info({ billerCode, itemCode, customer, amount, reference }, 'Admin Flutterwave bill payment initiated');
 
       const response = await axios.post(
@@ -901,7 +901,7 @@ export class TestIntegrationsController {
       const { airtime, data } = req.query;
       const axios = (await import('axios')).default;
       const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
-      
+
       if (!secretKey) {
         throw new Error('FLUTTERWAVE_SECRET_KEY is not configured');
       }
@@ -940,7 +940,7 @@ export class TestIntegrationsController {
       }
       const axios = (await import('axios')).default;
       const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
-      
+
       if (!secretKey) {
         throw new Error('FLUTTERWAVE_SECRET_KEY is not configured');
       }
@@ -969,7 +969,7 @@ export class TestIntegrationsController {
     try {
       const { userId } = req.params;
       const LoanModel = (await import('../../modules/loans/loan.model')).default;
-      
+
       const loans = await LoanModel.find({
         userId: String(userId),
         status: 'accepted'
@@ -992,7 +992,7 @@ export class TestIntegrationsController {
     try {
       const { FlutterwavePayoutProvider } = await import('../../shared/providers/flutterwave-payout.provider');
       const provider = new FlutterwavePayoutProvider();
-      
+
       const axios = (await import('axios')).default;
       const secretKey = process.env.FLUTTERWAVE_SECRET_KEY;
       const response = await axios.get('https://api.flutterwave.com/v3/banks/NG', {
@@ -1016,16 +1016,16 @@ export class TestIntegrationsController {
   static async testFlutterwaveVerifyAccount(req: Request, res: Response, next: NextFunction) {
     try {
       const { accountNumber, bankCode } = req.query;
-      
+
       if (!accountNumber || !bankCode) {
         return res.status(400).json({ status: 'failed', message: 'accountNumber and bankCode are required' });
       }
 
       const { FlutterwaveDebitProvider } = await import('../../shared/providers/flutterwave-debit.provider');
       const provider = new FlutterwaveDebitProvider();
-      
+
       const details = await provider.validateBankAccount(String(accountNumber), String(bankCode));
-      
+
       return res.status(200).json({
         status: 'success',
         data: details
