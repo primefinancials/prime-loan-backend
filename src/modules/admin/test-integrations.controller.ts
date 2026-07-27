@@ -207,7 +207,7 @@ export class TestIntegrationsController {
         try {
           const monoProvider = new MonoProvider();
           const mandateStatus = await monoProvider.getMandateStatus(bankMethod.token);
-          if (mandateStatus?.data?.data && (mandateStatus?.data?.data?.ready_to_debit || mandateStatus?.data?.data?.approved || mandateStatus?.data?.data?.status === "approved")) {
+          if (mandateStatus?.data && (mandateStatus?.data?.ready_to_debit || mandateStatus?.data?.approved || mandateStatus?.data?.status === "approved")) {
             await AutoDebit.findByIdAndUpdate(bankMethod._id, { status: 'active' });
             bankMethod.status = 'active';
             logger.info({ mandateId: bankMethod.token }, 'Mono mandate is now active');
