@@ -240,7 +240,7 @@ export class TestIntegrationsController {
           })
           results.push({ methodId: method._id, loan, type: method.type, provider: method.provider, status: 'success', data: result });
         } else {
-          results.push({ methodId: method._id, type: method.type, provider: method.provider, status: 'failed', error: errorMsg || result?.message || result?.data?.message || 'Transaction failed', data: result });
+          results.push({ methodId: method._id, type: method.type, provider: method.provider, status: 'failed', error: (errorMsg as any)?.message || result?.message || result?.data?.message || 'Transaction failed', data: result });
         }
       };
 

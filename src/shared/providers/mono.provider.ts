@@ -136,7 +136,7 @@ export class MonoProvider {
     } catch (error: any) {
       logger.error({ error: error.response?.data || error.message, reference: params.reference }, 'Mono chargeAccount failed');
       // Throw a more detailed error string so the cron catches and logs the actual reason
-      const details = error.response?.data || JSON.stringify(error.response?.data?.errors) || 'Mono account charge failed';
+      const details = error.response?.data || error.response?.data?.errors || 'Mono account charge failed';
       throw new Error(details);
     }
   }
