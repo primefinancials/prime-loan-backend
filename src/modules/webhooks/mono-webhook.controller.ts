@@ -4,6 +4,7 @@ import pino from 'pino';
 import { AutoDebit } from '../loans/auto-debit.model';
 import { AutoDebitLog } from '../loans/auto-debit-log.model';
 import { LoanService } from '../loans/loan.service';
+import { AutoDebitService } from '../loans/auto-debit.service';
 import { WorkerLogService } from '../worker-logs/worker-log.service';
 import { NotificationService } from '../notifications/notification.service';
 import { alreadyProcessedWebhook, markWebhookProcessed } from '../../shared/webhooks/webhook-event.model';
@@ -292,15 +293,7 @@ export class MonoWebhookController {
     }
 
     try {
-      await LoanService.repayLoan({
-        loanId: String(log.loanId),
-        userId: log.userId,
-        amount: log.amount,
-        idempotencyKey: `webhook-mono-${log.reference}`,
-        skipBalanceCheck: true,
-        autoDeduct: true,
-        internalOnly: true,
-      });
+      await AutoDebitService.reconcile(log._id as any);
       logger.info({ ref: log.reference, amount: log.amount, loanId: log.loanId }, 'Mono debit reconciled to loan');
       await WorkerLogService.log(WK, 'info', `Mono debit settled: ₦${log.amount} on loan ${log.loanId}`, {
         reference: log.reference,

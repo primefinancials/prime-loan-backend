@@ -354,13 +354,19 @@ export class AutoDebitService {
   }
 
   /**
-   * Move a settled AutoDebitLog into the loan ledger. Idempotent via the
-   * `webhook-mono-${reference}` / `ext-debit-${reference}` idempotency key on
-   * repayLoan. Safe to call from the card path (inline) and the webhook.
+   * Move a settled AutoDebitLog into the loan ledger. THE single place this
+   * happens — called from the card path (inline), the Mono webhook and the
+   * reconcile cron. Idempotent two ways: `log.reconciledAt` is checked first
+   * (so a genuine duplicate never even calls repayLoan), and repayLoan itself
+   * dedupes on `ext-debit-${reference}`.
    */
   static async reconcile(logId: string | mongoose.Types.ObjectId): Promise<void> {
     const log = await AutoDebitLog.findById(logId);
     if (!log || log.status !== 'successful' || !log.loanId) return;
+    if (log.reconciledAt) {
+      logger.info({ reference: log.reference }, 'AutoDebit already reconciled — skip');
+      return;
+    }
     try {
       await LoanService.repayLoan({
         loanId: String(log.loanId),
@@ -371,6 +377,8 @@ export class AutoDebitService {
         autoDeduct: true,
         internalOnly: true,
       });
+      log.reconciledAt = new Date();
+      await log.save();
       logger.info({ reference: log.reference, amount: log.amount, loanId: log.loanId }, 'AutoDebit reconciled to loan');
     } catch (err: any) {
       logger.error({ reference: log.reference, error: err.message }, 'AutoDebit reconcile failed');

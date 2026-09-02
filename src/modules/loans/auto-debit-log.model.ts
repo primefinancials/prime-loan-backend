@@ -35,6 +35,7 @@ export interface IAutoDebitLog extends Document {
   providerResponse?: any;
   errorMessage?: string;
   settledAt?: Date;                // when moved to successful/failed by webhook/cron
+  reconciledAt?: Date;             // when the successful debit was written to the loan ledger
   reversedAt?: Date;               // when an optimistic repayment was reversed
   createdAt: Date;
   updatedAt: Date;
@@ -59,6 +60,7 @@ const AutoDebitLogSchema = new Schema<IAutoDebitLog>(
     providerResponse: { type: Schema.Types.Mixed },
     errorMessage: { type: String },
     settledAt: { type: Date },
+    reconciledAt: { type: Date },
     reversedAt: { type: Date },
   },
   { collection: getCollectionName('auto_debit_logs'), timestamps: true }
