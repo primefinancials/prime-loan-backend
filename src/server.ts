@@ -15,6 +15,7 @@ import http from "http";
 import pino from "pino";
 import { DatabaseService } from "./shared/db";
 import { PORT } from "./config";
+import { validateEnv } from "./config/validateEnv";
 import createApp from "./app";
 
 // === Workers ===
@@ -38,6 +39,8 @@ let servicesReady = false;
 
 export async function startApp() {
   try {
+    validateEnv();
+
     const app = express();
     const server = http.createServer(app);
 
