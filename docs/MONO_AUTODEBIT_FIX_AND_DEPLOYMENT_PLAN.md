@@ -32,8 +32,21 @@ Branches: `prime-loan-backend@feat/mono-autodebit-stabilisation` (off `staging-v
 | 3 — repayment integrity | ✅ done | `penaltiesCron` external‑debit block (~230 lines) → `AutoDebitService.chargeLoan`; async debits never optimistically reconciled; card stays sync; `reconcile()` unified + idempotent via `reconciledAt`. **Penalty logic untouched (client decision).** L1 clamp already present in current code. |
 | 4 — admin auto‑debit feature | ✅ done | `AdminAutoDebitController` + `/backoffice` routes; `singleLoanHistory` returns `paymentMethods`; `test-integrations/auto-debit` delegates + requires `loanId`; admin UI Payment‑Methods panel; `AutomationIntegration` sends `loanId` + gains `voiceCall/sms` |
 | 5 — balance feature | ✅ done | `MonoProvider.getMandateBalance`; `GET /backoffice/loans/:id/bank-balance` + legacy alias, 60 s cache; admin "Check Bank Balance" wired to real NGN + timestamp |
-| 6 — AWS staging env | ⏳ blocked on credentials | see §6.7 |
-| 7 — AWS prod + push to dev | ⏳ after staging sign‑off | |
+| 6 — AWS staging env | ✅ **LIVE** (2026‑09‑03) | New account `018088156887`, `eu-west-1`. EB app `prime-finance-backend` / env `pf-staging`, SingleInstance `t4g.small`, Node.js 22 / AL2023, co‑located `redis6`, Elastic IP **`3.254.126.43`**. `http://prime-finance-backend-staging.eu-west-1.elasticbeanstalk.com` — `/health` + `/health/ready` green, webhook auth verified. Env copied from old `prime-finance-staging-env` (`NODE_ENV=dev`, shared Atlas `_staging` collections, `REDIS_URL=redis://127.0.0.1:6379`). ~US$14–15/mo. |
+| 7 — AWS prod + push to dev | ⏳ after staging sign‑off | Prod = a second EB env (`pf-prod`, `NODE_ENV=production`) in the same new account; user merges `main` themselves. |
+
+### 6.8 — As‑built cutover checklist (staging)
+
+**Done by Claude:** new account CLI profiles (`old-account` read‑only us‑east‑1, `new-account` admin eu‑west‑1); EB app + `pf-staging` env; env vars loaded; `dev-v2` pushed with the EB config commits; `/health` + webhook‑auth verified from the instance; outbound to Mono + Flutterwave confirmed egressing via `3.254.126.43`.
+
+**User to do before functional testing:**
+1. **Stop / scale‑to‑zero the OLD `prime-finance-staging-env`** (us‑east‑1). Both servers otherwise run the same crons against the same `_staging` MongoDB (they use different Redis, so BullMQ can't coordinate). Money paths are idempotent + date‑guarded, but stop the old one to be clean.
+2. **Vercel (staging projects, web‑v2 + admin):** set `BACKEND_URL` → `http://prime-finance-backend-staging.eu-west-1.elasticbeanstalk.com`. Leave `NEXT_PUBLIC_API_URL` unset (socket.io over `ws://` from an HTTPS page is mixed‑content‑blocked — already the case on the current HTTP‑only staging, so no regression; HTTPS is a prod task).
+3. **Mono dashboard → Webhooks:** point the *staging* webhook URL at `http://prime-finance-backend-staging.eu-west-1.elasticbeanstalk.com/webhooks/mono`, keep the **same secret** as today's staging webhook (24‑char `sec_…`).
+4. **Flutterwave dashboard:** add `3.254.126.43` to the IP allow‑list. (Not needed for Mono testing.)
+5. **Give Claude:** the exact staging front‑end URLs (user app + admin) so CORS and browser testing line up.
+
+**HTTPS:** the new env is HTTP‑only (like the current one). Mono/Flutterwave both accept HTTP webhooks, and the Vercel proxy reaches it server‑side, so functional testing is unblocked. For prod we'll add TLS — options: a Hostinger subdomain (`api.primefinance.live`) A‑record → the EIP + nginx/certbot on the instance, or an ALB + ACM cert (+~US$16/mo), or Cloudflare in front (free, needs the zone on Cloudflare).
 
 Builds: backend `npm run build` ✅ · admin `vite build` ✅ · web‑v2 `next build` ✅ (pre‑existing unrelated TS errors in both front‑ends left as‑is).
 
