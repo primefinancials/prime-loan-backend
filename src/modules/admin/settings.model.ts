@@ -149,6 +149,8 @@ export interface ISettings extends Document {
     bankEnabled: boolean;
     maxDebitAttempts: number;
     minDebitAmount: number;
+    /** Max debitable amount to register on a new Mono/Monnify mandate (Naira). 0 = use default. */
+    mandateMaxAmount?: number;
     bankLinkingProvider: 'flutterwave' | 'mono' | 'monnify';
   };
 
@@ -453,6 +455,7 @@ const SettingsSchema = new Schema<ISettings>(
       bankEnabled: { type: Boolean, default: true },
       maxDebitAttempts: { type: Number, default: 3 },
       minDebitAmount: { type: Number, default: 100 },
+      mandateMaxAmount: { type: Number, default: 5000000 },
       bankLinkingProvider: { type: String, enum: ['flutterwave', 'mono', 'monnify'], default: 'flutterwave' }
     },
 

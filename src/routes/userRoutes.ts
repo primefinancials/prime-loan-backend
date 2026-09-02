@@ -326,7 +326,20 @@ router.post(
 router.post(
   "/loans/link-bank/mono/initiate",
   verifyJwtRest(),
+  idempotencyMiddleware() as any,
   AutoDebitController.initiateBankMono as unknown as express.RequestHandler
+);
+
+router.get(
+  "/loans/link-bank/mono/status",
+  verifyJwtRest(),
+  AutoDebitController.getMonoLinkStatus as unknown as express.RequestHandler
+);
+
+router.post(
+  "/loans/link-bank/mono/cancel",
+  verifyJwtRest(),
+  AutoDebitController.cancelMonoMandate as unknown as express.RequestHandler
 );
 
 router.post(

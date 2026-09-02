@@ -20,6 +20,7 @@ import createApp from "./app";
 
 // === Workers ===
 import { LoanPenaltiesCron } from "./workers/loans/penaltiesCron";
+import { MonoReconcileCron } from "./workers/loans/monoReconcileCron";
 import { TransfersPoller } from "./workers/pollers/transfersPoller";
 import { SavingsMaturitiesWorker } from "./workers/savings/maturitiesWorker";
 import { ProfitRealizationCron } from "./workers/profits/profitsCron";
@@ -114,6 +115,7 @@ async function startBackgroundWorkers() {
   try {
     // Register all workers
     LoanPenaltiesCron.register();
+    MonoReconcileCron.register();
     TransfersPoller.register();
     SavingsMaturitiesWorker.register();
     ProfitRealizationCron.register();

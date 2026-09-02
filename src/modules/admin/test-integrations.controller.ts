@@ -13,7 +13,6 @@ import { TransferService } from '../../modules/transfers/transfer.service';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
 import { sha512 } from 'js-sha512';
 import { randomUUID } from 'crypto';
-import { LoanService } from '../../modules/loans/loan.service';
 
 const logger = pino({ name: 'test-integrations' });
 
@@ -156,204 +155,40 @@ export class TestIntegrationsController {
   static async testAutoDebit(req: Request, res: Response, next: NextFunction) {
     try {
       const { userId, amount, methodId, loanId } = req.body;
-      if (!userId) return res.status(400).json({ status: 'failed', message: 'User ID is required' });
+      if (!userId) return res.status(400).json({ status: "failed", message: "User ID is required" });
+      if (!loanId) return res.status(400).json({ status: "failed", message: "loanId is required — select the loan to repay" });
 
-      if (loanId) {
-        const LoanModel = (await import('../../modules/loans/loan.model')).default;
-        const loan = await LoanModel.findById(loanId);
-        if (!loan) return res.status(404).json({ status: 'failed', message: 'Loan not found' });
+      const { AutoDebitService } = await import("../../modules/loans/auto-debit.service");
+      const result = await AutoDebitService.chargeLoan({
+        loanId: String(loanId),
+        userId: String(userId),
+        amount: amount ? Number(amount) : undefined,
+        methodId,
+        source: "admin",
+        actorId: String((req as any).admin?._id || (req as any).user?._id || "admin-system"),
+      });
 
-        if (loan.status !== 'accepted') {
-          return res.status(400).json({ status: 'failed', message: `Cannot auto-debit: Loan status is ${loan.status}` });
-        }
-        if (loan.loan_payment_status === 'complete') {
-          return res.status(400).json({ status: 'failed', message: 'Cannot auto-debit: Loan is already fully repaid' });
-        }
-      }
+      logger.info({ userId, loanId, accepted: result.accepted }, "Admin test auto-debit completed");
 
-      const { AutoDebit } = await import('../../modules/loans/auto-debit.model');
-      const { FlutterwaveDebitProvider } = await import('../../shared/providers/flutterwave-debit.provider');
-      const { OPayProvider } = await import('../../shared/providers/opay.provider');
-      const { MonnifyProvider } = await import('../../shared/providers/monnify.provider');
-      const { MonoProvider } = await import('../../shared/providers/mono.provider');
-
-      let methods: any[] = [];
-      if (methodId) {
-        methods = await AutoDebit.find({ _id: methodId, userId: String(userId) }).lean();
-      } else {
-        methods = await AutoDebit.find({ userId: String(userId), status: { $in: ['active', 'pending'] } }).lean();
-      }
-
-      if (!methods.length) {
-        return res.status(404).json({ status: 'failed', message: 'No valid payment methods found for this user' });
-      }
-
-      const testAmount = amount || 1000; // Minimum test amount
-      const fwProvider = new FlutterwaveDebitProvider();
-
-      const { UserService } = await import('../../modules/users/user.service');
-      const user = await UserService.getUser(userId);
-      const firstName = (user as any)?.user_metadata?.first_name || (user as any)?.first_name || 'Prime';
-      const lastName = (user as any)?.user_metadata?.last_name || (user as any)?.last_name || 'User';
-
-      const results: any[] = [];
-      let wasSuccessful = false;
-
-      const cardMethod = methods.find(m => m.type === 'card' && m.token && (m.status === 'active' || methodId));
-      let bankMethod = methods.find(m => m.type === 'bank' && m.token);
-      const walletMethod = methods.find(m => m.type === 'wallet' && m.token && (m.status === 'active' || methodId));
-
-      if (bankMethod && bankMethod.provider === 'mono' && bankMethod.status === 'pending') {
-        logger.info({ mandateId: bankMethod.token }, 'Checking Mono endpoint for mandate status on admin');
-        try {
-          const monoProvider = new MonoProvider();
-          const mandateStatus = await monoProvider.getMandateStatus(bankMethod.token);
-          if (mandateStatus?.data && (mandateStatus?.data?.ready_to_debit || mandateStatus?.data?.approved || mandateStatus?.data?.status === "approved")) {
-            await AutoDebit.findByIdAndUpdate(bankMethod._id, { status: 'active' });
-            bankMethod.status = 'active';
-            logger.info({ mandateId: bankMethod.token }, 'Mono mandate is now active');
-            results.push({ methodId: bankMethod._id, type: 'bank', provider: 'mono', status: 'info', message: 'Checked Mono endpoint: mandate is now active', data: mandateStatus });
-          } else {
-            results.push({ methodId: bankMethod._id, type: 'bank', provider: 'mono', status: 'failed', error: 'Mandate is still pending on Mono', data: mandateStatus });
-            bankMethod = undefined; // Do not attempt to charge
-          }
-        } catch (err: any) {
-          logger.error({ error: err.message }, 'Failed to check Mono mandate status');
-          results.push({ methodId: bankMethod._id, type: 'bank', provider: 'mono', status: 'failed', error: 'Failed to check Mono mandate status', data: { message: err.message } });
-          bankMethod = undefined;
-        }
-      } else if (bankMethod && bankMethod.status !== 'active' && !methodId) {
-        bankMethod = undefined;
-      }
-
-      const processTestResult = async (result: any, method: any, status: 'successful' | 'failed', errorMsg?: string) => {
-        if (status === 'successful') {
-          wasSuccessful = true;
-          const loan = await LoanService.repayLoan({
-            userId,
-            loanId,
-            amount: testAmount,
-            mandatory: 1,
-            autoDeduct: true,
-            internalOnly: true,
-            skipBalanceCheck: true
-          })
-          results.push({ methodId: method._id, loan, type: method.type, provider: method.provider, status: 'success', data: result });
-        } else {
-          results.push({ methodId: method._id, type: method.type, provider: method.provider, status: 'failed', error: (errorMsg as any)?.message || result?.message || result?.data?.message || 'Transaction failed', data: result });
-        }
-      };
-
-      // ── 1. Card attempt
-      if (!wasSuccessful && cardMethod) {
-        try {
-          const result = await fwProvider.chargeToken({
-            token: cardMethod.token,
-            email: cardMethod.email || '',
-            amount: testAmount,
-            txRef: `admin-test-card-${Date.now()}-${cardMethod._id}`,
-            firstName,
-            lastName,
-          });
-
-          if (result?.data?.status === 'successful' || result?.status === 'SUCCESS' || result?.status === 'successful') {
-            processTestResult(result, cardMethod, 'successful');
-          } else {
-            processTestResult(result, cardMethod, 'failed');
-          }
-        } catch (err: any) {
-          logger.error({ error: err.message }, 'Card auto-debit test threw an error');
-          processTestResult({ message: err.message }, cardMethod, 'failed', err.response?.data?.message || err.message);
-        }
-      }
-
-      // ── 2. Bank attempt
-      if (!wasSuccessful && bankMethod) {
-        try {
-          let result: any;
-          if (bankMethod.provider === 'monnify') {
-            const monnifyProvider = new MonnifyProvider();
-            result = await monnifyProvider.debitMandate({
-              mandateCode: bankMethod.token,
-              amount: testAmount,
-              reference: `admin-bank-monnify-${Date.now()}-${bankMethod._id}`,
-              narration: 'Admin Bank Auto Debit'
-            });
-          } else if (bankMethod.provider === 'mono') {
-            const monoProvider = new MonoProvider();
-            result = await monoProvider.chargeAccount({
-              accountId: bankMethod.token,
-              amount: testAmount,
-              reference: `ADMBANKMONO${Date.now()}`,
-              narration: 'Admin Bank Auto Debit'
-            });
-          } else {
-            result = await fwProvider.chargeToken({
-              token: bankMethod.token,
-              email: bankMethod.email || '',
-              amount: testAmount,
-              txRef: `admin-test-bank-flw-${Date.now()}-${bankMethod._id}`,
-              firstName,
-              lastName,
-            });
-          }
-
-          if (result?.data?.status === 'successful' || result?.status === 'SUCCESS' || result?.responseCode === '0' || result?.status === 'successful' || result?.status === true) {
-            await processTestResult(result, bankMethod, 'successful');
-          } else {
-            await processTestResult(result, bankMethod, 'failed');
-          }
-        } catch (err: any) {
-          logger.error({ error: err.message }, 'Bank auto-debit test threw an error');
-          await processTestResult({ message: err.message }, bankMethod, 'failed', err.response?.data?.message || err.message);
-        }
-      }
-
-      // ── 3. Wallet attempt
-      if (!wasSuccessful && walletMethod) {
-        try {
-          let result: any;
-          if (walletMethod.provider === 'opay') {
-            const opayProvider = new OPayProvider();
-            result = await opayProvider.chargeWallet({
-              token: walletMethod.token,
-              amount: testAmount,
-              reference: `admin-test-opay-${Date.now()}-${walletMethod._id}`,
-              phone: (walletMethod as any).walletPhone
-            });
-          } else if (walletMethod.provider === 'monnify') {
-            const monnifyProvider = new MonnifyProvider();
-            result = await monnifyProvider.debitMandate({
-              mandateCode: walletMethod.token,
-              amount: testAmount,
-              reference: `admin-test-moniepoint-${Date.now()}-${walletMethod._id}`,
-              narration: 'Admin Test Wallet Auto Debit'
-            });
-          } else {
-            result = { message: 'Unknown wallet provider' };
-          }
-
-          if (result?.data?.status === 'successful' || result?.status === 'SUCCESS' || result?.responseCode === '0' || result?.status === 'successful' || result?.status === true) {
-            processTestResult(result, walletMethod, 'successful');
-          } else {
-            processTestResult(result, walletMethod, 'failed');
-          }
-        } catch (err: any) {
-          logger.error({ error: err.message }, 'Wallet auto-debit test threw an error');
-          processTestResult({ message: err.message }, walletMethod, 'failed', err.response?.data?.message || err.message);
-        }
-      }
-
-      logger.info({ userId, amount: testAmount }, 'Admin test auto-debit completed');
-
+      // Keep the { results: [...] } shape the existing admin UI renders.
       return res.status(200).json({
-        status: 'completed',
-        message: 'Auto debit completed',
-        results: results
+        status: "completed",
+        message: result.accepted
+          ? (result.attempts.some((a) => a.status === "settled") ? "Auto debit completed" : "Auto debit accepted — awaiting bank confirmation")
+          : "No charge could be made",
+        data: result,
+        results: result.attempts.map((a) => ({
+          type: a.method,
+          provider: a.provider,
+          status: a.status === "settled" ? "success" : a.status,
+          message: a.message,
+          error: a.status === "failed" ? a.message : undefined,
+          data: a.data,
+        })),
       });
     } catch (err: any) {
-      logger.error({ error: err.message }, 'Test auto-debit failed');
-      return res.status(500).json({ status: 'failed', message: err.message });
+      logger.error({ error: err.message }, "Test auto-debit failed");
+      return res.status(500).json({ status: "failed", message: err.message });
     }
   }
 
@@ -671,34 +506,58 @@ export class TestIntegrationsController {
 
   /**
    * GET /backoffice/test-integrations/mono-balance/:userId
-   * Retrieves Mono Connect account balance if available
+   * User bank balance via Mono. Prefers the Direct Debit mandate balance-inquiry
+   * (works for every user with an active Mono mandate); falls back to the legacy
+   * Mono Connect account path for old records. Cached 60s (Mono bills per call).
    */
   static async getMonoBalance(req: Request, res: Response, next: NextFunction) {
     try {
       const { userId } = req.params;
       if (!userId) return res.status(400).json({ status: 'failed', message: 'userId is required' });
 
-      const UserModel = (await import('../../modules/users/user.model')).default;
-      const user = await UserModel.findById(userId).lean();
+      const { AutoDebit } = await import('../../modules/loans/auto-debit.model');
+      const { MonoProvider } = await import('../../shared/providers/mono.provider');
+      const { RedisService } = await import('../../shared/cache/redis.service');
 
-      if (!user) return res.status(404).json({ status: 'failed', message: 'User not found' });
+      const mandate = await AutoDebit.findOne({
+        userId: String(userId),
+        type: 'bank',
+        provider: 'mono',
+        status: { $in: ['active', 'approved'] },
+      }).sort({ createdAt: -1 });
 
-      if (!user.mono_account || !user.mono_account.id) {
-        return res.status(400).json({
-          status: 'failed',
-          message: 'User does not have a Mono Connect account ID (only mandate ID). Balance check requires full Mono Connect linking.'
-        });
+      if (mandate?.token) {
+        const cacheKey = `mono:balance:${mandate.token}`;
+        const cached = await RedisService.get<any>(cacheKey).catch(() => null);
+        if (cached) return res.status(200).json({ status: 'success', data: { ...cached, cached: true } });
+
+        const bal = await new MonoProvider().getMandateBalance(mandate.token);
+        const payload = {
+          balance: bal.balance,
+          currency: bal.currency || 'NGN',
+          accountName: mandate.accountName,
+          accountNumber: mandate.accountNumber ? `****${String(mandate.accountNumber).slice(-4)}` : undefined,
+          bankName: mandate.bankName,
+          mandateId: mandate.token,
+          asOf: new Date().toISOString(),
+          source: 'mono',
+        };
+        await RedisService.set(cacheKey, payload, 60).catch(() => {});
+        return res.status(200).json({ status: 'success', data: payload });
       }
 
-      const { MonoProvider } = await import('../../shared/providers/mono.provider');
-      const provider = new MonoProvider();
-
-      const balanceData = await provider.getAccountInfo(user.mono_account.id);
-
-      return res.status(200).json({
-        status: 'success',
-        data: balanceData,
-      });
+      // Legacy fallback
+      const UserModel = (await import('../../modules/users/user.model')).default;
+      const user = await UserModel.findById(userId).lean();
+      if (!user) return res.status(404).json({ status: 'failed', message: 'User not found' });
+      if (!user.mono_account || !user.mono_account.id) {
+        return res.status(404).json({
+          status: 'failed',
+          message: 'This user has no active Mono mandate. A bank balance check needs an active bank link.',
+        });
+      }
+      const balanceData = await new MonoProvider().getAccountInfo(user.mono_account.id);
+      return res.status(200).json({ status: 'success', data: balanceData });
     } catch (err: any) {
       logger.error({ error: err.message }, 'Mono balance query failed');
       return res.status(500).json({ status: 'failed', message: err.message });
