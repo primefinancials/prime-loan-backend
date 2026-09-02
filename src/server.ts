@@ -46,14 +46,32 @@ export async function startApp() {
     const server = http.createServer(app);
 
     // ─── PHASE 1: Bind to port immediately ───────────────────────
-    // Serve a basic health endpoint so Railway's health checks pass
-    // while we initialize DB and Redis in the background.
+    // Serve a basic health endpoint so the PaaS health check passes
+    // while we initialize DB and Redis in the background. This is the
+    // endpoint EB's health check hits — it must stay 200 during cold start.
     app.get("/health", (_req, res) => {
       res.status(200).json({
         status: servicesReady ? "healthy" : "starting",
         timestamp: new Date().toISOString(),
         version: "2.0.0",
       });
+    });
+
+    // Deep readiness — actually checks MongoDB + Redis. Use this for
+    // dashboards / uptime monitors; NOT for the EB health check (a transient
+    // DB blip would cycle the single instance).
+    app.get("/health/ready", async (_req, res) => {
+      const out: any = { ready: false, mongo: "unknown", redis: "unknown", servicesReady };
+      try {
+        const mongoose = (await import("mongoose")).default;
+        out.mongo = mongoose.connection.readyState === 1 ? "up" : "down";
+      } catch { out.mongo = "error"; }
+      try {
+        const { QueueService } = await import("./shared/queue");
+        out.redis = (await QueueService.ping()) ? "up" : "down";
+      } catch { out.redis = "error"; }
+      out.ready = servicesReady && out.mongo === "up" && out.redis === "up";
+      res.status(out.ready ? 200 : 503).json(out);
     });
 
     await new Promise<void>((resolve, reject) => {

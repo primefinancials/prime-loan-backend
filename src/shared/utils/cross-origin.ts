@@ -42,7 +42,14 @@ const DefaultCorsOptions: CorsOptions = {
     /^https:\/\/prime-finance-admin-[a-z0-9-]+\.vercel\.app$/,
 
     // Avasa platform (any subdomain)
-    /^https:\/\/(.*\.)?avasa\.app$/
+    /^https:\/\/(.*\.)?avasa\.app$/,
+
+    // Extra origins from env (comma-separated) — lets us add a new front-end
+    // domain without a redeploy. e.g. CORS_ORIGINS="https://a.com,https://b.com"
+    ...(process.env.CORS_ORIGINS || '')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
   ],
 
   /**

@@ -88,6 +88,19 @@ export class QueueService {
   }
 
   /**
+   * Lightweight liveness check for /health/ready.
+   */
+  static async ping(): Promise<boolean> {
+    try {
+      if (!this.connection) return false;
+      const res = await this.connection.ping();
+      return res === 'PONG';
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Graceful shutdown
    */
   static async closeAll() {

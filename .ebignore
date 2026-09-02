@@ -2,3 +2,15 @@ node_modules
 .git
 .env
 .env.*
+dist
+docs
+logs
+scratch
+reports
+deploy.zip
+*.zip
+*.log
+.elasticbeanstalk
+coverage
+.vscode
+.idea

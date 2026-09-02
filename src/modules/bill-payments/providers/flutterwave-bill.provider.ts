@@ -28,14 +28,18 @@ function fwHeaders() {
   return { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
 }
 
-const PROXY_URL = process.env.PROXY_URL || 'http://172.31.3.240:3128';
-const proxyAgent = new HttpsProxyAgent(PROXY_URL);
+// Outbound proxy is OPTIONAL. On the current infra a Squid proxy gave a stable
+// egress IP for Flutterwave's IP allow-list; on the new single-instance EB env
+// the instance's own Elastic IP is the stable egress, so no proxy is needed.
+// Set FORWARD_PROXY_URL (or PROXY_URL) only if you actually run one.
+const PROXY_URL = process.env.FORWARD_PROXY_URL || process.env.PROXY_URL || '';
+const proxyAgent = PROXY_URL ? new HttpsProxyAgent(PROXY_URL) : undefined;
 
 async function fwGet<T = any>(path: string, params?: Record<string, any>) {
   const res = await axios.get<{ status: string; data?: T }>(`https://api.flutterwave.com${path}`, {
     headers: fwHeaders(),
     params,
-    httpsAgent: proxyAgent
+    ...(proxyAgent ? { httpsAgent: proxyAgent } : {}),
   });
   return res.data;
 }
@@ -43,7 +47,7 @@ async function fwGet<T = any>(path: string, params?: Record<string, any>) {
 async function fwPost<T = any>(path: string, body: any = {}) {
   const res = await axios.post<{ status: string; data?: T; message?: string }>(`https://api.flutterwave.com${path}`, body, {
     headers: fwHeaders(),
-    httpsAgent: proxyAgent
+    ...(proxyAgent ? { httpsAgent: proxyAgent } : {}),
   });
   return res.data;
 }
