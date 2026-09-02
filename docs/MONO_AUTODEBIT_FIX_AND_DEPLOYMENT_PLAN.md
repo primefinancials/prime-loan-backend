@@ -20,6 +20,27 @@
 
 ---
 
+## IMPLEMENTATION STATUS (updated 2026‑09‑02)
+
+Branches: `prime-loan-backend@feat/mono-autodebit-stabilisation` (off `staging-v2`), `prime-loan-web-v2@feat/mono-autodebit-stabilisation` (off `staging`), `prime-finance-admin@feat/mono-autodebit-stabilisation` (off `staging`). Not pushed yet.
+
+| Phase | Status | Notes |
+|---|---|---|
+| 0 — safety net + Mono discovery | ✅ done | `mono.status.ts` mapper (+sanity checks pass), `webhook-event.model.ts` dedupe, `validateEnv.ts`, Part 8 rewritten from live docs |
+| 1 — webhook correctness | ✅ done | `mono-webhook.controller.ts` rewritten: dedicated secret + constant‑time, dedupe, full verified event catalogue, `approved`≠debitable, debit match on `reference_number`, mandate cancel/reject syncs back |
+| 2 — linking state sync | ✅ done | initiate persists `initiating` row + idempotent + cancels stale; `linkBankMono` verifies with Mono & returns real status (201/202/400); new `/mono/status` + `/mono/cancel`; `getLinkedMethods` exposes pending; `unlinkMethod` cancels on Mono; `monoReconcileCron` (15 min) + orphan sweep; shared `evaluateBankLink` |
+| 3 — repayment integrity | ✅ done | `penaltiesCron` external‑debit block (~230 lines) → `AutoDebitService.chargeLoan`; async debits never optimistically reconciled; card stays sync; `reconcile()` unified + idempotent via `reconciledAt`. **Penalty logic untouched (client decision).** L1 clamp already present in current code. |
+| 4 — admin auto‑debit feature | ✅ done | `AdminAutoDebitController` + `/backoffice` routes; `singleLoanHistory` returns `paymentMethods`; `test-integrations/auto-debit` delegates + requires `loanId`; admin UI Payment‑Methods panel; `AutomationIntegration` sends `loanId` + gains `voiceCall/sms` |
+| 5 — balance feature | ✅ done | `MonoProvider.getMandateBalance`; `GET /backoffice/loans/:id/bank-balance` + legacy alias, 60 s cache; admin "Check Bank Balance" wired to real NGN + timestamp |
+| 6 — AWS staging env | ⏳ blocked on credentials | see §6.7 |
+| 7 — AWS prod + push to dev | ⏳ after staging sign‑off | |
+
+Builds: backend `npm run build` ✅ · admin `vite build` ✅ · web‑v2 `next build` ✅ (pre‑existing unrelated TS errors in both front‑ends left as‑is).
+
+Deferred hardening (folded where cheap; rest is low‑risk cleanup): M12 partial unique index (skipped — risk on live data with existing dupes), M18 raw‑body webhook (not needed — Mono uses header secret, no HMAC), D3 CORS→env / D12 `/health/ready` / Procfile / `.platform` hooks (Phase 6 deploy prep).
+
+---
+
 ## 0. How the Mono flow works today (so the bugs make sense)
 
 ### 0.1 Components
