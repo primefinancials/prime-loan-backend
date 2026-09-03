@@ -337,6 +337,57 @@ export class LoanService {
    * - on success: complete transfer, update loan, ledger entries
    * - on failure: mark transfer failed
    * --------------------- */
+  /**
+   * If the borrower linked a bank through a Mono direct-debit mandate, it must be
+   * `ready_to_debit` before we disburse. Re-checks Mono live, persists what it
+   * learns, and on "not ready" releases the disbursement lock and throws a
+   * BadRequestError the admin UI shows verbatim.
+   */
+  private static async assertBankMandateReadyForDisbursement(lockLoan: any) {
+    const { AutoDebit } = await import('./auto-debit.model');
+    const mandate = await AutoDebit.findOne({
+      userId: String(lockLoan.userId),
+      type: 'bank',
+      provider: 'mono',
+      status: { $in: ['initiating', 'pending', 'approved', 'active'] },
+    }).sort({ createdAt: -1 });
+
+    if (!mandate) return; // no Mono mandate (other provider / none) — not our gate
+
+    let ready = mandate.status === 'active';
+    let mapped: any;
+    try {
+      const { MonoProvider } = await import('../../shared/providers/mono.provider');
+      const { mapMonoMandateStatus } = await import('../../shared/providers/mono.status');
+      const raw = await new MonoProvider().getMandateStatus(mandate.token);
+      mapped = mapMonoMandateStatus(raw);
+      if (mandate.status !== mapped.local || mandate.providerStatusRaw !== mapped.raw) {
+        mandate.status = mapped.local;
+        mandate.providerStatusRaw = mapped.raw;
+        mandate.lastSyncedAt = new Date();
+        await mandate.save();
+      }
+      ready = mapped.readyToDebit;
+    } catch (e: any) {
+      logger.warn({ err: e.message, mandateId: mandate.token }, 'disburse gate: Mono mandate re-check failed, using local status');
+    }
+
+    if (ready) return;
+
+    // release the lock so a later retry (or a reject) can proceed
+    lockLoan.status = 'pending';
+    await lockLoan.save();
+
+    if (mapped?.terminal) {
+      throw new BadRequestError(
+        `The borrower's bank mandate is ${mapped.raw || 'no longer valid'}. You can reject this loan, or ask the borrower to re-link their bank before disbursing.`
+      );
+    }
+    throw new BadRequestError(
+      `The borrower's bank mandate is not yet ready to debit (currently: ${mapped?.raw || mandate.status}). This normally clears within a few minutes - please hold and try disbursing again shortly.`
+    );
+  }
+
   static async disburseLoan(params: DisburseParams) {
     requiredParam("adminId", params.adminId);
     requiredParam("loanId", params.loanId);
@@ -363,6 +414,11 @@ export class LoanService {
     try {
       const user = await User.findById(lockLoan.userId);
       if (!user) throw new NotFoundError("User not found");
+
+      // 1️⃣.5 Mono mandate gate — do not disburse against a bank link that can't
+      // yet be debited, or the loan can never be auto-recovered. Release the
+      // lock and give the admin an actionable message.
+      await LoanService.assertBankMandateReadyForDisbursement(lockLoan);
 
       // 2️⃣ Check for existing completed transfer (Idempotency Recovery)
       const existingTransfer = await Transfer.findOne({ idempotencyKey: transferIdempotency });
