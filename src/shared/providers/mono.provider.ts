@@ -262,35 +262,43 @@ export class MonoProvider {
     mandateId: string,
     amountNaira: number
   ): Promise<{ balance: number | null; sufficient: boolean | null; testedAmount: number; currency: string; raw: any }> {
-    if (!amountNaira || amountNaira <= 0) {
-      throw new Error('A positive amount is required for a Mono balance inquiry.');
-    }
-    const testedKobo = Math.round(amountNaira * 100);
+    // NIBSS enforces a NGN 1,000 floor on balance checks and Mono rejects amounts
+    // below its own minimum ("Amount must not be less than NGN 200"). Test against
+    // at least NGN 1,000.
+    const testedNaira = Math.max(1000, Math.round(amountNaira || 0));
+    const testedKobo = testedNaira * 100;
     try {
       const response = await this.request({
         method: 'get',
         url: `${this.baseUrl}/v3/payments/mandates/${mandateId}/balance-inquiry`,
         params: { amount: testedKobo },
+        // NIBSS real-time balance checks are slow (can exceed 60s). Do NOT
+        // auto-retry — Mono bills per call.
+        attempts: 1,
+        timeout: 110000,
       });
       const d = response.data?.data ?? response.data ?? {};
 
-      // If Mono echoes an actual balance it is in kobo. Some responses only
-      // return a sufficiency boolean.
+      // Mono echoes an actual balance (in kobo) on the "with balance" plan;
+      // otherwise it only returns a sufficiency boolean.
       const rawBal = d.balance ?? d.available_balance ?? d.account_balance;
       const balance = rawBal === undefined || rawBal === null ? null : Number(rawBal) / 100;
       const sufficient =
-        d.sufficient !== undefined ? Boolean(d.sufficient)
+        d.has_sufficient_balance !== undefined ? Boolean(d.has_sufficient_balance)
+        : d.sufficient !== undefined ? Boolean(d.sufficient)
         : d.has_sufficient_funds !== undefined ? Boolean(d.has_sufficient_funds)
-        : d.status === 'successful' && balance !== null ? balance >= amountNaira
+        : balance !== null ? balance >= testedNaira
         : null;
 
-      return { balance, sufficient, testedAmount: amountNaira, currency: d.currency || 'NGN', raw: response.data };
+      return { balance, sufficient, testedAmount: testedNaira, currency: d.currency || 'NGN', raw: response.data };
     } catch (error: any) {
       logger.error(
-        { error: error.response?.data || error.message, mandateId },
+        { error: error.response?.data || error.message, code: error.code, mandateId },
         'Mono getMandateBalance failed'
       );
-      throw new Error(error.response?.data?.message || 'Failed to run Mono balance inquiry');
+      const e = new Error(error.response?.data?.message || 'Mono balance inquiry did not return in time');
+      (e as any).timedOut = error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT' || !error.response;
+      throw e;
     }
   }
 
