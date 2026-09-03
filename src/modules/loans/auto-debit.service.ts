@@ -68,12 +68,34 @@ export class AutoDebitService {
    * Refresh a Mono mandate row against Mono and persist the mapped status.
    * Returns the mapped status. Non-Mono rows are returned unchanged.
    */
-  static async syncMonoMandate(row: IAutoDebit): Promise<{ local: LocalMandateStatus; readyToDebit: boolean; raw?: any }> {
+  static async syncMonoMandate(
+    row: IAutoDebit,
+    opts: { force?: boolean } = {}
+  ): Promise<{ local: LocalMandateStatus; readyToDebit: boolean; raw?: any }> {
     if (row.provider !== 'mono' || !row.token) {
       return { local: row.status as LocalMandateStatus, readyToDebit: row.status === 'active' };
     }
+    // Mono's status API is slow + flaky; many callers (admin modal, poll loops,
+    // reconcile cron) hit it in quick succession. Cache the raw response ~45s so
+    // we don't stack timeouts. `force` (the explicit Refresh button, the debit
+    // path) always goes live.
+    const cacheKey = `mono:mandate:${row.token}`;
+    try {
+      const RS = (await import('../../shared/cache/redis.service')).RedisService;
+      if (!opts.force) {
+        const cached = await RS.get<any>(cacheKey);
+        if (cached) {
+          const mapped = mapMonoMandateStatus(cached);
+          return { local: row.status as LocalMandateStatus, readyToDebit: mapped.readyToDebit, raw: cached };
+        }
+      }
+    } catch { /* cache optional */ }
     try {
       const res = await new MonoProvider().getMandateStatus(row.token);
+      try {
+        const RS = (await import('../../shared/cache/redis.service')).RedisService;
+        await RS.set(cacheKey, res, 45);
+      } catch { /* noop */ }
       const mapped = mapMonoMandateStatus(res);
       const d = res?.data ?? res ?? {};
       const acctId = d.account?._id || d.account?.id || d.account_id;
@@ -179,6 +201,22 @@ export class AutoDebitService {
       return { ok: false, loanId: params.loanId, amount: 0, attempts: [{ method: null, status: 'skipped', message: `Loan status is ${loan.status}` }], accepted: false };
     }
 
+    // Guard against a double charge from a fast retry / overlapping cron run:
+    // if a debit for this loan settled or is still pending in the last 10 min,
+    // don't start another.
+    const recent = await AutoDebitLog.findOne({
+      loanId: String(params.loanId),
+      status: { $in: ['pending', 'successful'] },
+      createdAt: { $gte: new Date(Date.now() - 10 * 60 * 1000) },
+    }).lean();
+    if (recent) {
+      return {
+        ok: true, loanId: params.loanId, amount: 0, accepted: recent.status === 'successful',
+        attempts: [{ method: recent.type as any, provider: recent.provider, status: recent.status === 'successful' ? 'settled' : 'pending',
+          reference: recent.reference, message: `A ${recent.status} debit for this loan already exists (${recent.reference})` }],
+      };
+    }
+
     const amount = Math.min(Number(params.amount) > 0 ? Number(params.amount) : outstanding, outstanding);
 
     const rows = await AutoDebit.find({
@@ -224,6 +262,16 @@ export class AutoDebitService {
     // ── 1. Card (Flutterwave) - synchronous ──
     if (!accepted && card && card.token) {
       const ref = `${baseRef}C`;
+      // Flutterwave tokenised-charges REQUIRES a customer email; older card rows
+      // were saved without one. Fall back to the user's account email.
+      let cardEmail = card.email || '';
+      if (!cardEmail) {
+        try {
+          const U = (await import('../users/user.model')).default;
+          const u = await U.findById(params.userId).lean();
+          cardEmail = (u as any)?.email || (u as any)?.user_metadata?.email || '';
+        } catch { /* noop */ }
+      }
       const log = await AutoDebitLog.create({
         userId: String(params.userId), loanId: String(loan._id), type: 'card', amount, reference: ref,
         token: card.token, provider: card.provider || 'flutterwave', source: params.source, actorId: params.actorId,
@@ -232,12 +280,12 @@ export class AutoDebitService {
       try {
         const { FlutterwaveDebitProvider } = await import('../../shared/providers/flutterwave-debit.provider');
         const result: any = await new FlutterwaveDebitProvider().chargeToken({
-          token: card.token, email: card.email || '', amount, txRef: ref, firstName, lastName,
+          token: card.token, email: cardEmail, amount, txRef: ref, firstName, lastName,
           redirectUrl: 'https://primefinance.live',
         });
-        const ok = result?.data?.status === 'successful';
+        const st = String(result?.data?.status || '').toLowerCase();
         log.providerResponse = result;
-        if (ok) {
+        if (st === 'successful') {
           log.status = 'successful';
           log.settledAt = new Date();
           await log.save();
@@ -245,18 +293,25 @@ export class AutoDebitService {
           accepted = true;
           attempts.push({ method: 'card', provider: 'flutterwave', status: 'settled', reference: ref, message: `₦${amount} debited from card`, data: result });
         } else {
+          // `pending` here means Flutterwave wants an interactive re-auth
+          // (PIN / OTP / 3-D Secure) which a background debit cannot complete —
+          // the card is effectively unusable for silent auto-debit. Mark failed
+          // so the flow falls through to the bank.
+          const needsAuth = st === 'pending' || !!result?.meta?.authorization;
           log.status = 'failed';
-          log.errorMessage = result?.data?.processor_response || result?.message || 'Card charge not successful';
+          log.errorMessage = needsAuth
+            ? 'Card needs interactive authorisation (PIN/OTP) on each charge - cannot be auto-debited.'
+            : (result?.data?.processor_response || result?.message || 'Card charge not successful');
           log.settledAt = new Date();
           await log.save();
           attempts.push({ method: 'card', provider: 'flutterwave', status: 'failed', reference: ref, message: log.errorMessage as string, data: result });
         }
       } catch (err: any) {
         log.status = 'failed';
-        log.errorMessage = err.message;
+        log.errorMessage = err?.response?.data?.message || err.message;
         log.settledAt = new Date();
         await log.save();
-        attempts.push({ method: 'card', provider: 'flutterwave', status: 'failed', reference: ref, message: err.message });
+        attempts.push({ method: 'card', provider: 'flutterwave', status: 'failed', reference: ref, message: log.errorMessage as string });
       }
     }
 
