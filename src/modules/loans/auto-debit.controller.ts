@@ -6,12 +6,81 @@ import { AutoDebit } from './auto-debit.model';
 import { FlutterwaveDebitProvider } from '../../shared/providers/flutterwave-debit.provider';
 import { MonoProvider } from '../../shared/providers/mono.provider';
 import { MonnifyProvider } from '../../shared/providers/monnify.provider';
+import { AutoDebitService } from './auto-debit.service';
+import { mapMonoMandateStatus } from '../../shared/providers/mono.status';
 import { LoanEligibilityService } from './loan-eligibility';
 import { UserService } from '../users/user.service';
 import pino from 'pino';
 import { BadRequestError } from '../../exceptions';
 
 const logger = pino({ name: 'auto-debit-controller' });
+
+/**
+ * Shared bank-account eligibility check used by BOTH `checkAccount` (pre-flight)
+ * and `initiateBankMono` (at initiation), so the two can never disagree about
+ * whether an account may be linked.
+ *
+ * Returns `{ allowed: true }` or `{ allowed: false, message }`. When a stale
+ * non-active Mono mandate is in the way it is proactively cancelled so the user
+ * is never dead-ended (Issue A).
+ */
+async function evaluateBankLink(params: {
+  userId: string;
+  accountNumber?: string;
+  bvn?: string;
+}): Promise<{ allowed: boolean; message?: string; replaceable?: any[] }> {
+  const { userId, accountNumber, bvn } = params;
+  const replaceable: any[] = [];
+
+  if (accountNumber) {
+    const existing = await AutoDebit.find({ accountNumber, type: 'bank' });
+    for (const m of existing) {
+      if (m.userId !== String(userId)) {
+        return { allowed: false, message: 'This account is linked to a different Prime profile.' };
+      }
+      if (m.status === 'active') {
+        return { allowed: false, message: "You've already linked this account. Continue with the existing link." };
+      }
+      if (['revoked', 'cancelled', 'rejected', 'expired', 'failed', 'initiating'].includes(m.status)) {
+        replaceable.push(m);
+        continue;
+      }
+      // status is 'pending' or 'approved' — check the real state on the provider.
+      if (m.provider === 'mono' && m.token) {
+        try {
+          const synced = await AutoDebitService.syncMonoMandate(m);
+          if (synced.readyToDebit) {
+            return { allowed: false, message: 'This account already has an active auto-debit mandate.' };
+          }
+          replaceable.push(m); // not ready → user may replace it
+        } catch (err: any) {
+          logger.warn({ error: err.message }, 'evaluateBankLink: Mono sync failed — allowing replace');
+          replaceable.push(m);
+        }
+      } else {
+        replaceable.push(m);
+      }
+    }
+  }
+
+  if (bvn) {
+    const User = (await import('../users/user.model')).default;
+    const dupUsers = await User.find({ 'user_metadata.bvn': bvn, _id: { $ne: userId } }).select('_id');
+    if (dupUsers.length) {
+      const dupIds = dupUsers.map((u: any) => String(u._id));
+      const dupMandate = await AutoDebit.findOne({
+        userId: { $in: dupIds },
+        type: 'bank',
+        status: { $in: ['active', 'approved', 'pending'] },
+      });
+      if (dupMandate) {
+        return { allowed: false, message: 'This BVN is already linked to an auto-debit mandate on another profile.' };
+      }
+    }
+  }
+
+  return { allowed: true, replaceable };
+}
 
 export class AutoDebitController {
 
@@ -29,54 +98,14 @@ export class AutoDebitController {
         return res.status(400).json({ status: 'failed', message: 'accountNumber is required' });
       }
 
-      // 1. Cross-User Account Check & Same-User Check
-      const existingMandates = await AutoDebit.find({ accountNumber, type: 'bank' });
+      const result = await evaluateBankLink({
+        userId: String(userId),
+        accountNumber,
+        bvn: user.user_metadata?.bvn,
+      });
 
-      for (const mandate of existingMandates) {
-        if (mandate.userId !== String(userId)) {
-          return res.status(400).json({ status: 'failed', message: 'Account has been linked to a different user.' });
-        }
-
-        if (mandate.status === 'active') {
-          return res.status(400).json({ status: 'failed', message: "You've linked this account before. Continue to already existing linking." });
-        }
-
-        if (mandate.status === 'pending') {
-          // If it's a Mono mandate, check real status
-          if (mandate.provider === 'mono' && mandate.token) {
-            try {
-              const monoProvider = new MonoProvider();
-              const mandateStatus = await monoProvider.getMandateStatus(mandate.token);
-              const statusStr = mandateStatus?.data?.status || mandateStatus?.status;
-              const isActive = mandateStatus?.data?.active || mandateStatus?.active;
-
-              if (isActive === false || statusStr === 'cancelled' || statusStr === 'initiated') {
-                // Allow replacing it
-                continue;
-              } else {
-                return res.status(400).json({ status: 'failed', message: 'Account has already been linked for the debit mandate.' });
-              }
-            } catch (err: any) {
-              logger.error({ error: err.message }, 'Failed to check Mono mandate status during pre-check');
-            }
-          }
-          return res.status(400).json({ status: 'failed', message: 'Account has already been linked for the debit mandate.' });
-        }
-      }
-
-      // 2. Cross-User BVN Check
-      const bvn = user.user_metadata?.bvn;
-      if (bvn) {
-        const User = (await import('../users/user.model')).default;
-        // Find other users with the same BVN
-        const duplicateUsers = await User.find({ 'user_metadata.bvn': bvn, _id: { $ne: userId } });
-        if (duplicateUsers.length > 0) {
-          const duplicateIds = duplicateUsers.map((u: any) => String(u._id));
-          const duplicateMandate = await AutoDebit.findOne({ userId: { $in: duplicateIds }, type: 'bank', status: { $in: ['active', 'pending'] } });
-          if (duplicateMandate) {
-            return res.status(400).json({ status: 'failed', message: 'This BVN is already linked to an auto-debit mandate on another profile.' });
-          }
-        }
+      if (!result.allowed) {
+        return res.status(400).json({ status: 'failed', message: result.message });
       }
 
       return res.status(200).json({ status: 'success', message: 'Account checks passed', data: { allowed: true } });
@@ -256,32 +285,38 @@ export class AutoDebitController {
   }
 
   /**
-   * GET /api/loans/link-bank/mono/initiate
-   * Initiates a Mono Mandate and returns the payment_id to the frontend.
+   * POST /api/loans/link-bank/mono/initiate
+   * Initiates a Mono mandate AND persists an `initiating` AutoDebit row so the
+   * mandate can later be cancelled / reconciled. Cancels any previous
+   * non-active Mono mandate for this user first (Issue A).
    */
   static async initiateBankMono(req: Request, res: Response, next: NextFunction) {
     try {
       const user = (req as any).user;
-      
+      const userId = String(user._id || user.id);
+
       const email = req.body.email || user.email || 'user@example.com';
       let name = user.name || user.first_name || 'Prime User';
-      
+
       let profileName = name;
       if (user.first_name || user.last_name) {
-          profileName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+        profileName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
       } else if (user.user_metadata?.first_name || user.user_metadata?.last_name) {
-          profileName = `${user.user_metadata.first_name || ''} ${user.user_metadata.last_name || ''}`.trim();
+        profileName = `${user.user_metadata.first_name || ''} ${user.user_metadata.last_name || ''}`.trim();
       }
 
       if (req.body.accountName) {
         name = req.body.accountName;
-        if (process.env.NODE_ENV === 'production') {
-           const profileWords = profileName.toLowerCase().split(/\s+/).filter(Boolean);
-           const inputNameLower = name.toLowerCase();
-           const isValid = profileWords.every((word: string) => inputNameLower.includes(word));
-           if (!isValid && profileWords.length > 0) {
-              return res.status(400).json({ status: 'failed', message: `The account name must contain your registered profile name (${profileName}).` });
-           }
+        // Name-match is enforced everywhere now (not just production) so staging
+        // reproduces the real Mono failure mode. Mono itself also rejects on mismatch.
+        const profileWords = profileName.toLowerCase().split(/\s+/).filter(Boolean);
+        const inputNameLower = name.toLowerCase();
+        const isValid = profileWords.every((word: string) => inputNameLower.includes(word));
+        if (!isValid && profileWords.length > 0 && process.env.MONO_SKIP_NAME_MATCH !== 'true') {
+          return res.status(400).json({
+            status: 'failed',
+            message: `The account name must contain your registered profile name (${profileName}).`,
+          });
         }
       } else if (req.body.first_name) {
         name = `${req.body.first_name} ${req.body.last_name || ''}`.trim();
@@ -289,28 +324,69 @@ export class AutoDebitController {
 
       const phone = req.body.phone || user.phone || user.user_metadata?.phone;
       const address = req.body.address || user.user_metadata?.address;
-      // Use req.body.bvn strictly if provided (even if empty), otherwise fallback to metadata
       const bvn = req.body.bvn !== undefined ? req.body.bvn : user.user_metadata?.bvn;
       const nin = req.body.nin || user.user_metadata?.nin;
+      const accountNumber: string | undefined = req.body.accountNumber;
 
-      const reference = `MN${Date.now()}`;
-      // Fixed maximum limit for mandates to accommodate multiple/future loans without relinking
-      const amount = 5000000;
+      // Eligibility (shared with checkAccount).
+      const eligibility = await evaluateBankLink({ userId, accountNumber, bvn });
+      if (!eligibility.allowed) {
+        return res.status(400).json({ status: 'failed', message: eligibility.message });
+      }
+
+      // Cancel/replace any previous non-active Mono mandate for this user so we
+      // never accumulate orphaned mandates on Mono and the user is never blocked.
+      const stale = await AutoDebit.find({
+        userId,
+        type: 'bank',
+        provider: 'mono',
+        status: { $in: ['initiating', 'pending', 'approved', 'rejected', 'expired', 'failed'] },
+      });
+      for (const s of stale) {
+        try {
+          await AutoDebitService.cancelMethod(s, { reason: 'Superseded by a new mandate initiation', localStatus: 'cancelled' });
+        } catch (e: any) {
+          logger.warn({ mandateId: s.token, error: e.message }, 'Could not cancel stale mandate before re-initiate');
+          s.status = 'cancelled';
+          await s.save();
+        }
+      }
+
+      const reference = `MN${userId.slice(-6)}${Date.now()}`;
+      // Mandate max = generous ceiling so multiple / future loans + penalties fit
+      // without re-linking. Overridable via settings, else a safe default.
+      const { SettingsService } = await import('../admin/settings.service');
+      const settings = await SettingsService.getSettings().catch(() => null as any);
+      const configuredMax = Number(settings?.autoDebit?.mandateMaxAmount) || 0;
+      const amount = configuredMax > 0 ? configuredMax : 5_000_000;
 
       const provider = new MonoProvider();
-      const { paymentId, monoUrl } = await provider.initiateMandate({
-        amount,
-        email,
-        name,
-        phone,
-        address,
-        bvn,
-        nin,
-        reference,
-        description: 'Prime Loan Auto-Debit Mandate'
+      const { mandateId, monoUrl } = await provider.initiateMandate({
+        amount, email, name, phone, address, bvn, nin, reference,
+        description: 'Prime Loan Auto-Debit Mandate',
       });
 
-      return res.status(200).json({ status: 'success', data: { paymentId, monoUrl } });
+      const row = await AutoDebit.create({
+        userId,
+        type: 'bank',
+        provider: 'mono',
+        token: mandateId,
+        email,
+        bankName: req.body.bankName || 'Bank',
+        bankCode: req.body.bankCode || '000',
+        accountNumber: accountNumber || undefined,
+        accountName: name,
+        providerReference: reference,
+        monoUrl,
+        status: 'initiating',
+        providerStatusRaw: 'initiated',
+        lastSyncedAt: new Date(),
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        data: { autoDebitId: row._id, mandateId, paymentId: mandateId, monoUrl },
+      });
     } catch (error) {
       next(error);
     }
@@ -318,46 +394,170 @@ export class AutoDebitController {
 
   /**
    * POST /api/loans/link-bank/mono
-   * Saves the Mono mandate ID after frontend widget completes.
+   * Confirm a Mono mandate. VERIFIES the real state with Mono before persisting
+   * anything — never blind-inserts `pending` (Issue B). Updates the existing
+   * `initiating` row in place; returns the TRUE status.
+   *
+   *   data.status === 'active'  → mandate is ready to debit (HTTP 201)
+   *   data.status === 'pending' → still awaiting Mono confirmation (HTTP 202)
+   *   otherwise                 → failed / rejected / cancelled (HTTP 400)
    */
   static async linkBankMono(req: Request, res: Response, next: NextFunction) {
     try {
       const { code, accountNumber, bankCode, bankName } = req.body;
-      const userId = (req as any).user._id || (req as any).user.id;
+      const userId = String((req as any).user._id || (req as any).user.id);
       const email = (req as any).user.email || 'user@example.com';
 
-      // For DirectPay, frontend passes the mandate `code` (which is the mandate/payment ID) upon success
-      if (!code) {
-        return res.status(400).json({ status: 'failed', message: 'Mandate code/ID is required' });
+      if (!code || code === 'success' || code === 'mono-mandate') {
+        return res.status(400).json({
+          status: 'failed',
+          message: 'A valid Mono mandate id is required. Please restart the bank linking.',
+        });
       }
 
-      // Revoke old bank mandates
-      await AutoDebit.deleteMany(
-         { userId: String(userId), type: "bank" }
-      );
+      // Find the row we created at initiation (preferred), else any bank row for this user.
+      let row = await AutoDebit.findOne({ userId, provider: 'mono', token: code });
+      if (!row) {
+        row = await AutoDebit.findOne({ userId, type: 'bank', provider: 'mono', status: { $in: ['initiating', 'pending', 'approved'] } });
+      }
 
-      const autoDebit = await AutoDebit.create({
-         userId: String(userId),
-         type: "bank",
-         provider: "mono",
-         token: code, // Mono Mandate ID from Connect widget
-         email: email,
-         bankName: bankName || 'Bank',
-         bankCode: bankCode || '000',
-         accountNumber: accountNumber || '0000000000',
-         status: "pending",
-      });
+      // Verify with Mono.
+      let mapped: ReturnType<typeof mapMonoMandateStatus>;
+      let acctId: string | undefined;
+      let acctNo: string | undefined;
+      let acctBank: string | undefined;
+      try {
+        const monoRes = await new MonoProvider().getMandateStatus(code);
+        mapped = mapMonoMandateStatus(monoRes);
+        acctId = monoRes?.data?.account?._id || monoRes?.data?.account?.id || monoRes?.data?.account_id;
+        acctNo = monoRes?.data?.account?.account_number || monoRes?.data?.account_number;
+        acctBank = monoRes?.data?.account?.institution?.name || monoRes?.data?.bank;
+      } catch (err: any) {
+        if (err?.notFound) {
+          if (row) { row.status = 'failed'; row.lastError = 'Mandate not found on Mono'; await row.save(); }
+          return res.status(400).json({ status: 'failed', message: 'That mandate could not be found on Mono. Please restart the bank linking.' });
+        }
+        throw err;
+      }
 
-      return res.status(201).json({
-         status: "success",
-         data: {
-           id: autoDebit._id,
-           type: autoDebit.type,
-           bankName: autoDebit.bankName,
-           accountNumber: autoDebit.accountNumber,
-           status: autoDebit.status,
-         },
+      // Retire other bank methods only once we have a real, non-failed result.
+      if (!mapped.terminal) {
+        await AutoDebit.updateMany(
+          { userId, type: 'bank', _id: { $ne: row?._id }, status: { $in: ['active', 'approved', 'pending', 'initiating'] } },
+          { $set: { status: 'revoked' } }
+        );
+      }
+
+      if (!row) {
+        row = await AutoDebit.create({
+          userId, type: 'bank', provider: 'mono', token: code, email,
+          bankName: acctBank || bankName || 'Bank', bankCode: bankCode || '000',
+          accountNumber: acctNo || accountNumber || undefined,
+          status: 'initiating',
+        });
+      }
+
+      row.status = mapped.local === 'active' ? 'active' : mapped.local;
+      row.providerStatusRaw = mapped.raw;
+      row.lastSyncedAt = new Date();
+      if (acctId) row.providerAccountId = acctId;
+      if (acctNo) row.accountNumber = acctNo;
+      if (acctBank) row.bankName = acctBank;
+      row.lastError = mapped.terminal ? `Mono status: ${mapped.raw}` : undefined;
+      await row.save();
+
+      const payload = {
+        id: row._id,
+        type: row.type,
+        bankName: row.bankName,
+        accountNumber: row.accountNumber,
+        status: row.status,
+        providerStatus: mapped.raw,
+      };
+
+      if (mapped.readyToDebit) {
+        return res.status(201).json({ status: 'success', data: payload });
+      }
+      if (mapped.terminal) {
+        return res.status(400).json({
+          status: 'failed',
+          message:
+            mapped.local === 'rejected'
+              ? 'Your bank rejected the mandate. Please try a different account.'
+              : `The mandate is ${mapped.local}. Please restart the bank linking.`,
+          data: payload,
+        });
+      }
+      // pending / approved-but-not-ready
+      return res.status(202).json({
+        status: 'success',
+        message: 'Your bank is confirming the mandate. This can take a few minutes.',
+        data: { ...payload, status: 'pending' },
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * GET /api/loans/link-bank/mono/status?code=<mandateId>
+   * Lightweight polling endpoint for the wizard while a mandate is `pending`.
+   */
+  static async getMonoLinkStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = String((req as any).user._id || (req as any).user.id);
+      const code = String(req.query.code || req.query.mandateId || '');
+      const row = code
+        ? await AutoDebit.findOne({ userId, provider: 'mono', token: code })
+        : await AutoDebit.findOne({ userId, type: 'bank', provider: 'mono' }).sort({ createdAt: -1 });
+
+      if (!row) return res.status(404).json({ status: 'failed', message: 'No Mono mandate found' });
+
+      let readyToDebit = row.status === 'active';
+      if (['initiating', 'pending', 'approved'].includes(row.status)) {
+        const synced = await AutoDebitService.syncMonoMandate(row);
+        readyToDebit = synced.readyToDebit;
+      }
+
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          id: row._id,
+          status: readyToDebit ? 'active' : row.status,
+          providerStatus: row.providerStatusRaw,
+          readyToDebit,
+          needsAction: ['initiating', 'pending', 'approved'].includes(row.status),
+        },
+      });
+    } catch (err) { next(err); }
+  }
+
+  /**
+   * POST /api/loans/link-bank/mono/cancel   body: { autoDebitId? }
+   * User-initiated "Cancel setup" — cancels the mandate on Mono AND locally so
+   * the user can immediately restart (Issue A).
+   */
+  static async cancelMonoMandate(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = String((req as any).user._id || (req as any).user.id);
+      const { autoDebitId } = req.body || {};
+
+      const query: any = autoDebitId
+        ? { _id: autoDebitId, userId }
+        : { userId, type: 'bank', provider: 'mono', status: { $in: ['initiating', 'pending', 'approved', 'active'] } };
+
+      const rows = await AutoDebit.find(query).sort({ createdAt: -1 });
+      if (!rows.length) {
+        return res.status(200).json({ status: 'success', message: 'Nothing to cancel' });
+      }
+
+      const results = [];
+      for (const row of rows) {
+        const r = await AutoDebitService.cancelMethod(row, { reason: 'User cancelled bank linking', localStatus: 'cancelled' });
+        results.push({ id: row._id, ...r });
+      }
+
+      return res.status(200).json({ status: 'success', message: 'Bank linking cancelled', data: results });
     } catch (error) {
       next(error);
     }
@@ -442,21 +642,48 @@ export class AutoDebitController {
   static async getLinkedMethods(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user._id || (req as any).user.id;
-      const methods = await AutoDebit.find({ userId: String(userId), status: 'active' })
+
+      // Include in-progress bank mandates so the wizard / account page can show
+      // "setup incomplete — finish or cancel" instead of silently claiming linked.
+      const methods = await AutoDebit.find({
+        userId: String(userId),
+        status: { $in: ['active', 'approved', 'pending', 'initiating'] },
+      })
         .select('-token')
         .sort({ createdAt: -1 })
         .lean();
 
-      const card = methods.find((m) => m.type === 'card') || null;
-      const bank = methods.find((m) => m.type === 'bank') || null;
+      const pickActive = (t: string) => methods.find((m) => m.type === t && m.status === 'active') || null;
+      const pickAny = (t: string) => methods.find((m) => m.type === t) || null;
+
+      const card = pickActive('card');
+      const bankActive = pickActive('bank');
+      const bankAny = pickAny('bank');
+      const walletActive = pickActive('wallet');
+
+      const shape = (m: any) =>
+        m && {
+          ...m,
+          needsAction: ['approved', 'pending', 'initiating'].includes(m.status),
+          providerStatus: m.providerStatusRaw,
+        };
+
+      // `bank` stays ACTIVE-ONLY so an older front-end build (which only checks
+      // truthiness) keeps behaving correctly during a mixed deploy. The new
+      // front-end reads `pendingBank` for the "finish or cancel" state.
+      const pendingBank = bankAny && bankAny.status !== 'active' ? bankAny : null;
 
       return res.status(200).json({
         status: 'success',
         data: {
-          card,
-          bank,
+          card: shape(card),
+          bank: shape(bankActive),
+          pendingBank: shape(pendingBank),
+          wallet: shape(walletActive),
           hasCard: !!card,
-          hasBank: !!bank,
+          hasBank: !!bankActive,
+          hasWallet: !!walletActive,
+          bankNeedsAction: !!pendingBank,
         },
       });
     } catch (err) { next(err); }
@@ -464,22 +691,22 @@ export class AutoDebitController {
 
   /**
    * DELETE /api/loans/linked-methods/:id
+   * Disconnect a linked method. For a Mono bank mandate this ALSO cancels the
+   * mandate on Mono, so "disconnect" means disconnect everywhere.
    */
   static async unlinkMethod(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user._id || (req as any).user.id;
-      const method = await AutoDebit.findOneAndUpdate(
-        { _id: req.params.id, userId: String(userId) },
-        { $set: { status: 'revoked' } },
-        { new: true }
-      );
+      const method = await AutoDebit.findOne({ _id: req.params.id, userId: String(userId) });
 
       if (!method) {
         return res.status(404).json({ status: 'failed', message: 'Payment method not found' });
       }
 
-      logger.info({ userId, methodId: req.params.id }, 'Payment method unlinked');
-      return res.status(200).json({ status: 'success', message: 'Payment method removed' });
+      const result = await AutoDebitService.cancelMethod(method, { reason: 'User disconnected the method', localStatus: 'revoked' });
+
+      logger.info({ userId, methodId: req.params.id, providerCancelled: result.providerCancelled }, 'Payment method unlinked');
+      return res.status(200).json({ status: 'success', message: result.message, data: { providerCancelled: result.providerCancelled } });
     } catch (err) { next(err); }
   }
 

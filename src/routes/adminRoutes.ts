@@ -406,6 +406,18 @@ router.get("/test-integrations/flutterwave/banks", verifyJwtRest(), TestIntegrat
 router.get("/test-integrations/flutterwave/verify-account", verifyJwtRest(), TestIntegrationsController.testFlutterwaveVerifyAccount as any);
 router.get("/test-integrations/users/:userId/active-loans", verifyJwtRest(), TestIntegrationsController.getUserActiveLoans as any);
 router.get("/test-integrations/mono-balance/:userId", verifyJwtRest(), TestIntegrationsController.getMonoBalance as any);
+
+/* =============================
+   AUTO-DEBIT MANDATE (Admin)
+============================= */
+import { AdminAutoDebitController } from "../modules/loans/admin-auto-debit.controller";
+
+router.get("/users/:userId([0-9a-fA-F]{24})/payment-methods", verifyJwtRest(), AdminAutoDebitController.listPaymentMethods as any);
+router.post("/users/:userId([0-9a-fA-F]{24})/payment-methods/:id([0-9a-fA-F]{24})/cancel", verifyJwtRest(), AdminAutoDebitController.cancelMethod as any);
+router.get("/loans/:loanId([0-9a-fA-F]{24})/auto-debit/preview", verifyJwtRest(), AdminAutoDebitController.preview as any);
+router.post("/loans/:loanId([0-9a-fA-F]{24})/auto-debit/charge", verifyJwtRest(), idempotencyMiddleware() as any, AdminAutoDebitController.charge as any);
+router.post("/loans/:loanId([0-9a-fA-F]{24})/auto-debit/refresh-mandate", verifyJwtRest(), AdminAutoDebitController.refreshMandate as any);
+router.get("/loans/:loanId([0-9a-fA-F]{24})/bank-balance", verifyJwtRest(), AdminAutoDebitController.bankBalance as any);
 /* =============================
    ADMIN TRANSFERS (ACTUAL)
 ============================= */
