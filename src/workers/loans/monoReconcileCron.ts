@@ -34,6 +34,7 @@ const WK = 'mono-reconcile';
 const ORPHAN_INITIATING_MIN = 30;      // cancel abandoned initiations older than this
 const DEBIT_GRACE_MIN = 25;            // don't chase a debit until it's had time to settle
 const DEBIT_STALE_HOURS = 24;          // give up on an unmatched pending debit after this
+const ACTIVE_RECHECK_MIN = 360;        // re-verify a locally-'active' Mono mandate at most every 6h
 
 export class MonoReconcileCron {
   static register() {
@@ -68,9 +69,25 @@ export class MonoReconcileCron {
 
     try {
       // ── 1 + 2. Mandate rows ──────────────────────────────────────────
+      // In-progress rows every run; 'active' rows only if we haven't checked
+      // them against Mono recently (mandates get cancelled/paused out-of-band
+      // and the live API keeps reporting ready_to_debit, so a local 'active'
+      // can be a lie — but re-checking every one every 15 min wastes Mono calls).
+      const staleActiveCutoff = new Date(Date.now() - ACTIVE_RECHECK_MIN * 60000);
       const rows = await AutoDebit.find({
         provider: 'mono',
-        status: { $in: ['initiating', 'pending', 'approved'] },
+        $or: [
+          { status: { $in: ['initiating', 'pending', 'approved'] } },
+          {
+            $and: [
+              { status: 'active' },
+              { $or: [
+                { lastSyncedAt: { $exists: false } },
+                { lastSyncedAt: { $lt: staleActiveCutoff } },
+              ] },
+            ],
+          },
+        ],
       });
 
       for (const row of rows) {
