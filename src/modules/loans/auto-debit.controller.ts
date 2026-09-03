@@ -668,16 +668,22 @@ export class AutoDebitController {
           providerStatus: m.providerStatusRaw,
         };
 
+      // `bank` stays ACTIVE-ONLY so an older front-end build (which only checks
+      // truthiness) keeps behaving correctly during a mixed deploy. The new
+      // front-end reads `pendingBank` for the "finish or cancel" state.
+      const pendingBank = bankAny && bankAny.status !== 'active' ? bankAny : null;
+
       return res.status(200).json({
         status: 'success',
         data: {
           card: shape(card),
-          bank: shape(bankActive || bankAny),
+          bank: shape(bankActive),
+          pendingBank: shape(pendingBank),
           wallet: shape(walletActive),
           hasCard: !!card,
           hasBank: !!bankActive,
           hasWallet: !!walletActive,
-          bankNeedsAction: !!bankAny && bankAny.status !== 'active',
+          bankNeedsAction: !!pendingBank,
         },
       });
     } catch (err) { next(err); }
