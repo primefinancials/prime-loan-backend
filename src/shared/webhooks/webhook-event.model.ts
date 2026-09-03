@@ -1,7 +1,7 @@
 /**
  * Webhook Event dedupe store.
  *
- * Providers (Mono especially) redeliver the same webhook many times — Mono
+ * Providers (Mono especially) redeliver the same webhook many times - Mono
  * retries with exponential backoff up to 25 times over 48h, reusing the same
  * `event_id`. Without a dedupe guard, a redelivered `debit.successful` would
  * reconcile a loan twice, and a redelivered `mandate.cancelled` is harmless but
@@ -18,7 +18,7 @@ export interface IWebhookEvent extends Document {
   provider: string;               // 'mono' | 'flutterwave' | 'monnify'
   eventId: string;                // provider's event id
   eventType?: string;             // e.g. 'events.mandates.debit.successful'
-  dedupeKey: string;              // `${provider}:${eventId}` — unique
+  dedupeKey: string;              // `${provider}:${eventId}` - unique
   payload?: any;
   handledAt: Date;
   createdAt: Date;
@@ -44,7 +44,7 @@ export const WebhookEvent = mongoose.model<IWebhookEvent>('WebhookEvent', Webhoo
  * True if we have already fully processed this event.
  *
  * The row is written by `markWebhookProcessed` AFTER processing succeeds, so a
- * handler that throws (and returns 5xx) can be safely retried by the provider —
+ * handler that throws (and returns 5xx) can be safely retried by the provider -
  * the downstream operations it performs (loan reconciliation keyed by
  * idempotency key, `updateMany` status writes) are themselves idempotent.
  *
@@ -73,6 +73,6 @@ export async function markWebhookProcessed(
     await WebhookEvent.create({ provider, eventId: String(eventId), eventType, dedupeKey: `${provider}:${eventId}`, payload });
   } catch (err: any) {
     if (err?.code === 11000) return; // already marked by a concurrent delivery
-    // swallow — dedupe is best-effort
+    // swallow - dedupe is best-effort
   }
 }

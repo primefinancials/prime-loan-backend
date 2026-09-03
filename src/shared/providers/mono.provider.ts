@@ -6,7 +6,7 @@ const logger = pino({ name: 'mono-provider' });
 
 const MONO_BASE_URL = process.env.MONO_BASE_URL || 'https://api.withmono.com';
 
-/** YYYY-MM-DD for "now" in Africa/Lagos (WAT, UTC+1) — mandates are rejected if start_date is in the past. */
+/** YYYY-MM-DD for "now" in Africa/Lagos (WAT, UTC+1) - mandates are rejected if start_date is in the past. */
 function lagosDateString(offsetYears = 0): string {
   const now = new Date();
   // WAT has no DST; +1h from UTC.
@@ -37,11 +37,64 @@ export class MonoProvider {
     };
   }
 
+  /**
+   * Mono's API is intermittently slow / returns 502-504 (seen constantly on the
+   * hosted-initiate endpoint). Retry transient failures - network errors,
+   * timeouts, and 429/502/503/504 - with backoff. 4xx (except 429) fail fast.
+   * Safe for GETs and for `initiate` (Mono dedupes on `reference`).
+   */
+  private async request(config: {
+    method: 'get' | 'post' | 'patch';
+    url: string;
+    data?: any;
+    params?: any;
+    attempts?: number;
+    timeout?: number;
+    backoffMs?: number;
+  }): Promise<any> {
+    const maxAttempts = config.attempts ?? 3;
+    const backoff = config.backoffMs ?? 2000;
+    let lastErr: any;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await axios.request({
+          method: config.method,
+          url: config.url,
+          data: config.data,
+          params: config.params,
+          headers: this.getHeaders(),
+          httpsAgent: this.httpsAgent,
+          timeout: config.timeout ?? 35000,
+        });
+      } catch (err: any) {
+        lastErr = err;
+        const status = err.response?.status;
+        const transient =
+          !err.response || // network error / timeout
+          err.code === 'ECONNABORTED' ||
+          err.code === 'ETIMEDOUT' ||
+          err.code === 'ECONNRESET' ||
+          status === 429 ||
+          status === 502 ||
+          status === 503 ||
+          status === 504;
+        if (!transient || attempt === maxAttempts) throw err;
+        const wait = attempt * backoff;
+        logger.warn(
+          { url: config.url, attempt, status: status || err.code },
+          `Mono request transient failure - retrying in ${wait}ms`
+        );
+        await new Promise((r) => setTimeout(r, wait));
+      }
+    }
+    throw lastErr;
+  }
+
   private frontendUrl(): string {
     const url = process.env.FRONTEND_URL || process.env.NEXT_PUBLIC_APP_URL;
     if (!url) {
       if (process.env.NODE_ENV === 'production' || process.env.ENV === 'production') {
-        throw new Error('FRONTEND_URL is not configured — cannot build the Mono redirect URL in production.');
+        throw new Error('FRONTEND_URL is not configured - cannot build the Mono redirect URL in production.');
       }
       return 'https://prime-loan-web-v2-staging.vercel.app';
     }
@@ -50,7 +103,7 @@ export class MonoProvider {
 
   /**
    * Initiate a Direct Debit mandate via the hosted authorisation flow.
-   * `POST /v2/payments/initiate` → returns `data.mandate_id` (mmc_…) and
+   * `POST /v2/payments/initiate` → returns `data.mandate_id` (mmc_...) and
    * `data.mono_url` (the customer authorisation link).
    */
   async initiateMandate(params: {
@@ -92,9 +145,15 @@ export class MonoProvider {
         },
       };
 
-      const response = await axios.post(`${this.baseUrl}/v2/payments/initiate`, payload, {
-        headers: this.getHeaders(),
-        httpsAgent: this.httpsAgent,
+      // Keep total time under the frontend proxy's ceiling: 2 tries, 18s each,
+      // 2s gap → ≤ 38s. If it still fails the frontend retries the whole call.
+      const response = await this.request({
+        method: 'post',
+        url: `${this.baseUrl}/v2/payments/initiate`,
+        data: payload,
+        attempts: 2,
+        timeout: 18000,
+        backoffMs: 2000,
       });
 
       const d = response.data?.data ?? response.data ?? {};
@@ -123,9 +182,9 @@ export class MonoProvider {
    */
   async getMandateStatus(mandateId: string): Promise<any> {
     try {
-      const response = await axios.get(`${this.baseUrl}/v3/payments/mandates/${mandateId}`, {
-        headers: this.getHeaders(),
-        httpsAgent: this.httpsAgent,
+      const response = await this.request({
+        method: 'get',
+        url: `${this.baseUrl}/v3/payments/mandates/${mandateId}`,
       });
       return response.data;
     } catch (error: any) {
@@ -146,18 +205,18 @@ export class MonoProvider {
    */
   async cancelMandate(mandateId: string): Promise<{ ok: boolean; raw: any }> {
     try {
-      const response = await axios.patch(
-        `${this.baseUrl}/v3/payments/mandates/${mandateId}/cancel`,
-        {},
-        { headers: this.getHeaders(), httpsAgent: this.httpsAgent }
-      );
+      const response = await this.request({
+        method: 'patch',
+        url: `${this.baseUrl}/v3/payments/mandates/${mandateId}/cancel`,
+        data: {},
+      });
       return { ok: true, raw: response.data };
     } catch (error: any) {
       const status = error.response?.status;
       const body = error.response?.data;
       // Already cancelled / not found → nothing left to cancel on Mono's side.
       if (status === 404 || /cancel|not.?found|already/i.test(JSON.stringify(body || ''))) {
-        logger.warn({ mandateId, body }, 'Mono cancelMandate: already cancelled / not found — treating as success');
+        logger.warn({ mandateId, body }, 'Mono cancelMandate: already cancelled / not found - treating as success');
         return { ok: true, raw: body };
       }
       logger.error({ error: body || error.message, mandateId }, 'Mono cancelMandate failed');
@@ -167,21 +226,21 @@ export class MonoProvider {
 
   /** Pause a mandate: `PATCH /v3/payments/mandates/{id}/pause`. */
   async pauseMandate(mandateId: string): Promise<any> {
-    const response = await axios.patch(
-      `${this.baseUrl}/v3/payments/mandates/${mandateId}/pause`,
-      {},
-      { headers: this.getHeaders(), httpsAgent: this.httpsAgent }
-    );
+    const response = await this.request({
+      method: 'patch',
+      url: `${this.baseUrl}/v3/payments/mandates/${mandateId}/pause`,
+      data: {},
+    });
     return response.data;
   }
 
   /** Reinstate a paused/cancelled mandate: `PATCH /v3/payments/mandates/{id}/reinstate`. */
   async reinstateMandate(mandateId: string): Promise<any> {
-    const response = await axios.patch(
-      `${this.baseUrl}/v3/payments/mandates/${mandateId}/reinstate`,
-      {},
-      { headers: this.getHeaders(), httpsAgent: this.httpsAgent }
-    );
+    const response = await this.request({
+      method: 'patch',
+      url: `${this.baseUrl}/v3/payments/mandates/${mandateId}/reinstate`,
+      data: {},
+    });
     return response.data;
   }
 
@@ -190,7 +249,7 @@ export class MonoProvider {
    *
    * `GET /v3/payments/mandates/{id}/balance-inquiry?amount=<kobo>`
    *
-   * Verified against the live API (Sept 2026): `amount` is REQUIRED — without it
+   * Verified against the live API (Sept 2026): `amount` is REQUIRED - without it
    * Mono returns `400 "Amount is required to check balance"`. So this is always a
    * "can the account cover <amount>?" check, not a raw balance read. Mono bills a
    * small fee per call, so callers must gate it behind an explicit user action
@@ -208,10 +267,9 @@ export class MonoProvider {
     }
     const testedKobo = Math.round(amountNaira * 100);
     try {
-      const url = `${this.baseUrl}/v3/payments/mandates/${mandateId}/balance-inquiry`;
-      const response = await axios.get(url, {
-        headers: this.getHeaders(),
-        httpsAgent: this.httpsAgent,
+      const response = await this.request({
+        method: 'get',
+        url: `${this.baseUrl}/v3/payments/mandates/${mandateId}/balance-inquiry`,
         params: { amount: testedKobo },
       });
       const d = response.data?.data ?? response.data ?? {};
@@ -238,12 +296,12 @@ export class MonoProvider {
 
   /**
    * Direct debit an account (variable mandate): `POST /v3/payments/mandates/{id}/debit`.
-   * ASYNC — the immediate `response_code: "00"` only means "accepted".
+   * ASYNC - the immediate `response_code: "00"` only means "accepted".
    * Real settlement arrives via `events.mandates.debit.successful/failed`.
    * Returns `{ accepted, providerReference, sessionId, raw }`.
    */
   async chargeAccount(params: {
-    accountId: string; // the mandate id (mmc_…)
+    accountId: string; // the mandate id (mmc_...)
     amount: number; // Naira
     reference: string;
     narration: string;
@@ -255,11 +313,14 @@ export class MonoProvider {
         reference: params.reference,
       };
 
-      const response = await axios.post(
-        `${this.baseUrl}/v3/payments/mandates/${params.accountId}/debit`,
-        payload,
-        { headers: this.getHeaders(), httpsAgent: this.httpsAgent }
-      );
+      // No auto-retry on a debit - an ambiguous 5xx/timeout might mean it landed.
+      // Mono dedupes on `reference`; the reconcile cron settles anything unclear.
+      const response = await this.request({
+        method: 'post',
+        url: `${this.baseUrl}/v3/payments/mandates/${params.accountId}/debit`,
+        data: payload,
+        attempts: 1,
+      });
 
       const d = response.data?.data ?? response.data ?? {};
       const rc = response.data?.response_code ?? d.response_code;
@@ -294,10 +355,7 @@ export class MonoProvider {
       `/v3/payments/mandates/${mandateId}/transactions`,
     ]) {
       try {
-        const response = await axios.get(`${this.baseUrl}${path}`, {
-          headers: this.getHeaders(),
-          httpsAgent: this.httpsAgent,
-        });
+        const response = await this.request({ method: 'get', url: `${this.baseUrl}${path}`, attempts: 2 });
         const d = response.data?.data ?? response.data;
         return Array.isArray(d) ? d : Array.isArray(d?.debits) ? d.debits : [];
       } catch (error: any) {
@@ -315,10 +373,7 @@ export class MonoProvider {
    */
   async getAccountInfo(accountId: string): Promise<any> {
     try {
-      const response = await axios.get(`${this.baseUrl}/v2/accounts/${accountId}`, {
-        headers: this.getHeaders(),
-        httpsAgent: this.httpsAgent,
-      });
+      const response = await this.request({ method: 'get', url: `${this.baseUrl}/v2/accounts/${accountId}` });
       return response.data;
     } catch (error: any) {
       logger.error({ error: error.response?.data || error.message, accountId }, 'Mono getAccountInfo failed');

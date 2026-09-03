@@ -130,7 +130,7 @@ export class AdminAutoDebitController {
       });
 
       await WorkerLogService.log('auto-debit', result.accepted ? 'info' : 'warn',
-        `Admin auto-debit on loan ${loanId}: ${result.accepted ? 'accepted' : 'no charge'} — ${result.attempts.map((a) => `${a.method}:${a.status}`).join(', ')}`,
+        `Admin auto-debit on loan ${loanId}: ${result.accepted ? 'accepted' : 'no charge'} - ${result.attempts.map((a) => `${a.method}:${a.status}`).join(', ')}`,
         { adminId: adminId(req), loanId, amount: result.amount });
 
       // 200 with the state machine; the UI renders per-attempt, not red/green.
@@ -139,7 +139,7 @@ export class AdminAutoDebitController {
         message: result.accepted
           ? result.attempts.some((a) => a.status === 'settled')
             ? 'Debit completed'
-            : 'Debit accepted — awaiting bank confirmation'
+            : 'Debit accepted - awaiting bank confirmation'
           : 'No charge could be made',
         data: result,
         results: result.attempts, // back-compat with the old admin UI shape
@@ -199,7 +199,7 @@ export class AdminAutoDebitController {
    * GET /backoffice/loans/:loanId/bank-balance?amount=<naira>   (Part 2 feature)
    *
    * Mono's balance endpoint (`/v3/payments/mandates/{id}/balance-inquiry`) is a
-   * *sufficiency check* — it REQUIRES an amount and answers "can this account
+   * *sufficiency check* - it REQUIRES an amount and answers "can this account
    * cover ₦X?" (it may also echo the real balance). We test against `?amount=`
    * if given, otherwise the loan's current outstanding. Mono bills a small fee
    * per call, so the result is cached 60s and every call is logged.

@@ -1,5 +1,5 @@
 /**
- * Mono Direct Debit — canonical status mapping.
+ * Mono Direct Debit - canonical status mapping.
  *
  * SINGLE SOURCE OF TRUTH for turning a Mono mandate payload (from
  * `GET /v3/payments/mandates/{id}`, from `initiateMandate`, or from a webhook
@@ -10,20 +10,20 @@
  * webhook handler) MUST use `mapMonoMandateStatus` rather than its own ad-hoc
  * string checks. Previously each of those files interpreted Mono status
  * differently (`active`, `approved`, `ready_to_debit`, `initiated`, `cancelled`
- * …), so the same mandate could look linked on one screen and broken on another.
+ * ...), so the same mandate could look linked on one screen and broken on another.
  *
  * Verified against docs.mono.co (Sept 2026):
  *   lifecycle: awaiting_authorization -> initiated -> approved -> (ready_to_debit) -> paused|cancelled|rejected|expired
  *   - `approved`      = the ₦50 NIBSS e-mandate transfer completed. NOT yet debitable.
  *   - `ready_to_debit`= the account can actually be debited (delivered by
- *                       `events.mandates.ready`; 5min–24h in prod, ~1h in sandbox).
+ *                       `events.mandates.ready`; 5min-24h in prod, ~1h in sandbox).
  */
 
 export type LocalMandateStatus =
   | 'initiating'   // we asked Mono to create the mandate; customer has not finished auth
   | 'pending'      // mandate exists on Mono, awaiting approval / ready-to-debit
   | 'approved'     // customer approved (₦50 done) but Mono has not confirmed ready-to-debit
-  | 'active'       // ready_to_debit === true — safe to call /debit
+  | 'active'       // ready_to_debit === true - safe to call /debit
   | 'rejected'     // bank rejected the mandate
   | 'cancelled'    // cancelled (by us, the customer, or Mono)
   | 'expired'      // past end_date
@@ -45,7 +45,7 @@ export interface MappedMonoStatus {
 /**
  * @param monoResponse a Mono mandate object. Accepts the full axios `response.data`
  *        (`{ status, data: {...} }`), the inner `data` object, or a webhook `data`
- *        object — it unwraps `.data` one level if present.
+ *        object - it unwraps `.data` one level if present.
  */
 export function mapMonoMandateStatus(monoResponse: any): MappedMonoStatus {
   const root = monoResponse ?? {};
@@ -76,7 +76,7 @@ export function mapMonoMandateStatus(monoResponse: any): MappedMonoStatus {
   if (raw === 'failed' || raw === 'error') {
     return { local: 'failed', raw, readyToDebit: false, approved: false, terminal: true };
   }
-  // Paused is recoverable (reinstate) — not terminal, but not debitable.
+  // Paused is recoverable (reinstate) - not terminal, but not debitable.
   if (raw === 'paused' || raw === 'suspended' || raw === 'inactive' || raw === 'on_hold') {
     return { local: 'pending', raw: raw || 'paused', readyToDebit: false, approved: approvedFlag, terminal: false };
   }

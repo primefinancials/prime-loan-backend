@@ -39,7 +39,7 @@ export class MonoWebhookController {
    * `mono-webhook-secret` header. There is NO HMAC / body signature.
    *
    * FIX: previously this fell back to `MONO_SECRET_KEY` when
-   * `MONO_WEBHOOK_SECRET` was unset — a value Mono never sends — so every
+   * `MONO_WEBHOOK_SECRET` was unset - a value Mono never sends - so every
    * webhook 401'd in that misconfiguration and mandates never activated /
    * debits never reconciled. We now require the dedicated secret and use a
    * constant-time compare.
@@ -49,8 +49,8 @@ export class MonoWebhookController {
     const secret = process.env.MONO_WEBHOOK_SECRET || '';
 
     if (!secret) {
-      logger.error('MONO_WEBHOOK_SECRET is not configured — rejecting Mono webhook');
-      WorkerLogService.log(WK, 'error', 'MONO_WEBHOOK_SECRET not configured — webhook rejected').catch(() => {});
+      logger.error('MONO_WEBHOOK_SECRET is not configured - rejecting Mono webhook');
+      WorkerLogService.log(WK, 'error', 'MONO_WEBHOOK_SECRET not configured - webhook rejected').catch(() => {});
       return res.status(401).json({ status: 'failed', message: 'Webhook not configured' });
     }
 
@@ -66,17 +66,26 @@ export class MonoWebhookController {
     const body = req.body || {};
     const event: string = body.event || body.type || '';
     const data = body.data || {};
-    const eventId: string | undefined = body.event_id || body.id || undefined;
     const intent = classifyMonoWebhook(event);
 
-    // ── Dedupe (Mono retries up to 25× over 48h with the same event_id) ──
+    // Real Mono webhooks carry NO event_id, so synthesise a stable key from the
+    // event + mandate + debit reference + amount. This still dedupes Mono's
+    // retries (same payload) without suppressing distinct events.
+    const mandateForKey = extractMandateId(data) || '';
+    const refsForKey = extractDebitReferences(data).join(',');
+    const eventId: string =
+      body.event_id ||
+      body.id ||
+      `${event}:${mandateForKey}:${refsForKey}:${data.amount ?? ''}:${data.status ?? ''}`;
+
+    // ── Dedupe (Mono retries up to 25x over 48h) ──
     try {
-      if (eventId && (await alreadyProcessedWebhook('mono', eventId))) {
+      if (await alreadyProcessedWebhook('mono', eventId)) {
         logger.info({ event, eventId }, 'Duplicate Mono webhook ignored');
         return res.status(200).send('OK (duplicate)');
       }
     } catch {
-      /* fall through — per-operation idempotency still applies */
+      /* fall through - per-operation idempotency still applies */
     }
 
     logger.info({ event, intent, eventId, mandate: extractMandateId(data) }, 'Mono webhook received');
@@ -123,7 +132,7 @@ export class MonoWebhookController {
       return res.status(200).send('OK');
     } catch (err: any) {
       logger.error({ event, eventId, error: err.message, stack: err.stack }, 'Mono webhook processing failed');
-      WorkerLogService.log(WK, 'error', `Mono webhook failed: ${event} — ${err.message}`, { eventId }).catch(() => {});
+      WorkerLogService.log(WK, 'error', `Mono webhook failed: ${event} - ${err.message}`, { eventId }).catch(() => {});
       // 5xx → Mono retries. The event is NOT marked processed and every
       // downstream operation here is idempotent, so a retry is safe.
       return res.status(500).send('Processing error');
@@ -155,7 +164,7 @@ export class MonoWebhookController {
   }
 
   /**
-   * `approved` means the customer completed the ₦50 NIBSS transfer — it does
+   * `approved` means the customer completed the ₦50 NIBSS transfer - it does
    * NOT mean the account is debitable. We set 'approved' and re-check
    * ready-to-debit once (covers the race where `ready` fired first / arrives
    * bundled). The Phase-2 reconcile cron is the safety net.
@@ -165,14 +174,23 @@ export class MonoWebhookController {
     if (!mandateId) return;
     const rows = await MonoWebhookController.mandateRows(mandateId);
 
+    // Prefer the webhook payload itself (it carries status / approved /
+    // ready_to_debit) so we don't block the webhook on a slow Mono API call.
+    // Only round-trip if the payload is missing those fields.
     let readyNow = false;
-    let acctId: string | undefined;
-    try {
-      const status = await new MonoProvider().getMandateStatus(mandateId);
-      readyNow = mapMonoMandateStatus(status).readyToDebit;
-      acctId = status?.data?.account?._id || status?.data?.account?.id || status?.data?.account_id;
-    } catch (e: any) {
-      logger.warn({ mandateId, error: e.message }, 'Could not re-check mandate readiness on approved');
+    let acctId: string | undefined = data.account_id || data.account?._id || data.account?.id;
+    const hasStatusFields =
+      data.ready_to_debit !== undefined || data.approved !== undefined || data.status !== undefined;
+    if (hasStatusFields) {
+      readyNow = mapMonoMandateStatus(data).readyToDebit;
+    } else {
+      try {
+        const status = await new MonoProvider().getMandateStatus(mandateId);
+        readyNow = mapMonoMandateStatus(status).readyToDebit;
+        acctId = acctId || status?.data?.account?._id || status?.data?.account?.id || status?.data?.account_id;
+      } catch (e: any) {
+        logger.warn({ mandateId, error: e.message }, 'Could not re-check mandate readiness on approved');
+      }
     }
 
     for (const row of rows) {
@@ -271,12 +289,12 @@ export class MonoWebhookController {
     const log = await MonoWebhookController.findDebitLog(data);
     const refs = extractDebitReferences(data);
     if (!log) {
-      logger.warn({ refs }, 'Mono debit.successful: no matching AutoDebitLog — cannot reconcile');
+      logger.warn({ refs }, 'Mono debit.successful: no matching AutoDebitLog - cannot reconcile');
       await WorkerLogService.log(WK, 'warn', 'Mono debit.successful with no matching log', { refs, data });
       return;
     }
     if (log.status === 'successful') {
-      logger.info({ ref: log.reference }, 'Mono debit already settled — skip');
+      logger.info({ ref: log.reference }, 'Mono debit already settled - skip');
       return;
     }
 
@@ -288,7 +306,7 @@ export class MonoWebhookController {
     await log.save();
 
     if (!log.loanId) {
-      logger.warn({ ref: log.reference }, 'Mono debit successful but log has no loanId — nothing to reconcile');
+      logger.warn({ ref: log.reference }, 'Mono debit successful but log has no loanId - nothing to reconcile');
       return;
     }
 
@@ -338,7 +356,7 @@ export class MonoWebhookController {
         });
         log.reversedAt = new Date();
         await log.save();
-        logger.info({ ref: log.reference }, 'Mono debit failed — optimistic repayment reversed');
+        logger.info({ ref: log.reference }, 'Mono debit failed - optimistic repayment reversed');
         await WorkerLogService.log(WK, 'info', `Mono optimistic repayment reversed: ₦${log.amount}`, {
           reference: log.reference,
         });

@@ -1,7 +1,7 @@
 /**
  * Startup environment validation.
  *
- * Runs once at boot. In production a *missing critical* var throws (fail fast —
+ * Runs once at boot. In production a *missing critical* var throws (fail fast -
  * better than serving half-broken). In non-production it only warns. Non-critical
  * but important vars (Mono webhook secret, frontend URL, provider keys) always
  * warn so a misconfigured environment is obvious in the logs.
@@ -49,14 +49,14 @@ export function validateEnv(): void {
   // Specific high-impact misconfigurations
   if (!process.env.MONO_WEBHOOK_SECRET) {
     logger.error(
-      'MONO_WEBHOOK_SECRET is not set — ALL Mono webhooks will be rejected (mandates will not activate, debits will not reconcile).'
+      'MONO_WEBHOOK_SECRET is not set - ALL Mono webhooks will be rejected (mandates will not activate, debits will not reconcile).'
     );
   }
   if (isProd && !process.env.FRONTEND_URL) {
-    logger.error('FRONTEND_URL is not set in production — Mono mandate redirects will point at the staging front-end.');
+    logger.error('FRONTEND_URL is not set in production - Mono mandate redirects will point at the staging front-end.');
   }
   if (isProd && !process.env.MONO_BASE_URL) {
-    logger.warn('MONO_BASE_URL not set — defaulting to https://api.withmono.com (usually correct).');
+    logger.warn('MONO_BASE_URL not set - defaulting to https://api.withmono.com (usually correct).');
   }
 
   if (missingCritical.length) {
@@ -65,7 +65,7 @@ export function validateEnv(): void {
       logger.fatal(msg);
       throw new Error(msg);
     }
-    logger.error(msg + ' (continuing — non-production)');
+    logger.error(msg + ' (continuing - non-production)');
   }
 
   logger.info(

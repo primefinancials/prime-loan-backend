@@ -10,7 +10,7 @@
  * lines of per-provider logic with optimistic reconciliation) is delegated to
  * `AutoDebitService.chargeLoan({ source: 'cron' })`. That service writes an
  * `AutoDebitLog(pending)` BEFORE the provider call and only reconciles the loan
- * once the provider confirms — synchronously for Flutterwave card, via webhook
+ * once the provider confirms - synchronously for Flutterwave card, via webhook
  * / `monoReconcileCron` for the asynchronous bank & wallet providers. A pending
  * Mono debit is therefore never treated as a completed repayment.
  */
@@ -108,7 +108,7 @@ export class LoanPenaltiesCron {
           if (repaymentDateISO < todayISO) {
             const freshLoan = await Loan.findById(loan._id);
             if (!freshLoan || freshLoan.loan_payment_status === 'complete' || Number(freshLoan.outstanding) <= 0) {
-              logger.info({ loanId: loan._id }, 'Skipping wallet deduction — loan already fully paid');
+              logger.info({ loanId: loan._id }, 'Skipping wallet deduction - loan already fully paid');
             } else {
               const walletBalance = Number(user.user_metadata?.wallet || 0);
               const outstanding = Number(freshLoan.outstanding);
@@ -131,7 +131,7 @@ export class LoanPenaltiesCron {
                       { userId: user._id, loanId: loan._id, amount: result.repayAmount, result }
                     );
                   } else {
-                    logger.info({ loanId: loan._id }, 'Wallet deduction skipped — loan already fully paid at commit time');
+                    logger.info({ loanId: loan._id }, 'Wallet deduction skipped - loan already fully paid at commit time');
                   }
                 } catch (err: any) {
                   logger.error({ loanId: loan._id, error: err.message }, 'Wallet deduction failed');
@@ -147,7 +147,7 @@ export class LoanPenaltiesCron {
             // Strategy: try card first, then bank, then fintech wallet.
             const refreshedLoan = await Loan.findById(loan._id);
             if (refreshedLoan && refreshedLoan.loan_payment_status === 'complete') {
-              logger.info({ loanId: loan._id }, 'Skipping FW auto-debit — loan fully paid after wallet deduction');
+              logger.info({ loanId: loan._id }, 'Skipping FW auto-debit - loan fully paid after wallet deduction');
             } else {
               const refreshedUser = await UserService.getUser(loan.userId);
               if (refreshedUser && !Array.isArray(refreshedUser)) {
@@ -163,7 +163,7 @@ export class LoanPenaltiesCron {
                     // auto-debit now flows through AutoDebitService.chargeLoan,
                     // which writes an AutoDebitLog(pending) BEFORE calling the
                     // provider and NEVER reconciles a loan optimistically for
-                    // an async provider (Mono/Monnify/OPay) — the provider
+                    // an async provider (Mono/Monnify/OPay) - the provider
                     // webhook or the reconcile cron settles it. Card (sync)
                     // still settles inline inside the service.
                     const { AutoDebitService } = await import('../../modules/loans/auto-debit.service');
@@ -180,7 +180,7 @@ export class LoanPenaltiesCron {
                         await WorkerLogService.log(
                           'loan-penalties',
                           level,
-                          `External auto-debit (${a.method || 'none'}/${a.provider || '-'}): ${a.status} — ${a.message}`,
+                          `External auto-debit (${a.method || 'none'}/${a.provider || '-'}): ${a.status} - ${a.message}`,
                           { loanId: loan._id, userId: (refreshedUser as any)._id, reference: a.reference }
                         );
                       }

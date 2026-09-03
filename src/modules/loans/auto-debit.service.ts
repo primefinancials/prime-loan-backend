@@ -1,5 +1,5 @@
 /**
- * AutoDebitService — the single entry point for everything that touches a
+ * AutoDebitService - the single entry point for everything that touches a
  * user's linked auto-debit methods and for actually charging a loan.
  *
  * Used by:
@@ -192,7 +192,7 @@ export class AutoDebitService {
     let { card, bank, wallet } = AutoDebitService.pickMethods(rows, params.methodId);
 
     // Bank must be confirmed debitable RIGHT NOW before we spend a (billed) debit
-    // call on it. For Mono we ALWAYS re-verify against the live API — a local
+    // call on it. For Mono we ALWAYS re-verify against the live API - a local
     // `active` can be stale (the live API returns `ready_to_debit: true` even on
     // a cancelled mandate, and mandates get cancelled/paused out-of-band). For
     // Monnify, only an `active` local row is trusted (it has its own webhooks).
@@ -221,7 +221,7 @@ export class AutoDebitService {
 
     const baseRef = `AD${params.source.slice(0, 2).toUpperCase()}${Date.now()}${String(loan._id).slice(-4)}`;
 
-    // ── 1. Card (Flutterwave) — synchronous ──
+    // ── 1. Card (Flutterwave) - synchronous ──
     if (!accepted && card && card.token) {
       const ref = `${baseRef}C`;
       const log = await AutoDebitLog.create({
@@ -260,7 +260,7 @@ export class AutoDebitService {
       }
     }
 
-    // ── 2. Bank (Mono / Monnify) — asynchronous: log stays pending, webhook settles ──
+    // ── 2. Bank (Mono / Monnify) - asynchronous: log stays pending, webhook settles ──
     if (!accepted && bank && bank.token) {
       const ref = `${baseRef}B`;
       const log = await AutoDebitLog.create({
@@ -279,7 +279,7 @@ export class AutoDebitService {
           if (res.accepted) {
             await log.save();
             accepted = true;
-            attempts.push({ method: 'bank', provider: 'mono', status: 'pending', reference: ref, message: 'Mono debit accepted — awaiting confirmation webhook', data: res.raw });
+            attempts.push({ method: 'bank', provider: 'mono', status: 'pending', reference: ref, message: 'Mono debit accepted - awaiting confirmation webhook', data: res.raw });
           } else {
             log.status = 'failed';
             log.errorMessage = 'Mono did not accept the debit';
@@ -298,7 +298,7 @@ export class AutoDebitService {
             // Monnify settlement confirmation arrives via its webhook; keep pending.
             await log.save();
             accepted = true;
-            attempts.push({ method: 'bank', provider: 'monnify', status: 'pending', reference: ref, message: 'Monnify debit accepted — awaiting confirmation', data: result });
+            attempts.push({ method: 'bank', provider: 'monnify', status: 'pending', reference: ref, message: 'Monnify debit accepted - awaiting confirmation', data: result });
           } else {
             log.status = 'failed';
             log.errorMessage = result?.responseMessage || 'Monnify debit failed';
@@ -322,7 +322,7 @@ export class AutoDebitService {
       }
     }
 
-    // ── 3. Fintech wallet (OPay / Monnify) — asynchronous ──
+    // ── 3. Fintech wallet (OPay / Monnify) - asynchronous ──
     if (!accepted && wallet && wallet.token) {
       const ref = `${baseRef}W`;
       const log = await AutoDebitLog.create({
@@ -344,7 +344,7 @@ export class AutoDebitService {
         if (ok) {
           await log.save();
           accepted = true;
-          attempts.push({ method: 'wallet', provider: wallet.provider, status: 'pending', reference: ref, message: 'Wallet debit accepted — awaiting confirmation', data: result });
+          attempts.push({ method: 'wallet', provider: wallet.provider, status: 'pending', reference: ref, message: 'Wallet debit accepted - awaiting confirmation', data: result });
         } else {
           log.status = 'failed';
           log.errorMessage = result?.message || 'Wallet debit failed';
@@ -370,7 +370,7 @@ export class AutoDebitService {
 
   /**
    * Move a settled AutoDebitLog into the loan ledger. THE single place this
-   * happens — called from the card path (inline), the Mono webhook and the
+   * happens - called from the card path (inline), the Mono webhook and the
    * reconcile cron. Idempotent two ways: `log.reconciledAt` is checked first
    * (so a genuine duplicate never even calls repayLoan), and repayLoan itself
    * dedupes on `ext-debit-${reference}`.
@@ -379,7 +379,7 @@ export class AutoDebitService {
     const log = await AutoDebitLog.findById(logId);
     if (!log || log.status !== 'successful' || !log.loanId) return;
     if (log.reconciledAt) {
-      logger.info({ reference: log.reference }, 'AutoDebit already reconciled — skip');
+      logger.info({ reference: log.reference }, 'AutoDebit already reconciled - skip');
       return;
     }
     try {
