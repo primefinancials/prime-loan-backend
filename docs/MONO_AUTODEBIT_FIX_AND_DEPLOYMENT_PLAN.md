@@ -818,6 +818,14 @@ eb health ; eb logs
 
 > Source pages: Direct Debit Overview, Integration Guide, Mandate Setup (Variable), Debit an Account, Webhook Events, Cancel/Pause/Reinstate Mandate, Balance Inquiry, Initiate Mandate Authorisation. Base URL `https://api.withmono.com`. Auth header `mono-sec-key: <MONO_SECRET_KEY>`.
 
+### 8.0 — CORRECTIONS FROM THE LIVE API (probed 3 real staging mandates, 2026‑09‑03)
+
+- **`ready_to_debit` is NOT reliable on its own.** The live `GET /v3/payments/mandates/{id}` returns `ready_to_debit: true` **even on a `status:"cancelled"` mandate** (observed: `{status:"cancelled", approved:false, ready_to_debit:true}`). → `mapMonoMandateStatus` matches terminal `status` FIRST; `AutoDebitService.chargeLoan` re‑syncs every Mono mandate against the live API before `/debit` and gates on the mapper's `readyToDebit`; `monoReconcileCron` also re‑checks locally‑`active` mono rows (≤ every 6 h).
+- **Debitable state = `status:"approved"` + `approved:true` + `ready_to_debit:true`.** There is no distinct `"active"`/`"ready"` **status string** in the payload — `ready_to_debit` is the gate, `status` stays `"approved"`.
+- **Balance = `GET /v3/payments/mandates/{id}/balance-inquiry?amount=<kobo>` and `amount` is REQUIRED** (`400 "Amount is required to check balance"` without it). It answers "can the account cover ₦X?" (may also echo the balance). `getMandateBalance(id, amountNaira)` now requires the amount; admin endpoints pass the loan outstanding.
+- **Webhook `debit.successful` match key = `data.reference_number`** (verified end‑to‑end on staging). `data.mandate` carries the `mmc_…` id.
+- Mandate GET also returns `account_name` / `account_number` / `institution.{name,bank_code}` — `syncMonoMandate` backfills these onto legacy `accountNumber:"mono-mandate"` rows.
+
 ### 8.1 Initiate (hosted authorisation flow) — what we use
 `POST /v2/payments/initiate` → *"returns a link for your customers to authorise their mandate … when you don't need to customise the flow."*
 Response (verified sample):
