@@ -244,31 +244,34 @@ export class AdminAutoDebitController {
   }
 
   /**
-   * GET /backoffice/loans/:loanId/bank-balance?amount=<naira>   (Part 2 feature)
+   * GET /backoffice/loans/:loanId/bank-balance?amount=<naira>&refresh=1   (Part 2)
    *
-   * Mono's balance endpoint (`/v3/payments/mandates/{id}/balance-inquiry`) is a
-   * *sufficiency check* - it REQUIRES an amount and answers "can this account
-   * cover ₦X?" (it may also echo the real balance). We test against `?amount=`
-   * if given, otherwise the loan's current outstanding. Mono bills a small fee
-   * per call, so the result is cached 60s and every call is logged.
+   * DB-backed, transparent. Every response tells the admin exactly what's known:
+   *   - `last`      : the most recent completed balance + when it was taken
+   *   - `refreshing`: true if a fresh Mono inquiry is running right now
+   *   - `error`     : the last inquiry's error, if it failed (last still shown)
+   *
+   * On the first call (or `refresh=1`) a fresh inquiry starts in the background
+   * (Mono's NIBSS check is slow + billed). The request returns immediately with
+   * whatever `last` we have. The admin UI polls this endpoint; when a newer
+   * `last.completedAt` appears the fresh balance has landed.
    */
   static async bankBalance(req: Request, res: Response, next: NextFunction) {
     try {
       requireView(req);
       const { loanId } = req.params;
       const Loan = (await import('./loan.model')).default;
+      const { BankBalanceSnapshot } = await import('./bank-balance-snapshot.model');
       const loan = await Loan.findById(loanId).lean();
       if (!loan) return res.status(404).json({ status: 'failed', message: 'Loan not found' });
 
       const outstanding = Number((loan as any).outstanding || 0);
       const testAmount = Math.max(1000, Number(req.query.amount) || outstanding || 1000);
+      const wantRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
 
       const userId = String((loan as any).userId);
       const mandate = await AutoDebit.findOne({
-        userId,
-        type: 'bank',
-        provider: 'mono',
-        status: { $in: ['active', 'approved'] },
+        userId, type: 'bank', provider: 'mono', status: { $in: ['active', 'approved'] },
       }).sort({ createdAt: -1 });
 
       if (!mandate) {
@@ -277,81 +280,88 @@ export class AdminAutoDebitController {
           message: 'This user has no active Mono mandate. A bank balance check needs an active bank link.',
         });
       }
-
       const mandateToken = mandate.token as string;
-      const cacheKey = `mono:balance:${mandateToken}:${testAmount}`;
-      const jobKey = `mono:balance:job:${mandateToken}:${testAmount}`;
 
-      const buildPayload = (bal: any) => ({
-        balance: bal.balance,
-        sufficient: bal.sufficient,
-        testedAmount: bal.testedAmount ?? testAmount,
-        currency: bal.currency || 'NGN',
-        accountName: mandate.accountName,
+      const acct = {
+        accountName: mandate.accountName || null,
         accountNumber: mandate.accountNumber && mandate.accountNumber !== 'mono-mandate'
-          ? `****${String(mandate.accountNumber).slice(-4)}` : undefined,
-        bankName: mandate.bankName,
-        mandateId: mandateToken,
-        asOf: new Date().toISOString(),
-        source: 'mono',
-        note: bal.balance === null
-          ? `Mono reported ${bal.sufficient ? 'sufficient' : 'insufficient'} funds for ₦${testAmount.toLocaleString()} — it did not return an exact figure.`
-          : bal.balance === 0 ? 'Mono returns ₦0 when the real balance is below the NGN 1,000 NIBSS floor.' : undefined,
-      });
+          ? `****${String(mandate.accountNumber).slice(-4)}` : null,
+        bankName: mandate.bankName || null,
+      };
 
-      // 1. Cached result?
-      try {
-        const cached = await RedisService.get<any>(cacheKey);
-        if (cached) return res.status(200).json({ status: 'success', data: { ...cached, cached: true } });
-      } catch { /* cache optional */ }
+      const [lastDone, inFlight] = await Promise.all([
+        BankBalanceSnapshot.findOne({ mandateToken, status: 'done' }).sort({ completedAt: -1 }).lean(),
+        BankBalanceSnapshot.findOne({
+          mandateToken, status: 'fetching', requestedAt: { $gte: new Date(Date.now() - 3 * 60 * 1000) },
+        }).sort({ requestedAt: -1 }).lean(),
+      ]);
+      const lastError = !inFlight
+        ? await BankBalanceSnapshot.findOne({ mandateToken, status: 'error' }).sort({ completedAt: -1 }).lean()
+        : null;
+      const errorIsLatest = lastError && (!lastDone || new Date(lastError.completedAt!) > new Date(lastDone.completedAt!));
 
-      // 2. A background inquiry may already be running from a previous click.
-      let jobRunning = false;
-      try { jobRunning = !!(await RedisService.get<any>(jobKey)); } catch { /* noop */ }
+      let refreshing = !!inFlight;
 
-      if (!jobRunning) {
-        // 3. Kick off the (slow, billed) inquiry in the BACKGROUND. NIBSS checks
-        //    can take >60s, which exceeds the Vercel proxy timeout, so we never
-        //    block the request on it. The result lands in cache; the admin UI
-        //    re-requests and gets the cached answer.
-        try { await RedisService.set(jobKey, { startedAt: Date.now() }, 130); } catch { /* noop */ }
+      // Only an explicit refresh spends a (billed) Mono call. A bare poll just
+      // reports what we already know.
+      if (!inFlight && wantRefresh) {
+        const snap = await BankBalanceSnapshot.create({
+          userId, loanId, mandateId: String(mandate._id), mandateToken,
+          status: 'fetching', testedAmount: testAmount, requestedBy: adminId(req), requestedAt: new Date(),
+        });
+        refreshing = true;
         void (async () => {
           try {
             const bal = await new MonoProvider().getMandateBalance(mandateToken, testAmount);
-            await RedisService.set(cacheKey, buildPayload(bal), 300).catch(() => {});
+            await BankBalanceSnapshot.findByIdAndUpdate(snap._id, {
+              status: 'done', balance: bal.balance, sufficient: bal.sufficient,
+              testedAmount: bal.testedAmount ?? testAmount, currency: bal.currency || 'NGN',
+              completedAt: new Date(), error: null,
+            });
             await WorkerLogService.log('auto-debit', 'info',
-              `Bank balance inquiry completed for user ${userId} (loan ${loanId})`,
+              `Bank balance inquiry done for user ${userId} (loan ${loanId})`,
               { adminId: adminId(req), mandateId: mandateToken, balance: bal.balance, sufficient: bal.sufficient });
           } catch (e: any) {
-            await RedisService.set(cacheKey, {
-              error: true, message: e.timedOut
-                ? 'The bank did not respond to the balance check in time. Try again in a moment.'
-                : (e.message || 'Balance inquiry failed'),
-              mandateId: mandateToken, asOf: new Date().toISOString(),
-            }, 60).catch(() => {});
-          } finally {
-            await RedisService.del(jobKey).catch(() => {});
+            await BankBalanceSnapshot.findByIdAndUpdate(snap._id, {
+              status: 'error', completedAt: new Date(),
+              error: e.timedOut ? 'The bank did not respond in time. Try refreshing again in a moment.'
+                                 : (e.message || 'Balance inquiry failed'),
+            });
+            await WorkerLogService.log('auto-debit', 'warn',
+              `Bank balance inquiry failed for user ${userId}: ${e.message}`,
+              { adminId: adminId(req), mandateId: mandateToken });
           }
         })();
       }
 
-      // 4. Very short head start only (the Vercel proxy times out ~10s). If the
-      //    cache is not populated by then, return 202 and let the admin UI
-      //    re-request for the cached answer.
-      for (let i = 0; i < 2; i++) {
-        await new Promise((r) => setTimeout(r, 2000));
-        try {
-          const done = await RedisService.get<any>(cacheKey);
-          if (done) {
-            if (done.error) return res.status(502).json({ status: 'failed', message: done.message });
-            return res.status(200).json({ status: 'success', data: done });
-          }
-        } catch { /* noop */ }
-      }
+      const last = lastDone && {
+        balance: lastDone.balance,
+        sufficient: lastDone.sufficient,
+        testedAmount: lastDone.testedAmount,
+        currency: lastDone.currency || 'NGN',
+        completedAt: lastDone.completedAt,
+        stale: Date.now() - new Date(lastDone.completedAt!).getTime() > 10 * 60 * 1000,
+        note: lastDone.balance === 0
+          ? 'Mono returns ₦0 when the account balance is below the NGN 1,000 NIBSS floor.'
+          : lastDone.balance === null
+            ? `Mono reported ${lastDone.sufficient ? 'sufficient' : 'insufficient'} funds for ₦${lastDone.testedAmount.toLocaleString()} (no exact figure).`
+            : null,
+      };
 
-      return res.status(202).json({
-        status: 'pending',
-        message: 'Checking the balance with the bank. This can take up to two minutes - click again shortly.',
+      return res.status(200).json({
+        status: 'success',
+        data: {
+          ...acct,
+          mandateId: mandateToken,
+          source: 'mono',
+          last: last || null,
+          refreshing,
+          error: errorIsLatest ? lastError!.error : null,
+          message: refreshing
+            ? (last ? 'Getting a fresh balance from the bank - this can take a minute. Showing the last known figure meanwhile.'
+                    : 'Getting the balance from the bank for the first time - this can take a minute.')
+            : (last ? null : 'No balance on record yet. Tap refresh to fetch one.'),
+        },
       });
     } catch (err: any) {
       logger.error({ error: err.message }, 'Admin bank balance check failed');
