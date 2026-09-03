@@ -75,13 +75,24 @@ export class AutoDebitService {
     try {
       const res = await new MonoProvider().getMandateStatus(row.token);
       const mapped = mapMonoMandateStatus(res);
-      const acctId = res?.data?.account?._id || res?.data?.account?.id || res?.data?.account_id;
+      const d = res?.data ?? res ?? {};
+      const acctId = d.account?._id || d.account?.id || d.account_id;
 
       // Never downgrade a terminal local state that a webhook already set,
       // but always accept forward progress and terminal states from Mono.
       row.providerStatusRaw = mapped.raw;
       row.lastSyncedAt = new Date();
       if (acctId) row.providerAccountId = acctId;
+
+      // Backfill the real linked-account details Mono returns. Old rows were
+      // saved with accountNumber:"mono-mandate" (a frontend bug); this corrects
+      // them and populates the admin UI + duplicate-account checks.
+      if (d.account_name && (!row.accountName || row.accountName === 'Prime User')) row.accountName = d.account_name;
+      if (d.account_number && (!row.accountNumber || row.accountNumber === 'mono-mandate' || row.accountNumber === '0000000000')) {
+        row.accountNumber = d.account_number;
+      }
+      if (d.institution?.name && (!row.bankName || row.bankName === 'Bank' || row.bankName === 'Mono Mandate')) row.bankName = d.institution.name;
+      if (d.institution?.bank_code && (!row.bankCode || row.bankCode === '000')) row.bankCode = d.institution.bank_code;
 
       const localTerminal = ['revoked', 'cancelled', 'rejected', 'expired', 'failed'].includes(row.status);
       if (!localTerminal || mapped.terminal) {
