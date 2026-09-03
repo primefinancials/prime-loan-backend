@@ -119,47 +119,81 @@ export class AutoDebitController {
   static async linkCard(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user._id || (req as any).user.id;
-      const { txRef } = req.body;
+      const { txRef, transactionId } = req.body;
 
-      if (!txRef) {
+      if (!txRef && !transactionId) {
         return res.status(400).json({ status: 'failed', message: 'txRef is required' });
       }
 
       const provider = new FlutterwaveDebitProvider();
-      
-      const txData = await provider.verifyTransaction(txRef);
-      const card = txData.card;
-      
-      if (card?.token) {
-         await AutoDebit.deleteMany(
-           { userId: String(userId), type: 'card' }
-         );
 
-         const autoDebit = await AutoDebit.create({
-           userId: String(userId),
-           type: 'card',
-           token: card.token,
-           email: txData.customer?.email || '',
-           last4: card.last_4digits || card.last4 || '',
-           cardBrand: card.type || card.brand || '',
-           expMonth: card.expiry?.split('/')[0]?.trim() || '',
-           expYear: card.expiry?.split('/')[1]?.trim() || '',
-           status: 'active',
-         });
-
-         return res.status(201).json({
-           status: 'success',
-           data: {
-             id: autoDebit._id,
-             type: 'card',
-             last4: autoDebit.last4,
-             cardBrand: autoDebit.cardBrand,
-             status: 'active',
-           },
-         });
+      // Flutterwave settles the tokenisation a beat after the inline widget's
+      // callback fires (especially with 3-D Secure). Poll the verify endpoint a
+      // few times before giving up.
+      let txData: any = null;
+      let lastStatus = 'unknown';
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        try {
+          txData = await provider.verifyTransaction(txRef);
+        } catch (e: any) {
+          // "No transaction found" right after checkout — wait and retry.
+          if (attempt === 5) throw e;
+          await new Promise((r) => setTimeout(r, 2000));
+          continue;
+        }
+        lastStatus = String(txData?.status || '').toLowerCase();
+        if (lastStatus === 'successful' && txData?.card?.token) break;
+        if (lastStatus === 'failed') break;
+        if (attempt < 5) await new Promise((r) => setTimeout(r, 2000));
       }
 
-      return res.status(400).json({ status: 'failed', message: 'No valid card token found in transaction.' });
+      if (lastStatus === 'failed') {
+        return res.status(400).json({
+          status: 'failed',
+          message: txData?.processor_response || 'The card verification charge was declined. Try another card.',
+        });
+      }
+      if (lastStatus !== 'successful') {
+        return res.status(202).json({
+          status: 'pending',
+          message: 'Card verification is still processing. Give it a few seconds and try linking again.',
+        });
+      }
+
+      const card = txData.card;
+      if (!card?.token) {
+        logger.warn({ txRef, txId: txData?.id }, 'FW card charge succeeded but no tokenised card in verify response');
+        return res.status(422).json({
+          status: 'failed',
+          message: 'The card was charged but the card token was not returned. Card tokenisation may be disabled on the Flutterwave account.',
+        });
+      }
+
+      await AutoDebit.deleteMany({ userId: String(userId), type: 'card' });
+
+      const autoDebit = await AutoDebit.create({
+        userId: String(userId),
+        type: 'card',
+        provider: 'flutterwave',
+        token: card.token,
+        email: txData.customer?.email || (req as any).user.email || '',
+        last4: card.last_4digits || card.last4 || '',
+        cardBrand: card.type || card.brand || '',
+        expMonth: card.expiry?.split('/')[0]?.trim() || '',
+        expYear: card.expiry?.split('/')[1]?.trim() || '',
+        status: 'active',
+      });
+
+      return res.status(201).json({
+        status: 'success',
+        data: {
+          id: autoDebit._id,
+          type: 'card',
+          last4: autoDebit.last4,
+          cardBrand: autoDebit.cardBrand,
+          status: 'active',
+        },
+      });
     } catch (err) { next(err); }
   }
 
