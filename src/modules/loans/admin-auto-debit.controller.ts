@@ -210,7 +210,7 @@ export class AdminAutoDebitController {
       const rows = await AutoDebit.find({ userId: String((loan as any).userId), type: 'bank', provider: 'mono' });
       const out = [];
       for (const row of rows) {
-        const synced = await AutoDebitService.syncMonoMandate(row);
+        const synced = await AutoDebitService.syncMonoMandate(row, { force: true }); // explicit refresh -> go live
         out.push({ id: row._id, status: synced.local, readyToDebit: synced.readyToDebit, providerStatus: row.providerStatusRaw });
       }
       return res.status(200).json({ status: 'success', data: out });
