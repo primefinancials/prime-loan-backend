@@ -519,6 +519,11 @@ export class AutoDebitController {
         readyToDebit = synced.readyToDebit;
       }
 
+      // "connected" = the user may proceed with their loan (mandate approved).
+      // "readyToDebit" = it can actually be charged (needed only at disbursement).
+      const connected = ['approved', 'active'].includes(row.status);
+      const terminal = ['revoked', 'cancelled', 'rejected', 'expired', 'failed'].includes(row.status);
+
       return res.status(200).json({
         status: 'success',
         data: {
@@ -526,7 +531,9 @@ export class AutoDebitController {
           status: readyToDebit ? 'active' : row.status,
           providerStatus: row.providerStatusRaw,
           readyToDebit,
-          needsAction: ['initiating', 'pending', 'approved'].includes(row.status),
+          connected,
+          terminal,
+          needsAction: ['initiating', 'pending'].includes(row.status),
         },
       });
     } catch (err) { next(err); }
@@ -657,33 +664,37 @@ export class AutoDebitController {
       const pickAny = (t: string) => methods.find((m) => m.type === t) || null;
 
       const card = pickActive('card');
-      const bankActive = pickActive('bank');
-      const bankAny = pickAny('bank');
       const walletActive = pickActive('wallet');
+      const bankAny = pickAny('bank');
+
+      // A bank is "connected" (user can proceed with their loan) once the Mono
+      // mandate is APPROVED — the ₦50 e-mandate transfer has gone through. It
+      // does not have to be `ready_to_debit` yet; that (status 'active') is only
+      // required at DISBURSEMENT time and is enforced server-side there.
+      const bankConnected = bankAny && ['approved', 'active'].includes(bankAny.status) ? bankAny : null;
+      // Still mid-flow: the user must finish or cancel the Mono authorisation.
+      const bankPending = bankAny && ['pending', 'initiating'].includes(bankAny.status) ? bankAny : null;
 
       const shape = (m: any) =>
         m && {
           ...m,
           needsAction: ['approved', 'pending', 'initiating'].includes(m.status),
+          readyToDebit: m.status === 'active',
           providerStatus: m.providerStatusRaw,
         };
-
-      // `bank` stays ACTIVE-ONLY so an older front-end build (which only checks
-      // truthiness) keeps behaving correctly during a mixed deploy. The new
-      // front-end reads `pendingBank` for the "finish or cancel" state.
-      const pendingBank = bankAny && bankAny.status !== 'active' ? bankAny : null;
 
       return res.status(200).json({
         status: 'success',
         data: {
           card: shape(card),
-          bank: shape(bankActive),
-          pendingBank: shape(pendingBank),
+          bank: shape(bankConnected),
+          pendingBank: shape(bankPending),
           wallet: shape(walletActive),
           hasCard: !!card,
-          hasBank: !!bankActive,
+          hasBank: !!bankConnected,             // approved OR active
+          bankReadyToDebit: bankConnected?.status === 'active',
           hasWallet: !!walletActive,
-          bankNeedsAction: !!pendingBank,
+          bankNeedsAction: !!bankPending,
         },
       });
     } catch (err) { next(err); }

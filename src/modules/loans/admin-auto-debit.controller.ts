@@ -109,7 +109,16 @@ export class AdminAutoDebitController {
     }
   }
 
-  /** POST /backoffice/loans/:loanId/auto-debit/charge   body: { amount?, methodId? } */
+  /** POST /backoffice/loans/:loanId/auto-debit/charge   body: { amount?, methodId? }
+   *
+   * A Mono direct debit can take 30-60s to return. That is longer than the
+   * Vercel proxy timeout, so the admin used to get a 504 even though the debit
+   * went through and reconciled via webhook. Now: a short foreground window for
+   * fast outcomes (mandate-not-ready, sync failures, a quick settle), then hand
+   * off to the background and return 202 - the `events.mandates.debit.*` webhook
+   * settles the loan and the admin refreshes to see it. A per-loan lock + a
+   * recent-pending-log check stop a double debit from an impatient second click.
+   */
   static async charge(req: Request, res: Response, next: NextFunction) {
     try {
       requireManage(req);
@@ -120,29 +129,68 @@ export class AdminAutoDebitController {
       const loan = await Loan.findById(loanId).lean();
       if (!loan) return res.status(404).json({ status: 'failed', message: 'Loan not found' });
 
-      const result = await AutoDebitService.chargeLoan({
+      const { AutoDebitLog } = await import('./auto-debit-log.model');
+      const recentPending = await AutoDebitLog.findOne({
+        loanId, status: 'pending', createdAt: { $gte: new Date(Date.now() - 6 * 60 * 1000) },
+      }).lean();
+      if (recentPending) {
+        return res.status(409).json({
+          status: 'failed',
+          message: `A debit for this loan is already in progress (ref ${recentPending.reference}). Wait for it to confirm before trying again.`,
+        });
+      }
+
+      const lockKey = `mono:charge:lock:${loanId}`;
+      try { if (await RedisService.get<any>(lockKey)) {
+        return res.status(409).json({ status: 'failed', message: 'A debit for this loan is already being processed.' });
+      } } catch { /* lock optional */ }
+      try { await RedisService.set(lockKey, { at: Date.now() }, 150); } catch { /* noop */ }
+
+      const chargePromise = AutoDebitService.chargeLoan({
         loanId,
         userId: String((loan as any).userId),
         amount: amount ? Number(amount) : undefined,
         methodId,
         source: 'admin',
         actorId: adminId(req),
-      });
+      })
+        .then(async (result) => {
+          await WorkerLogService.log('auto-debit', result.accepted ? 'info' : 'warn',
+            `Admin auto-debit on loan ${loanId}: ${result.accepted ? 'accepted' : 'no charge'} - ${result.attempts.map((a) => `${a.method}:${a.status}`).join(', ')}`,
+            { adminId: adminId(req), loanId, amount: result.amount });
+          return result;
+        })
+        .catch((e: any) => {
+          logger.error({ error: e.message, loanId }, 'Admin auto-debit charge failed (background)');
+          return { __error: e.message };
+        })
+        .finally(() => { RedisService.del(lockKey).catch(() => {}); });
 
-      await WorkerLogService.log('auto-debit', result.accepted ? 'info' : 'warn',
-        `Admin auto-debit on loan ${loanId}: ${result.accepted ? 'accepted' : 'no charge'} - ${result.attempts.map((a) => `${a.method}:${a.status}`).join(', ')}`,
-        { adminId: adminId(req), loanId, amount: result.amount });
+      const winner: any = await Promise.race([
+        chargePromise,
+        new Promise((r) => setTimeout(() => r('__TIMEOUT__'), 5000)),
+      ]);
 
-      // 200 with the state machine; the UI renders per-attempt, not red/green.
+      if (winner === '__TIMEOUT__') {
+        return res.status(202).json({
+          status: 'pending',
+          message: 'Debit initiated. It confirms via Mono webhook, usually within a minute - refresh the loan shortly to see the result.',
+        });
+      }
+      if (winner?.__error) {
+        return res.status(502).json({ status: 'failed', message: winner.__error });
+      }
+
+      const result = winner;
       return res.status(200).json({
         status: 'completed',
         message: result.accepted
-          ? result.attempts.some((a) => a.status === 'settled')
+          ? (result.attempts.some((a: any) => a.status === 'settled')
             ? 'Debit completed'
-            : 'Debit accepted - awaiting bank confirmation'
-          : 'No charge could be made',
+            : 'Debit accepted, confirming with the bank')
+          : (result.attempts[0]?.message || 'No charge could be made'),
         data: result,
-        results: result.attempts, // back-compat with the old admin UI shape
+        results: result.attempts,
       });
     } catch (err: any) {
       logger.error({ error: err.message }, 'Admin auto-debit charge failed');
@@ -287,10 +335,11 @@ export class AdminAutoDebitController {
         })();
       }
 
-      // 4. Give the job a short head start, then poll the cache a few times so a
-      //    fast NIBSS response still returns on the first click.
-      for (let i = 0; i < 8; i++) {
-        await new Promise((r) => setTimeout(r, 2500));
+      // 4. Very short head start only (the Vercel proxy times out ~10s). If the
+      //    cache is not populated by then, return 202 and let the admin UI
+      //    re-request for the cached answer.
+      for (let i = 0; i < 2; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
         try {
           const done = await RedisService.get<any>(cacheKey);
           if (done) {
@@ -302,7 +351,7 @@ export class AdminAutoDebitController {
 
       return res.status(202).json({
         status: 'pending',
-        message: 'Checking the balance with the bank. This can take up to two minutes — click again shortly.',
+        message: 'Checking the balance with the bank. This can take up to two minutes - click again shortly.',
       });
     } catch (err: any) {
       logger.error({ error: err.message }, 'Admin bank balance check failed');
