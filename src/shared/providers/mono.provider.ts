@@ -185,6 +185,12 @@ export class MonoProvider {
       const response = await this.request({
         method: 'get',
         url: `${this.baseUrl}/v3/payments/mandates/${mandateId}`,
+        // Mono's status API can be slow (5-10s) but callers (poll loops, the
+        // charge path, the reconcile cron) all have a safe local-status
+        // fallback, so fail fast rather than stack 3x35s of retries.
+        attempts: 2,
+        timeout: 20000,
+        backoffMs: 1500,
       });
       return response.data;
     } catch (error: any) {
