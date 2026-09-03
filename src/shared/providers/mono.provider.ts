@@ -186,43 +186,53 @@ export class MonoProvider {
   }
 
   /**
-   * Balance inquiry for a mandate's account.
-   *   - no amount → real-time balance (Mono charges ₦50). Returns ₦0 if the
-   *     real balance is below ₦1,000.
-   *   - amount (Naira) → sufficiency check (Mono charges ₦10).
-   * `GET /v3/payments/mandates/{id}/balance-inquiry[?amount=<kobo>]`
+   * Balance inquiry for a mandate's linked account.
+   *
+   * `GET /v3/payments/mandates/{id}/balance-inquiry?amount=<kobo>`
+   *
+   * Verified against the live API (Sept 2026): `amount` is REQUIRED — without it
+   * Mono returns `400 "Amount is required to check balance"`. So this is always a
+   * "can the account cover <amount>?" check, not a raw balance read. Mono bills a
+   * small fee per call, so callers must gate it behind an explicit user action
+   * and the result is cached upstream.
+   *
+   * @param amountNaira the amount to test sufficiency against (e.g. the loan's
+   *        outstanding balance). Required, > 0.
    */
   async getMandateBalance(
     mandateId: string,
-    sufficiencyAmountNaira?: number
-  ): Promise<{ balance: number | null; sufficient: boolean | null; currency: string; raw: any }> {
+    amountNaira: number
+  ): Promise<{ balance: number | null; sufficient: boolean | null; testedAmount: number; currency: string; raw: any }> {
+    if (!amountNaira || amountNaira <= 0) {
+      throw new Error('A positive amount is required for a Mono balance inquiry.');
+    }
+    const testedKobo = Math.round(amountNaira * 100);
     try {
       const url = `${this.baseUrl}/v3/payments/mandates/${mandateId}/balance-inquiry`;
-      const config: any = { headers: this.getHeaders(), httpsAgent: this.httpsAgent };
-      if (sufficiencyAmountNaira && sufficiencyAmountNaira > 0) {
-        config.params = { amount: Math.round(sufficiencyAmountNaira * 100) };
-      }
-      const response = await axios.get(url, config);
+      const response = await axios.get(url, {
+        headers: this.getHeaders(),
+        httpsAgent: this.httpsAgent,
+        params: { amount: testedKobo },
+      });
       const d = response.data?.data ?? response.data ?? {};
 
-      // Mono returns balance in kobo on this endpoint.
-      const rawBal = d.balance ?? d.available_balance ?? d.amount;
-      const balance =
-        rawBal === undefined || rawBal === null ? null : Number(rawBal) / 100;
+      // If Mono echoes an actual balance it is in kobo. Some responses only
+      // return a sufficiency boolean.
+      const rawBal = d.balance ?? d.available_balance ?? d.account_balance;
+      const balance = rawBal === undefined || rawBal === null ? null : Number(rawBal) / 100;
       const sufficient =
-        d.sufficient !== undefined
-          ? Boolean(d.sufficient)
-          : d.has_sufficient_funds !== undefined
-          ? Boolean(d.has_sufficient_funds)
-          : null;
+        d.sufficient !== undefined ? Boolean(d.sufficient)
+        : d.has_sufficient_funds !== undefined ? Boolean(d.has_sufficient_funds)
+        : d.status === 'successful' && balance !== null ? balance >= amountNaira
+        : null;
 
-      return { balance, sufficient, currency: d.currency || 'NGN', raw: response.data };
+      return { balance, sufficient, testedAmount: amountNaira, currency: d.currency || 'NGN', raw: response.data };
     } catch (error: any) {
       logger.error(
         { error: error.response?.data || error.message, mandateId },
         'Mono getMandateBalance failed'
       );
-      throw new Error(error.response?.data?.message || 'Failed to fetch Mono account balance');
+      throw new Error(error.response?.data?.message || 'Failed to run Mono balance inquiry');
     }
   }
 

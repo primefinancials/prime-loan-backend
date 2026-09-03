@@ -59,11 +59,11 @@ export function mapMonoMandateStatus(monoResponse: any): MappedMonoStatus {
   const readyFlag = d.ready_to_debit === true || d.readyToDebit === true;
   const approvedFlag = d.approved === true;
 
-  // Debitable — the only state in which we call /debit.
-  if (readyFlag || raw === 'ready' || raw === 'ready_to_debit' || raw === 'active') {
-    return { local: 'active', raw: raw || 'ready', readyToDebit: true, approved: true, terminal: false };
-  }
-
+  // ── TERMINAL / NON-DEBITABLE STATES FIRST ────────────────────────────────
+  // The live Mono API returns `ready_to_debit: true` EVEN ON A CANCELLED
+  // mandate (observed: {status:"cancelled", approved:false, ready_to_debit:true}).
+  // So `status` is authoritative for terminal states and MUST be checked before
+  // any ready/approved flag, or we would treat a dead mandate as debitable.
   if (raw === 'rejected' || raw === 'declined') {
     return { local: 'rejected', raw, readyToDebit: false, approved: false, terminal: true };
   }
@@ -76,17 +76,27 @@ export function mapMonoMandateStatus(monoResponse: any): MappedMonoStatus {
   if (raw === 'failed' || raw === 'error') {
     return { local: 'failed', raw, readyToDebit: false, approved: false, terminal: true };
   }
+  // Paused is recoverable (reinstate) — not terminal, but not debitable.
+  if (raw === 'paused' || raw === 'suspended' || raw === 'inactive' || raw === 'on_hold') {
+    return { local: 'pending', raw: raw || 'paused', readyToDebit: false, approved: approvedFlag, terminal: false };
+  }
 
-  // Customer authorised but not yet ready-to-debit.
+  // ── DEBITABLE ───────────────────────────────────────────────────────────
+  // Mono marks a live, debitable mandate as status:"approved" + approved:true +
+  // ready_to_debit:true. Require ready_to_debit AND a non-terminal status.
+  if (readyFlag && (raw === '' || raw === 'approved' || raw === 'active' || raw === 'ready' || raw === 'ready_to_debit')) {
+    return { local: 'active', raw: raw || 'ready', readyToDebit: true, approved: true, terminal: false };
+  }
+  if (raw === 'active' || raw === 'ready' || raw === 'ready_to_debit') {
+    return { local: 'active', raw, readyToDebit: true, approved: true, terminal: false };
+  }
+
+  // ── AUTHORISED, NOT YET READY ───────────────────────────────────────────
   if (approvedFlag || raw === 'approved') {
     return { local: 'approved', raw: raw || 'approved', readyToDebit: false, approved: true, terminal: false };
   }
 
-  // awaiting_authorization / initiated / pending / unknown -> still in progress.
-  if (raw === 'awaiting_authorization' || raw === 'awaiting_authorisation' || raw === 'initiated') {
-    return { local: 'pending', raw, readyToDebit: false, approved: false, terminal: false };
-  }
-
+  // ── IN PROGRESS ─────────────────────────────────────────────────────────
   return { local: 'pending', raw: raw || 'pending', readyToDebit: false, approved: false, terminal: false };
 }
 

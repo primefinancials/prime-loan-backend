@@ -527,16 +527,31 @@ export class TestIntegrationsController {
       }).sort({ createdAt: -1 });
 
       if (mandate?.token) {
-        const cacheKey = `mono:balance:${mandate.token}`;
+        // Mono's balance-inquiry needs an amount to test against. Prefer an
+        // explicit ?amount=, else the user's current loan outstanding, else ₦1,000.
+        let testAmount = Number(req.query.amount) || 0;
+        if (!testAmount) {
+          const LoanModel = (await import('../../modules/loans/loan.model')).default;
+          const activeLoan = await LoanModel.findOne({
+            userId: String(userId), status: 'accepted', loan_payment_status: { $ne: 'complete' },
+          }).sort({ createdAt: -1 }).lean();
+          testAmount = Number((activeLoan as any)?.outstanding) || 1000;
+        }
+        testAmount = Math.max(1, testAmount);
+
+        const cacheKey = `mono:balance:${mandate.token}:${testAmount}`;
         const cached = await RedisService.get<any>(cacheKey).catch(() => null);
         if (cached) return res.status(200).json({ status: 'success', data: { ...cached, cached: true } });
 
-        const bal = await new MonoProvider().getMandateBalance(mandate.token);
+        const bal = await new MonoProvider().getMandateBalance(mandate.token, testAmount);
         const payload = {
           balance: bal.balance,
+          sufficient: bal.sufficient,
+          testedAmount: bal.testedAmount,
           currency: bal.currency || 'NGN',
           accountName: mandate.accountName,
-          accountNumber: mandate.accountNumber ? `****${String(mandate.accountNumber).slice(-4)}` : undefined,
+          accountNumber: mandate.accountNumber && mandate.accountNumber !== 'mono-mandate'
+            ? `****${String(mandate.accountNumber).slice(-4)}` : undefined,
           bankName: mandate.bankName,
           mandateId: mandate.token,
           asOf: new Date().toISOString(),

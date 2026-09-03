@@ -180,8 +180,12 @@ export class AutoDebitService {
 
     let { card, bank, wallet } = AutoDebitService.pickMethods(rows, params.methodId);
 
-    // Bank (Mono/Monnify) must be confirmed debitable. Sync once if not active.
-    if (bank && bank.status !== 'active') {
+    // Bank must be confirmed debitable RIGHT NOW before we spend a (billed) debit
+    // call on it. For Mono we ALWAYS re-verify against the live API — a local
+    // `active` can be stale (the live API returns `ready_to_debit: true` even on
+    // a cancelled mandate, and mandates get cancelled/paused out-of-band). For
+    // Monnify, only an `active` local row is trusted (it has its own webhooks).
+    if (bank) {
       if (bank.provider === 'mono') {
         const synced = await AutoDebitService.syncMonoMandate(bank);
         if (!synced.readyToDebit) {
@@ -194,7 +198,7 @@ export class AutoDebitService {
             return { ok: false, loanId: params.loanId, amount, attempts: [attempt], accepted: false };
           }
         }
-      } else {
+      } else if (bank.status !== 'active') {
         bank = undefined;
       }
     }

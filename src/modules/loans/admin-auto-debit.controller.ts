@@ -196,9 +196,13 @@ export class AdminAutoDebitController {
   }
 
   /**
-   * GET /backoffice/loans/:loanId/bank-balance   (Part 2 feature)
-   * Real-time bank balance for the user's active Mono mandate. Mono charges a
-   * per-call fee, so the result is cached 60s and every call is logged.
+   * GET /backoffice/loans/:loanId/bank-balance?amount=<naira>   (Part 2 feature)
+   *
+   * Mono's balance endpoint (`/v3/payments/mandates/{id}/balance-inquiry`) is a
+   * *sufficiency check* — it REQUIRES an amount and answers "can this account
+   * cover ₦X?" (it may also echo the real balance). We test against `?amount=`
+   * if given, otherwise the loan's current outstanding. Mono bills a small fee
+   * per call, so the result is cached 60s and every call is logged.
    */
   static async bankBalance(req: Request, res: Response, next: NextFunction) {
     try {
@@ -207,6 +211,9 @@ export class AdminAutoDebitController {
       const Loan = (await import('./loan.model')).default;
       const loan = await Loan.findById(loanId).lean();
       if (!loan) return res.status(404).json({ status: 'failed', message: 'Loan not found' });
+
+      const outstanding = Number((loan as any).outstanding || 0);
+      const testAmount = Math.max(1, Number(req.query.amount) || outstanding || 1000);
 
       const userId = String((loan as any).userId);
       const mandate = await AutoDebit.findOne({
@@ -223,7 +230,7 @@ export class AdminAutoDebitController {
         });
       }
 
-      const cacheKey = `mono:balance:${mandate.token}`;
+      const cacheKey = `mono:balance:${mandate.token}:${testAmount}`;
       try {
         const cached = await RedisService.get<any>(cacheKey);
         if (cached) {
@@ -234,18 +241,23 @@ export class AdminAutoDebitController {
       }
 
       const provider = new MonoProvider();
-      const bal = await provider.getMandateBalance(mandate.token);
+      const bal = await provider.getMandateBalance(mandate.token, testAmount);
 
       const payload = {
-        balance: bal.balance,
+        balance: bal.balance,                    // null if Mono only returned a boolean
+        sufficient: bal.sufficient,              // can the account cover `testedAmount`?
+        testedAmount: bal.testedAmount,
         currency: bal.currency || 'NGN',
         accountName: mandate.accountName,
-        accountNumber: mandate.accountNumber ? `****${String(mandate.accountNumber).slice(-4)}` : undefined,
+        accountNumber: mandate.accountNumber && mandate.accountNumber !== 'mono-mandate'
+          ? `****${String(mandate.accountNumber).slice(-4)}` : undefined,
         bankName: mandate.bankName,
         mandateId: mandate.token,
         asOf: new Date().toISOString(),
         source: 'mono',
-        note: bal.balance === 0 ? 'Mono returns ₦0 when the real balance is below ₦1,000.' : undefined,
+        note: bal.balance === null
+          ? `Mono reported ${bal.sufficient ? 'sufficient' : 'insufficient'} funds for ₦${testAmount.toLocaleString()} (it did not return an exact figure).`
+          : bal.balance === 0 ? 'Mono returns ₦0 when the real balance is below its floor.' : undefined,
       };
 
       try {
