@@ -7,7 +7,7 @@
  *     the mapped status (so an `approved`→`ready` transition, or a Mono-side
  *     cancellation, is reflected even if the webhook never arrived).
  *  2. Sweeps orphaned `initiating` mandates (customer abandoned the flow) older
- *     than 30 min — cancels them on Mono and marks them `cancelled`, so they do
+ *     than 30 min - cancels them on Mono and marks them `cancelled`, so they do
  *     not pile up on Mono and do not block the user from re-linking.
  *  3. Settles `AutoDebitLog` rows still `pending`/`processing` after a grace
  *     period by asking Mono for the debit outcome; `successful` → reconcile the
@@ -72,7 +72,7 @@ export class MonoReconcileCron {
       // In-progress rows every run; 'active' rows only if we haven't checked
       // them against Mono recently (mandates get cancelled/paused out-of-band
       // and the live API keeps reporting ready_to_debit, so a local 'active'
-      // can be a lie — but re-checking every one every 15 min wastes Mono calls).
+      // can be a lie - but re-checking every one every 15 min wastes Mono calls).
       const staleActiveCutoff = new Date(Date.now() - ACTIVE_RECHECK_MIN * 60000);
       const rows = await AutoDebit.find({
         provider: 'mono',
@@ -158,13 +158,13 @@ export class MonoReconcileCron {
               await log.save();
               debitsFailed++;
             }
-            // else still processing on Mono — leave pending.
+            // else still processing on Mono - leave pending.
           } else {
             const ageH = (Date.now() - new Date(log.createdAt).getTime()) / 3600000;
             if (ageH > DEBIT_STALE_HOURS) {
               log.status = 'failed';
               log.settledAt = new Date();
-              log.errorMessage = `No Mono debit record found after ${Math.round(ageH)}h — marked stale`;
+              log.errorMessage = `No Mono debit record found after ${Math.round(ageH)}h - marked stale`;
               await log.save();
               debitsFailed++;
             }

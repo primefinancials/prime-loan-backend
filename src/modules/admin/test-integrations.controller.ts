@@ -1,5 +1,5 @@
 /**
- * Test Integrations Controller — Admin-facing endpoints to verify integrations
+ * Test Integrations Controller - Admin-facing endpoints to verify integrations
  */
 import { Request, Response, NextFunction } from 'express';
 import { ProtectedRequest } from '../../interfaces';
@@ -156,7 +156,7 @@ export class TestIntegrationsController {
     try {
       const { userId, amount, methodId, loanId } = req.body;
       if (!userId) return res.status(400).json({ status: "failed", message: "User ID is required" });
-      if (!loanId) return res.status(400).json({ status: "failed", message: "loanId is required — select the loan to repay" });
+      if (!loanId) return res.status(400).json({ status: "failed", message: "loanId is required - select the loan to repay" });
 
       const { AutoDebitService } = await import("../../modules/loans/auto-debit.service");
       const result = await AutoDebitService.chargeLoan({
@@ -174,7 +174,7 @@ export class TestIntegrationsController {
       return res.status(200).json({
         status: "completed",
         message: result.accepted
-          ? (result.attempts.some((a) => a.status === "settled") ? "Auto debit completed" : "Auto debit accepted — awaiting bank confirmation")
+          ? (result.attempts.some((a) => a.status === "settled") ? "Auto debit completed" : "Auto debit accepted - awaiting bank confirmation")
           : "No charge could be made",
         data: result,
         results: result.attempts.map((a) => ({

@@ -1,5 +1,5 @@
 /**
- * Auto-Debit Controller — Handles Flutterwave card/bank linking and querying
+ * Auto-Debit Controller - Handles Flutterwave card/bank linking and querying
  */
 import { Request, Response, NextFunction } from 'express';
 import { AutoDebit } from './auto-debit.model';
@@ -45,7 +45,7 @@ async function evaluateBankLink(params: {
         replaceable.push(m);
         continue;
       }
-      // status is 'pending' or 'approved' — check the real state on the provider.
+      // status is 'pending' or 'approved' - check the real state on the provider.
       if (m.provider === 'mono' && m.token) {
         try {
           const synced = await AutoDebitService.syncMonoMandate(m);
@@ -54,7 +54,7 @@ async function evaluateBankLink(params: {
           }
           replaceable.push(m); // not ready → user may replace it
         } catch (err: any) {
-          logger.warn({ error: err.message }, 'evaluateBankLink: Mono sync failed — allowing replace');
+          logger.warn({ error: err.message }, 'evaluateBankLink: Mono sync failed - allowing replace');
           replaceable.push(m);
         }
       } else {
@@ -395,7 +395,7 @@ export class AutoDebitController {
   /**
    * POST /api/loans/link-bank/mono
    * Confirm a Mono mandate. VERIFIES the real state with Mono before persisting
-   * anything — never blind-inserts `pending` (Issue B). Updates the existing
+   * anything - never blind-inserts `pending` (Issue B). Updates the existing
    * `initiating` row in place; returns the TRUE status.
    *
    *   data.status === 'active'  → mandate is ready to debit (HTTP 201)
@@ -534,7 +534,7 @@ export class AutoDebitController {
 
   /**
    * POST /api/loans/link-bank/mono/cancel   body: { autoDebitId? }
-   * User-initiated "Cancel setup" — cancels the mandate on Mono AND locally so
+   * User-initiated "Cancel setup" - cancels the mandate on Mono AND locally so
    * the user can immediately restart (Issue A).
    */
   static async cancelMonoMandate(req: Request, res: Response, next: NextFunction) {
@@ -644,7 +644,7 @@ export class AutoDebitController {
       const userId = (req as any).user._id || (req as any).user.id;
 
       // Include in-progress bank mandates so the wizard / account page can show
-      // "setup incomplete — finish or cancel" instead of silently claiming linked.
+      // "setup incomplete - finish or cancel" instead of silently claiming linked.
       const methods = await AutoDebit.find({
         userId: String(userId),
         status: { $in: ['active', 'approved', 'pending', 'initiating'] },
