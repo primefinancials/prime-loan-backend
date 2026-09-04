@@ -54,6 +54,8 @@ export class OrderService {
                 quantity: item.quantity,
                 price: item.price,
                 variantId: item.variantId,
+                color: (item as any).color,
+                size: (item as any).size,
             };
 
             const vendorId = (item as any).vendorId || (item as any)._doc?.vendorId;

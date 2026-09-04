@@ -45,7 +45,7 @@ export class CartService {
         };
     }
 
-    static async addItem(userId: string, productId: string, quantity: number, variantId?: string) {
+    static async addItem(userId: string, productId: string, quantity: number, variantId?: string, color?: string, size?: string) {
         if (quantity < 1) throw new BadRequestError("Quantity must be at least 1");
 
         const product = await Product.findById(productId);
@@ -57,7 +57,10 @@ export class CartService {
 
         let cart = await this.getCartDocument(userId);
 
-        // Check if item already exists in cart
+        // Check if item already exists in cart. NOTE: this does not distinguish
+        // two different color/size picks of the same product as separate lines
+        // (matches the pre-existing variantId behaviour) - a repeat add just
+        // bumps quantity and refreshes the snapshotted color/size/price.
         const existingItemIndex = cart.items.findIndex(item =>
             item.productId.toString() === productId && item.variantId === variantId
         );
@@ -96,14 +99,23 @@ export class CartService {
             cart.items[existingItemIndex].quantity += quantity;
             // Update price in case it changed?
             cart.items[existingItemIndex].price = price;
+            if (color) cart.items[existingItemIndex].color = color;
+            if (size) cart.items[existingItemIndex].size = size;
         } else {
-            // Add new item
+            // Add new item. name/image are snapshotted from the product record
+            // (not trusted from the client) - the cart previously stored neither,
+            // so every item rendered with a blank name/image once the page
+            // re-fetched from the backend.
             cart.items.push({
                 productId,
                 quantity,
                 price,
                 variantId,
-                vendorId: product.vendorId
+                color,
+                size,
+                vendorId: product.vendorId,
+                name: product.name,
+                image: product.images?.[0]
             });
         }
 

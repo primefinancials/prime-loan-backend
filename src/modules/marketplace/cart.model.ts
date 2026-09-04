@@ -6,7 +6,11 @@ export interface ICartItem {
     quantity: number;
     price: number;
     variantId?: string; // If product has variants
+    color?: string;
+    size?: string;
     vendorId: string;
+    name?: string;  // Snapshotted from the product at add-time, like price
+    image?: string; // ditto
 }
 
 export interface ICart extends Document {
@@ -21,7 +25,11 @@ const CartItemSchema = new Schema({
     quantity: { type: Number, required: true, min: 1 },
     price: { type: Number, required: true }, // Snapshotted price
     variantId: { type: String },
-    vendorId: { type: String, required: true }
+    color: { type: String },
+    size: { type: String },
+    vendorId: { type: String, required: true },
+    name: { type: String },
+    image: { type: String }
 }, { _id: false });
 
 const CartSchema = new Schema<ICart>({
