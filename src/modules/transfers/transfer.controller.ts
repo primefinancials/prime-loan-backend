@@ -273,7 +273,6 @@ export class TransferController {
    */
   static async generateAccountStatement(req: ProtectedRequest, res: Response, next: NextFunction) {
     try {
-      const userId = req.user!._id;
       const { from, to } = req.query;
 
       if (!from || !to) {
@@ -282,48 +281,98 @@ export class TransferController {
 
       const startDate = new Date(String(from));
       const endDate = new Date(String(to));
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        return res.status(400).json({ status: "error", message: "Invalid from/to date" });
+      }
+      startDate.setHours(0, 0, 0, 0);
       endDate.setHours(23, 59, 59, 999);
 
-      const dateQuery = { createdAt: { $gte: startDate, $lte: endDate } };
-
-      // Fetch all transaction types
-      const [transfers] = await Promise.all([
-        import("./transfer.model").then(m => m.Transfer.find({ userId, status: "COMPLETED", ...dateQuery }).lean()),
-      ]);
-
-      const events: any[] = [];
       const userAccountNo = req.user?.user_metadata?.accountNo || "";
+      if (!userAccountNo) {
+        return res.status(400).json({ status: "error", message: "No wallet account found for this user" });
+      }
 
-      // Process transfers
-      transfers.forEach((t: any) => {
-        let type = 'DEBIT';
-        let description = 'Bank Transfer';
+      // 1. Anchor to the user's CURRENT wallet balance. Use the live VFD balance
+      //    and fall back to the last-synced value. Every figure below is derived
+      //    from this anchor, so opening/closing are real numbers, not the
+      //    unreliable per-row snapshot the old statement printed.
+      let currentBalance = Number(req.user?.user_metadata?.wallet || 0);
+      try {
+        const live = await TransferController.vfdProvider.getAccountInfo(userAccountNo);
+        const liveBal = Number(live?.data?.accountBalance);
+        if (!isNaN(liveBal)) currentBalance = liveBal;
+      } catch (e) {
+        // keep the synced fallback
+      }
 
-        if (t.transferType === 'inter' || t.transferType === 'intra') {
-          if (t.toAccount === userAccountNo) {
-            type = 'CREDIT';
-            description = `Received transfer from ${t.beneficiaryName || 'Unknown'}`;
-          } else {
-            description = `Transfer to ${t.beneficiaryName || 'Unknown'}`;
-          }
-        }
+      // 2. transfers_v2 is the unified wallet cash-flow log: P2P transfers,
+      //    bill payments, savings, loan disbursement/repayment, escrow and
+      //    influencer payouts all write a record here. Filter by ACCOUNT
+      //    NUMBER, not userId - an incoming intra-bank transfer stores the
+      //    SENDER's userId, so the old { userId } filter dropped money received.
+      //    Pull from the period start with NO upper bound so post-period rows
+      //    can be used to roll the balance back to the period close.
+      const { Transfer } = await import("./transfer.model");
+      const rows: any[] = await Transfer.find({
+        status: "COMPLETED",
+        $or: [{ fromAccount: userAccountNo }, { toAccount: userAccountNo }],
+        createdAt: { $gte: startDate },
+      })
+        .sort({ createdAt: 1 })
+        .limit(10000)
+        .lean();
 
-        events.push({
+      const signed = (t: any): number => {
+        const credit = t.toAccount === userAccountNo;
+        const debit = t.fromAccount === userAccountNo;
+        if (credit && !debit) return Number(t.amount) || 0;
+        if (debit && !credit) return -(Number(t.amount) || 0);
+        return 0; // self-transfer / unknown - no net wallet effect
+      };
+
+      const inPeriod = rows.filter((t) => {
+        const d = new Date(t.createdAt).getTime();
+        return d >= startDate.getTime() && d <= endDate.getTime();
+      });
+      const afterPeriod = rows.filter((t) => new Date(t.createdAt).getTime() > endDate.getTime());
+
+      // 3. Roll the live balance back to the end of the statement period.
+      const closingBalance = currentBalance - afterPeriod.reduce((s, t) => s + signed(t), 0);
+
+      // 4. Walk the in-period rows backwards for a running balance per line,
+      //    landing on the opening balance.
+      let running = closingBalance;
+      for (let i = inPeriod.length - 1; i >= 0; i--) {
+        inPeriod[i].__balanceAfter = running;
+        running -= signed(inPeriod[i]);
+      }
+      const openingBalance = running;
+
+      const events = inPeriod.map((t) => {
+        const amt = signed(t);
+        const isCredit = amt > 0;
+        const counterparty = t.beneficiaryName || (isCredit ? t.fromAccount : t.toAccount) || "Unknown";
+        return {
           date: new Date(t.createdAt),
-          type,
-          category: 'Transfer',
-          amount: Number(t.amount),
-          description: t.remark || t.naration || t.narration || description,
-          status: t.status,
+          type: isCredit ? "CREDIT" : amt < 0 ? "DEBIT" : "INFO",
+          amount: Math.abs(amt),
+          description:
+            t.remark ||
+            t.naration ||
+            (t as any).narration ||
+            (isCredit ? `Received from ${counterparty}` : `Transfer to ${counterparty}`),
           reference: t.reference,
-          balance: t.walletBalance
-        });
+          balanceAfter: t.__balanceAfter as number,
+        };
       });
 
-      // Sort events by date
-      events.sort((a, b) => a.date.getTime() - b.date.getTime());
+      const totalCredit = events.filter((e) => e.type === "CREDIT").reduce((s, e) => s + e.amount, 0);
+      const totalDebit = events.filter((e) => e.type === "DEBIT").reduce((s, e) => s + e.amount, 0);
 
-      // Generate PDF
+      const fmt = (n: number) =>
+        Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+      // 5. Generate PDF
       const PdfPrinter: any = require('pdfmake/js/Printer.js').default;
       const fonts = {
         Helvetica: {
@@ -336,25 +385,46 @@ export class TransferController {
 
       const printer = new PdfPrinter(fonts, null, { resolve: () => { }, resolved: async () => { } });
 
-      const name = `${req.user?.user_metadata?.first_name || ''} ${req.user?.user_metadata?.surname || ''}`;
+      const name = `${req.user?.user_metadata?.first_name || ''} ${req.user?.user_metadata?.surname || ''}`.trim();
 
       const tableBody: any[] = [
-        [{ text: 'Date', bold: true }, { text: 'Description', bold: true }, { text: 'Type', bold: true }, { text: 'Amount (₦)', bold: true }, { text: 'Balance (₦)', bold: true }]
+        [
+          { text: 'Date', bold: true },
+          { text: 'Description', bold: true },
+          { text: 'Type', bold: true },
+          { text: 'Amount (NGN)', bold: true, alignment: 'right' },
+          { text: 'Balance (NGN)', bold: true, alignment: 'right' },
+        ],
+        [
+          { text: startDate.toLocaleDateString(), color: '#555555' },
+          { text: 'Opening Balance', italics: true },
+          '',
+          '',
+          { text: fmt(openingBalance), alignment: 'right', bold: true },
+        ],
       ];
 
       events.forEach(e => {
         tableBody.push([
           e.date.toLocaleDateString(),
-          e.description || e.category,
-          { text: e.type, color: e.type === 'CREDIT' ? '#2E7D32' : '#C62828' },
-          e.amount.toLocaleString(undefined, { minimumFractionDigits: 2 }),
-          e.balance !== undefined ? e.balance.toLocaleString(undefined, { minimumFractionDigits: 2 }) : 'N/A'
+          e.description,
+          { text: e.type, color: e.type === 'CREDIT' ? '#2E7D32' : e.type === 'DEBIT' ? '#C62828' : '#555555' },
+          { text: `${e.type === 'CREDIT' ? '+' : e.type === 'DEBIT' ? '-' : ''}${fmt(e.amount)}`, alignment: 'right' },
+          { text: fmt(e.balanceAfter), alignment: 'right' }
         ]);
       });
 
       if (events.length === 0) {
-        tableBody.push([{ text: 'No transactions found for this period.', colSpan: 5, alignment: 'center' }, {}, {}, {}, {}]);
+        tableBody.push([{ text: 'No transactions for this period.', colSpan: 5, alignment: 'center', italics: true }, {}, {}, {}, {}]);
       }
+
+      tableBody.push([
+        { text: endDate.toLocaleDateString(), color: '#555555' },
+        { text: 'Closing Balance', italics: true },
+        '',
+        '',
+        { text: fmt(closingBalance), alignment: 'right', bold: true },
+      ]);
 
       const docDefinition: any = {
         content: [
@@ -367,6 +437,8 @@ export class TransferController {
                 text: [
                   { text: 'Customer Name: ', bold: true, color: '#1B5E20' },
                   { text: `${name}\n` },
+                  { text: 'Account Number: ', bold: true, color: '#1B5E20' },
+                  { text: `${userAccountNo}\n` },
                   { text: 'Email: ', bold: true, color: '#1B5E20' },
                   { text: `${req.user?.email}\n` },
                   { text: 'Phone: ', bold: true, color: '#1B5E20' },
@@ -384,6 +456,14 @@ export class TransferController {
               }
             ]
           },
+          { text: '\n' },
+          {
+            columns: [
+              { text: [{ text: 'Total Credits: ', bold: true, color: '#2E7D32' }, { text: `NGN ${fmt(totalCredit)}` }] },
+              { text: [{ text: 'Total Debits: ', bold: true, color: '#C62828' }, { text: `NGN ${fmt(totalDebit)}` }] },
+              { text: [{ text: 'Net Change: ', bold: true }, { text: `NGN ${fmt(totalCredit - totalDebit)}` }], alignment: 'right' },
+            ]
+          },
           { text: '\n\n' },
           {
             table: {
@@ -392,7 +472,9 @@ export class TransferController {
               body: tableBody
             },
             layout: 'lightHorizontalLines'
-          }
+          },
+          { text: '\n\n' },
+          { text: 'This statement is generated from your Prime Finance wallet activity and is reconciled to your current wallet balance. Contact support@primefinance.live for any discrepancies.', fontSize: 8, italics: true, color: '#777777' },
         ],
         defaultStyle: { font: 'Helvetica', color: '#333333', fontSize: 10 },
         styles: {
