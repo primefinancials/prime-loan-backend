@@ -76,8 +76,101 @@ messaging working; live typing indicators and instant delivery stay degraded.
 `pf-staging` (copy from the old env), and on the Vercel projects
 `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` + `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`.
 
-**Migration to run once (#1):** `NODE_ENV=dev ts-node scripts/fix-loan-percentage.ts`
-(dry run) then `--apply`.
+**Migration (#1): DONE 2026‑09‑04.** `scripts/fix-loan-percentage.ts` ran against
+the shared cluster. `loans_staging`: 20 rows corrected (0.1→10 ×19, 0.2→20 ×1).
+`loans` (LIVE): all 482 rows were already `10` — nothing to change.
+
+---
+
+## ROUND 3 — GITHUB SYNC + PRODUCTION CUTOVER (2026‑09‑04)
+
+### Trigger
+
+`api.primefinance.live` (old AWS account `570064588032`, us‑east‑1,
+`prime-finance-prod-env`) has been **down since ~2026‑07‑30** — the last
+successful deploy — and its autoscaling group has been unable to launch
+instances since 2026‑08‑17 (account vCPU quota exhausted). HTTP requests time
+out. Claude has **read‑only** access to that account, so it can't be fixed
+there. The fix is to stand production up on the **new** account alongside
+`pf-staging`.
+
+### Git — all three backend branches are now in sync
+
+| Branch | Role | State |
+|---|---|---|
+| `dev-v2` | dev | head of the work |
+| `staging-v2` | staging (→ `pf-staging`) | merged from `dev-v2` |
+| `v2` | **production** (→ `pf-prod`) | merged from `staging-v2` |
+
+`v2` was ~5 weeks / 35 commits behind and only carried the old production code
+plus one hotfix (`1ac41da` "handle mono direct debit hangs and mandate
+cancellation"). The merge brought the **entire Mono‑stabilisation rewrite +
+Rounds 1–2** into production. Two conflicts (`mono.provider.ts`,
+`auto-debit.controller.ts`) resolved in favour of the rewrite — `1ac41da` is
+fully subsumed by it. `tsc` + `npm run build` clean on all three. There is **no
+CI/CD** in any repo (no CodePipeline, no GitHub Actions), so a git push deploys
+nothing on its own.
+
+### New: `WORKERS_AUTOSTART` env flag
+
+`startBackgroundWorkers()` unconditionally calls `WorkerControlService.startAll()`
+on boot — it ignores each worker's stored `WorkerStatus`. Bringing a
+long‑down environment back would immediately resume penalty accrual, Mono
+reconcile/debits and **defaulter phone calls**. New flag: `WORKERS_AUTOSTART=false`
+registers every worker (so the admin panel can start them) but skips `startAll()`.
+`pf-prod` boots with this set.
+
+### `pf-prod` — as built
+
+| | |
+|---|---|
+| Account / region | new account `018088156887` / `eu-west-1` |
+| EB app / env | `prime-finance-backend` / `pf-prod` (id `e-r2vcpbecxq`) |
+| Instance | SingleInstance `t4g.small`, Node.js 22 / AL2023, co‑located `redis6` |
+| **Elastic IP** | **`108.133.54.91`** (auto‑created by `eb create`, tagged `pf-prod`) |
+| CNAME | `prime-finance-backend-prod.eu-west-1.elasticbeanstalk.com` |
+| Code | `v2` @ `04b7643` (`app-04b7…`) |
+| Database | **same** Atlas `cluster0.9ohvk` / db `prime-loan` / **unsuffixed** collections (real prod data) — `NODE_ENV=production` |
+| Env vars | cloned from `pf-staging` (45), with prod overrides: `NODE_ENV`/`ENV`/`ENVIRONMENT=production`, `FRONTEND_URL=https://primefinance.live`, `CORS_ORIGINS=` primefinance.live domains, `MONO_SKIP_NAME_MATCH` removed, `WORKERS_AUTOSTART=false` |
+| Mono | same live key + webhook secret (`sec_9MYA…`) as staging |
+| Health | `/health` + `/health/ready` green — mongo up, redis up; boot log shows `⏸️ WORKERS_AUTOSTART=false - workers registered but NOT started` |
+| Serving live traffic? | **No** — DNS not cut over yet |
+
+### Cutover checklist — USER
+
+1. **DNS (Vercel → primefinance.live → DNS Records):** replace the `api` record
+   (currently `CNAME → prime-finance-prod-env…us-east-1…`, dead) with
+   **`A  api  108.133.54.91`**.
+2. **Provider allow‑lists:** add `108.133.54.91` to **VFD** and **Flutterwave**
+   (VFD returns "Access Denied" / 202‑empty from an un‑whitelisted IP).
+3. **Mono dashboard → Webhooks:** production URL →
+   `https://api.primefinance.live/webhooks/mono` (or the EB CNAME over http until
+   HTTPS is on). Secret unchanged (`sec_9MYA…`).
+4. **`pf-prod` env vars still missing:** `CLOUDINARY_CLOUD_NAME` /
+   `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` (chat/KYC uploads),
+   `EMAIL_PASSWORD` (SMTP 535 today), `TERMII_API_KEY` (SMS 401 today).
+5. **Turn workers on** once the overdue‑loan backlog has been reviewed: set
+   `WORKERS_AUTOSTART=true` and restart, or start them individually from the
+   admin worker panel. Until then: no penalties, no auto‑debits, no defaulter
+   calls, no profit realization, no savings maturity processing.
+6. **HTTPS** (same as staging): once `api.primefinance.live` A‑records to
+   `108.133.54.91`, Claude runs `eb setenv API_DOMAIN=api.primefinance.live
+   LETSENCRYPT_EMAIL=info@primefinance.live` on `pf-prod` and the instance
+   issues the cert.
+7. **Frontends:** merge `dev → main` on `prime-loan-web-v2` and
+   `prime-finance-admin` for the Round‑2 UI fixes, and set the production
+   Vercel env (`NEXT_PUBLIC_SOCKET_URL` / `VITE_WS_URL` → the HTTPS backend).
+8. **Old account:** once `api.primefinance.live` points at the new IP and is
+   verified, terminate `prime-finance-prod-env` and `prime-finance-staging-env`
+   in us‑east‑1 to stop paying for them.
+
+### Cutover checklist — CLAUDE (after the user does 1–2)
+
+- Verify `https`/`http` reachability of `api.primefinance.live` → `pf-prod`.
+- `eb setenv API_DOMAIN=…` for the cert (step 6).
+- Smoke‑test an authenticated read (loans list, wallet, mandate status) against
+  prod once the user provides a prod session.
+- Flip `WORKERS_AUTOSTART` when the user gives the go‑ahead.
 
 ---
 
