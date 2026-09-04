@@ -184,8 +184,23 @@ export class MarketplaceController {
         try {
             const userId = req.user!._id.toString();
             const { id } = req.params;
-            await MarketplaceService.deleteProduct(id, userId);
+            const deleted = await MarketplaceService.deleteProduct(id, userId);
+            if (!deleted) {
+                return res.status(404).json({ status: "failed", message: "Product not found or not yours to delete" });
+            }
             res.status(200).json({ status: "success", message: "Product deleted" });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    /** GET /api/marketplace/vendor/products - the CURRENT vendor's own products, any status */
+    static async getMyProducts(req: ProtectedRequest, res: Response, next: NextFunction) {
+        try {
+            const userId = req.user!._id.toString();
+            const { page, limit } = req.query;
+            const result = await MarketplaceService.getMyProducts(userId, Number(page) || 1, Number(limit) || 50);
+            res.status(200).json({ status: "success", data: result });
         } catch (error) {
             next(error);
         }

@@ -503,6 +503,7 @@ import { CartController } from "../modules/marketplace/cart.controller";
 // Vendor
 router.post("/marketplace/vendor/apply", verifyJwtRest(), MarketplaceController.applyAsVendor as any);
 router.get("/marketplace/vendor/me", verifyJwtRest(), MarketplaceController.getMyVendorProfile as any);
+router.get("/marketplace/vendor/products", verifyJwtRest(), MarketplaceController.getMyProducts as any); // Vendor's OWN products (any status) - not the public feed
 router.get("/marketplace/vendors/:id", verifyJwtRest(), MarketplaceController.getPublicVendorProfile as any); // Public Vendor Profile
 router.put("/marketplace/vendors/:id", verifyJwtRest(), MarketplaceController.updateVendor as any);
 router.get("/marketplace/vendors/:id/escrows", verifyJwtRest(), MarketplaceController.getVendorEscrows as any);

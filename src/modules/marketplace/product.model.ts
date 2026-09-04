@@ -16,10 +16,15 @@ export interface IProduct extends Document {
     stock: number;
 
     images: string[];
-    video?: string;
+    videoUrl?: string;
     category: string;
     type: 'physical' | 'digital';
     tags: string[];
+    // Simple variant lists - what the create/edit forms and the product page
+    // actually use (color/size chips, not the generic name+options+priceModifier
+    // shape below, which nothing in either front-end ever populates).
+    colors?: string[];
+    sizes?: string[];
     variants?: {
         name: string;
         options: string[];
@@ -41,10 +46,12 @@ const ProductSchema = new Schema<IProduct>({
     stock: { type: Number, required: true, default: 0, min: 0 },
 
     images: [{ type: String }],
-    video: { type: String },
+    videoUrl: { type: String },
     category: { type: String, required: true },
     type: { type: String, enum: ['physical', 'digital'], default: 'physical' },
     tags: [{ type: String }],
+    colors: [{ type: String }],
+    sizes: [{ type: String }],
     variants: [{
         name: { type: String },
         options: [{ type: String }],
