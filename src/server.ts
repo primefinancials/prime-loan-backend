@@ -179,6 +179,16 @@ async function startBackgroundWorkers() {
     SavingsEarlyWithdrawalWorker.register();
     SavingsContributionWorker.register(); // Flexible savings contributions
 
+    // Workers are always registered (so the admin panel can start them on
+    // demand), but auto-start can be suppressed with WORKERS_AUTOSTART=false.
+    // Use this when bringing an environment up after a long outage so an
+    // operator can review the backlog before penalty accrual, Mono debits and
+    // defaulter calls resume.
+    if (String(process.env.WORKERS_AUTOSTART ?? "true").toLowerCase() === "false") {
+      logger.warn("⏸️  WORKERS_AUTOSTART=false - workers registered but NOT started. Start them from the admin panel.");
+      return;
+    }
+
     // Start all registered workers
     await WorkerControlService.startAll();
 
