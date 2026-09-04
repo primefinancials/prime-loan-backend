@@ -5,3 +5,9 @@
 Procfile          text eol=lf
 .ebextensions/**  text eol=lf
 .ebignore         text eol=lf
+
+# Kept in the repo but never needed in the Elastic Beanstalk source bundle
+# (`git archive` in CI honours these). NB: scripts/eb/* IS needed on the
+# instance (the .platform hooks call it) so scripts/ is NOT excluded.
+docs/**           export-ignore
+.github/**        export-ignore
