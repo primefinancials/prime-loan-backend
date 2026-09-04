@@ -164,13 +164,42 @@ registers every worker (so the admin panel can start them) but skips `startAll()
    verified, terminate `prime-finance-prod-env` and `prime-finance-staging-env`
    in us‑east‑1 to stop paying for them.
 
-### Cutover checklist — CLAUDE (after the user does 1–2)
+### Cutover — DONE (2026‑09‑04 pm)
 
-- Verify `https`/`http` reachability of `api.primefinance.live` → `pf-prod`.
-- `eb setenv API_DOMAIN=…` for the cert (step 6).
-- Smoke‑test an authenticated read (loans list, wallet, mandate status) against
-  prod once the user provides a prod session.
-- Flip `WORKERS_AUTOSTART` when the user gives the go‑ahead.
+| Item | Status |
+|---|---|
+| DNS `api.primefinance.live` → `108.133.54.91`, `api-staging` → `3.254.126.43` | ✅ user |
+| Env vars (Cloudinary, `EMAIL_PASSWORD`, `TERMII_API_KEY`) on **both** envs | ✅ `eb setenv` |
+| **HTTPS live on both** — real Let's Encrypt certs, `wss://` works, `http`→301 | ✅ |
+| Old us‑east‑1 EB envs stopped | ✅ user |
+| Frontends merged `dev → staging → main` (web‑v2 + admin) | ✅ user |
+| CI/CD (`.github/workflows/deploy-backend.yml`) | ✅ committed — user adds AWS secrets + `BACKEND_DEPLOY_ENABLED` var |
+| `pf-prod` workers | ⏸️ `WORKERS_AUTOSTART=false` — user flips when ready |
+| VFD + Flutterwave IP allow‑list (`3.254.126.43` **and** `108.133.54.91`) | ⏳ user |
+| Provider webhook URLs → `https://api.primefinance.live/…` | ⏳ user |
+
+**HTTPS activation bug found & fixed** (commit `ae2cb3b`): `https-setup.sh` wrote
+the nginx `https.conf` in a **predeploy** hook, but EB rebuilds `/etc/nginx` from
+`/var/proxy/staging/nginx` between predeploy and nginx start — so the vhost was
+wiped, port 443 never listened, and the ACME HTTP‑01 challenge 404'd. Fix: the
+vhost is now written by the **postdeploy** `01_certbot.sh` (after `/etc/nginx` is
+final), with `location ^~ /.well-known/acme-challenge/` to beat the EB default
+server block. `predeploy/02_https.sh` deleted.
+
+### Webhook endpoints (both environments)
+
+| Provider | Path | Verification |
+|---|---|---|
+| Mono | `POST /webhooks/mono` | header `mono-webhook-secret` == `MONO_WEBHOOK_SECRET` (`sec_9MYAFROUHPEIF7ZRQMD5`) |
+| Flutterwave | `POST /webhooks/flutterwave` | header `verif-hash` == `FLUTTERWAVE_WEBHOOK_SECRET` (`f053378a95d48c478a03585a`) |
+| VFD (wallet credit alert) | `POST /api/transfers/wallet-alerts` | none — body‑schema validated |
+
+Prefix with `https://api.primefinance.live` (prod) or
+`https://api-staging.primefinance.live` (staging). Staging and prod share one
+Mono business, one Flutterwave account and one VFD merchant (`CUSTOMER_KEY`
+identical): Mono supports multiple webhook URLs (register both); Flutterwave and
+VFD take a single URL each — point those at prod, and drive staging tests
+through the reconcile crons / provider test tools.
 
 ---
 
