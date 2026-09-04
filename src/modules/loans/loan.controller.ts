@@ -386,7 +386,17 @@ export class LoanController {
         history.data = history.data.filter((item) => item._id as any !== id);
       }
 
-      res.status(200).json({ status: "success", data: { loan, user, history } });
+      // Linked auto-debit methods + live Mono status, so the admin can see
+      // exactly which mandate exists and whether it is debitable (Issue C).
+      let paymentMethods: any = null;
+      try {
+        const { AutoDebitService } = await import("./auto-debit.service");
+        paymentMethods = await AutoDebitService.listUserMethods(loan?.userId || "", { withLiveStatus: true });
+      } catch (e) {
+        paymentMethods = { methods: [], recentAttempts: [], error: "unavailable" };
+      }
+
+      res.status(200).json({ status: "success", data: { loan, user, history, paymentMethods } });
     } catch (error) {
       next(error);
     }

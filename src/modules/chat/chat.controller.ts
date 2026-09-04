@@ -21,8 +21,7 @@ export class ChatController {
     static async sendMessage(req: Request, res: Response) {
         try {
             const { escrowId } = req.params;
-            const { content } = req.body;
-            // Attachments handling (Multer middleware should populate req.files)
+            const { content, attachments } = req.body;
 
             const user = (req as ProtectedRequest).user || (req as ProtectedRequest).admin;
 
@@ -30,7 +29,9 @@ export class ChatController {
                 escrowId,
                 senderId: user!._id.toString(),
                 content,
-                attachments: [] // TODO: Process files from req.files
+                // Clients upload via POST /chat/:id/upload first, then send the
+                // returned { url, type, name, size } objects here.
+                attachments: Array.isArray(attachments) ? attachments : []
             });
 
             res.status(200).json({
@@ -57,7 +58,9 @@ export class ChatController {
                 status: 'success',
                 data: {
                     url: url,
-                    type: req.file.mimetype
+                    type: req.file.mimetype,
+                    name: req.file.originalname,
+                    size: req.file.size
                 }
             });
         } catch (error: any) {

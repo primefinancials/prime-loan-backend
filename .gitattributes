@@ -1,0 +1,7 @@
+# Shell scripts and EB platform hooks MUST keep LF endings — CRLF breaks bash
+# on the Linux instance ("$'\r': command not found").
+*.sh              text eol=lf
+.platform/**      text eol=lf
+Procfile          text eol=lf
+.ebextensions/**  text eol=lf
+.ebignore         text eol=lf

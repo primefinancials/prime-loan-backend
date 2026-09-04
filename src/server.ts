@@ -15,10 +15,12 @@ import http from "http";
 import pino from "pino";
 import { DatabaseService } from "./shared/db";
 import { PORT } from "./config";
+import { validateEnv } from "./config/validateEnv";
 import createApp from "./app";
 
 // === Workers ===
 import { LoanPenaltiesCron } from "./workers/loans/penaltiesCron";
+import { MonoReconcileCron } from "./workers/loans/monoReconcileCron";
 import { TransfersPoller } from "./workers/pollers/transfersPoller";
 import { SavingsMaturitiesWorker } from "./workers/savings/maturitiesWorker";
 import { ProfitRealizationCron } from "./workers/profits/profitsCron";
@@ -36,20 +38,60 @@ const logger = pino({ name: "prime-finance-server" });
 /** Tracks whether all backend services are ready */
 let servicesReady = false;
 
+/** Connect with exponential-ish backoff instead of crashing the process. */
+async function connectWithRetry(name: string, fn: () => Promise<any>, maxAttempts = 30) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      logger.info(`Connecting to ${name}... (attempt ${attempt})`);
+      await fn();
+      logger.info(`✅ Connected to ${name}`);
+      return;
+    } catch (err: any) {
+      const wait = Math.min(30000, 2000 * attempt);
+      logger.error({ err: err?.message }, `❌ ${name} connection failed — retrying in ${wait}ms`);
+      if (attempt >= maxAttempts) {
+        logger.error(`Giving up on ${name} after ${maxAttempts} attempts — the instance stays up serving /health so config can be fixed without a crash loop.`);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, wait));
+    }
+  }
+}
+
 export async function startApp() {
   try {
+    validateEnv();
+
     const app = express();
     const server = http.createServer(app);
 
     // ─── PHASE 1: Bind to port immediately ───────────────────────
-    // Serve a basic health endpoint so Railway's health checks pass
-    // while we initialize DB and Redis in the background.
+    // Serve a basic health endpoint so the PaaS health check passes
+    // while we initialize DB and Redis in the background. This is the
+    // endpoint EB's health check hits — it must stay 200 during cold start.
     app.get("/health", (_req, res) => {
       res.status(200).json({
         status: servicesReady ? "healthy" : "starting",
         timestamp: new Date().toISOString(),
         version: "2.0.0",
       });
+    });
+
+    // Deep readiness — actually checks MongoDB + Redis. Use this for
+    // dashboards / uptime monitors; NOT for the EB health check (a transient
+    // DB blip would cycle the single instance).
+    app.get("/health/ready", async (_req, res) => {
+      const out: any = { ready: false, mongo: "unknown", redis: "unknown", servicesReady };
+      try {
+        const mongoose = (await import("mongoose")).default;
+        out.mongo = mongoose.connection.readyState === 1 ? "up" : "down";
+      } catch { out.mongo = "error"; }
+      try {
+        const { QueueService } = await import("./shared/queue");
+        out.redis = (await QueueService.ping()) ? "up" : "down";
+      } catch { out.redis = "error"; }
+      out.ready = servicesReady && out.mongo === "up" && out.redis === "up";
+      res.status(out.ready ? 200 : 503).json(out);
     });
 
     await new Promise<void>((resolve, reject) => {
@@ -65,13 +107,11 @@ export async function startApp() {
     });
 
     // ─── PHASE 2: Connect backend services ───────────────────────
-    logger.info("Connecting to MongoDB...");
-    await DatabaseService.connect();
-    logger.info("✅ Connected to MongoDB");
-
-    logger.info("Connecting to Redis (BullMQ)...");
-    await QueueService.connect();
-    logger.info("✅ Connected to Redis");
+    // Retry rather than exit — a crash-loop on a transient DB/Redis blip (or
+    // during first provisioning before env vars are set) takes the whole
+    // instance down. The port is already bound and /health answers "starting".
+    await connectWithRetry("MongoDB", () => DatabaseService.connect());
+    await connectWithRetry("Redis (BullMQ)", () => QueueService.connect());
 
     // ─── PHASE 3: Configure Express app & routes ─────────────────
     await createApp(app);
@@ -79,13 +119,31 @@ export async function startApp() {
     // Initialize Socket.io
     SocketService.init(server);
 
-    // Mark services as fully ready
-    servicesReady = true;
-    logger.info("✅ All services initialized — server is fully operational");
+    // Mark services ready only if MongoDB actually connected.
+    try {
+      const mongoose = (await import("mongoose")).default;
+      servicesReady = mongoose.connection.readyState === 1;
+    } catch {
+      servicesReady = false;
+    }
+    if (servicesReady) {
+      logger.info("✅ All services initialized — server is fully operational");
+    } else {
+      logger.warn("⚠️ Routes mounted but MongoDB is not connected — check env config. Instance stays up; it will connect once config is fixed.");
+      // keep trying in the background so a later `eb setenv` recovers without a redeploy
+      connectWithRetry("MongoDB (background)", () => DatabaseService.connect(), 999999).then(async () => {
+        try {
+          const mongoose = (await import("mongoose")).default;
+          if (mongoose.connection.readyState === 1) { servicesReady = true; startBackgroundWorkers(); }
+        } catch { /* noop */ }
+      });
+    }
     logger.info("Routes mounted under /api/*");
 
     // ─── PHASE 4: Start background workers (non-blocking) ────────
-    startBackgroundWorkers();
+    // Only when services are actually up — otherwise the background retry
+    // above starts them once MongoDB connects.
+    if (servicesReady) startBackgroundWorkers();
 
     // Graceful shutdown
     process.on("SIGTERM", async () => {
@@ -111,6 +169,7 @@ async function startBackgroundWorkers() {
   try {
     // Register all workers
     LoanPenaltiesCron.register();
+    MonoReconcileCron.register();
     TransfersPoller.register();
     SavingsMaturitiesWorker.register();
     ProfitRealizationCron.register();

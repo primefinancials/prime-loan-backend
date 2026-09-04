@@ -326,7 +326,20 @@ router.post(
 router.post(
   "/loans/link-bank/mono/initiate",
   verifyJwtRest(),
+  idempotencyMiddleware() as any,
   AutoDebitController.initiateBankMono as unknown as express.RequestHandler
+);
+
+router.get(
+  "/loans/link-bank/mono/status",
+  verifyJwtRest(),
+  AutoDebitController.getMonoLinkStatus as unknown as express.RequestHandler
+);
+
+router.post(
+  "/loans/link-bank/mono/cancel",
+  verifyJwtRest(),
+  AutoDebitController.cancelMonoMandate as unknown as express.RequestHandler
 );
 
 router.post(
@@ -469,8 +482,9 @@ router.post("/escrow/:id/resolve", verifyJwtRest(), idempotencyMiddleware() as a
 /*                               CHAT ROUTES                                  */
 /* -------------------------------------------------------------------------- */
 import { ChatController } from "../modules/chat/chat.controller";
+import { chatUpload } from "../shared/middlewares/upload";
 
-router.post("/chat/upload", verifyJwtRest(), ChatController.upload as any);
+router.post("/chat/upload", verifyJwtRest(), chatUpload as any, ChatController.upload as any);
 router.get("/chat/:escrowId/history", verifyJwtRest(), ChatController.getHistory as any);
 router.post("/chat/:escrowId/message", verifyJwtRest(), ChatController.sendMessage as any);
 

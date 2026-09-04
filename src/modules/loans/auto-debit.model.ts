@@ -33,7 +33,30 @@ export interface IAutoDebit extends Document {
   walletPhone?: string;
   mandateCode?: string;
 
-  status: 'active' | 'revoked' | 'expired' | 'pending';
+  // Mono direct-debit lifecycle metadata
+  providerAccountId?: string;   // Mono linked-account id (for balance enquiry), if exposed
+  providerReference?: string;   // reference we sent to Mono on initiate
+  monoUrl?: string;             // last authorisation URL issued to the customer
+  providerStatusRaw?: string;   // last raw status string seen from the provider
+  lastSyncedAt?: Date;          // last time we reconciled this row against the provider
+  lastError?: string;           // last provider error (linking or debit)
+
+  /**
+   * status lifecycle:
+   *  initiating -> pending -> approved -> active           (happy path)
+   *  * -> revoked | cancelled | rejected | expired | failed (terminal)
+   * 'active' means the mandate is confirmed debitable (Mono ready_to_debit).
+   */
+  status:
+    | 'initiating'
+    | 'pending'
+    | 'approved'
+    | 'active'
+    | 'revoked'
+    | 'cancelled'
+    | 'rejected'
+    | 'expired'
+    | 'failed';
   createdAt: Date;
   updatedAt: Date;
   expiresAt?: Date;
@@ -63,7 +86,19 @@ const AutoDebitSchema = new Schema<IAutoDebit>(
     walletPhone: { type: String },
     mandateCode: { type: String },
 
-    status: { type: String, enum: ['active', 'revoked', 'expired', 'pending'], default: 'active' },
+    // Mono direct-debit lifecycle metadata
+    providerAccountId: { type: String },
+    providerReference: { type: String },
+    monoUrl: { type: String },
+    providerStatusRaw: { type: String },
+    lastSyncedAt: { type: Date },
+    lastError: { type: String },
+
+    status: {
+      type: String,
+      enum: ['initiating', 'pending', 'approved', 'active', 'revoked', 'cancelled', 'rejected', 'expired', 'failed'],
+      default: 'active',
+    },
     expiresAt: { type: Date },
   },
   { collection: getCollectionName('auto_debits'), timestamps: true }

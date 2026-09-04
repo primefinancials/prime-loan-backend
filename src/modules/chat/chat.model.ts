@@ -15,7 +15,9 @@ export interface IChatMessage extends Document {
     content: string;
     attachments: {
         type: string;
-        url: string
+        url: string;
+        name?: string;
+        size?: number;
     }[];
     readBy: string[];
     createdAt: Date;
@@ -36,7 +38,9 @@ const ChatMessageSchema = new Schema<IChatMessage>({
     content: { type: String },
     attachments: [{
         type: { type: String }, // storing MIME type e.g. 'image/png'
-        url: { type: String }
+        url: { type: String },
+        name: { type: String },
+        size: { type: Number }
     }],
     readBy: [{ type: String }]
 }, {
