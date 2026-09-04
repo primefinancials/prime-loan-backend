@@ -8,6 +8,7 @@ import { WorkerController } from "../modules/workers/worker.controller";
 import { EscrowController } from "../modules/escrow/escrow.controller";
 import { MarketplaceController } from "../modules/marketplace/marketplace.controller";
 import { ChatController } from "../modules/chat/chat.controller";
+import { chatUpload } from "../shared/middlewares/upload";
 import {
    verifyJwtRest,
    validateReqBody,
@@ -245,7 +246,7 @@ router.post("/escrow/:id/resolve", verifyJwtRest(), EscrowController.resolveDisp
 ============================= */
 router.get("/chat/:escrowId/history", verifyJwtRest(), ChatController.getHistory as any);
 router.post("/chat/:escrowId/message", verifyJwtRest(), ChatController.sendMessage as any);
-router.post("/chat/upload", verifyJwtRest(), ChatController.upload as any);
+router.post("/chat/upload", verifyJwtRest(), chatUpload as any, ChatController.upload as any);
 
 /* =============================
    MARKETPLACE MANAGEMENT

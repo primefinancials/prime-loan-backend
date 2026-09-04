@@ -445,7 +445,7 @@ const SettingsSchema = new Schema<ISettings>(
         marketplace: { type: Number, default: 2.0 },
         signup_bonus: { type: Number, default: 100 }
       },
-      minPayoutAmount: { type: Number, default: 1000 }
+      minPayoutAmount: { type: Number, default: 100 } // influencer commission balance must reach this before a payout
     },
 
     // Flutterwave auto-debit configuration (replaces monoAutoDebit)

@@ -314,7 +314,16 @@ export class InfluencerController {
    */
   static async processPayouts(req: Request, res: Response, next: NextFunction) {
     try {
-      const influencers = await Influencer.find({ pendingPayout: { $gt: 0 }, status: 'approved' });
+      const { SettingsService } = await import('../admin/settings.service');
+      const settings = await SettingsService.getSettings();
+      const threshold = Number((settings as any)?.influencer?.minPayoutAmount ?? 100);
+
+      // Only pay influencers whose commission balance has reached the admin
+      // threshold. Everyone at/above it gets paid; the rest keep accruing.
+      const influencers = await Influencer.find({ pendingPayout: { $gte: threshold }, status: 'approved' });
+      const waiting = await Influencer.countDocuments({
+        status: 'approved', pendingPayout: { $gt: 0, $lt: threshold },
+      });
       const UserModel = (await import('../users/user.model')).default;
       const vfd = new VfdProvider();
       const platformAccount = (await vfd.getPrimeAccountInfo()).data;
@@ -434,8 +443,8 @@ export class InfluencerController {
 
       return res.status(200).json({
         status: 'success',
-        message: `Processed: ${processed}, Failed: ${failed}, Skipped: ${skipped}. Total transferred: ₦${totalAmount.toLocaleString()}`,
-        data: { processed, failed, skipped, totalAmount, results },
+        message: `Processed: ${processed}, Failed: ${failed}, Skipped: ${skipped}. ${waiting} influencer(s) still below the ₦${threshold.toLocaleString()} payout threshold. Total transferred: ₦${totalAmount.toLocaleString()}`,
+        data: { processed, failed, skipped, waiting, threshold, totalAmount, results },
       });
     } catch (err) { next(err); }
   }
@@ -553,6 +562,16 @@ export class InfluencerController {
       if (!influencer) return res.status(404).json({ status: 'failed', message: 'Influencer profile not found' });
       if (influencer.status !== 'approved') {
         return res.status(400).json({ status: 'failed', message: 'Only approved influencers can withdraw' });
+      }
+
+      const { SettingsService } = await import('../admin/settings.service');
+      const settings = await SettingsService.getSettings();
+      const threshold = Number((settings as any)?.influencer?.minPayoutAmount ?? 100);
+      if (Number(influencer.pendingPayout) < threshold) {
+        return res.status(400).json({
+          status: 'failed',
+          message: `You need at least ₦${threshold.toLocaleString()} in commission earnings to withdraw. You currently have ₦${Number(influencer.pendingPayout).toLocaleString()}.`,
+        });
       }
 
       const withdrawAmount = Math.round(Math.min(amount, influencer.pendingPayout) * 100) / 100;

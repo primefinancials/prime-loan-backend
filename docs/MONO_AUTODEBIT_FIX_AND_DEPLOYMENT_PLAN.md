@@ -54,6 +54,33 @@ Deferred hardening (folded where cheap; rest is low‑risk cleanup): M12 partial
 
 ---
 
+## ROUND 2 — CLIENT + USER REPORTED ISSUES (2026‑09‑04)
+
+Five further issues raised after the staging cutover. All fixed on `dev-v2` /
+`dev`; backend deployed to `pf-staging`.
+
+| # | Report | Root cause | Fix | Repos |
+|---|---|---|---|---|
+| 1 | Loan interest shows **"200%"** in the user wizard, **"0.1"** in admin | Wizard rendered `amount × rate` (a naira figure) with a `%` suffix. Backend stored `loan.percentage` as the *fraction* `value/100` (0.1), and the admin renders `` `${loan.percentage}%` `` | Wizard: show configured rate as **Interest Rate** (`10%`) + computed **Interest Charge** in ₦ as a separate line. Backend: store the human percentage (`10`). Display‑only field — no effect on repayment maths (interest amount is computed separately at disbursement). `scripts/fix-loan-percentage.ts` backfills old rows. | backend, web‑v2 |
+| 2 | Influencer payout — no threshold; anyone with > ₦0 gets paid | `processPayouts` queried `pendingPayout > 0`; `requestWithdrawal` had no floor | Admin‑configurable `settings.influencer.minPayoutAmount` (default **₦100**, was 1000). Batch pays everyone `≥ threshold` and reports how many are still below; withdrawal blocked until balance reaches the threshold. Admin label → "Payout Threshold". | backend, admin |
+| 3 | Account statement — **wrong opening / closing balance** | `generateAccountStatement` filtered `transfers_v2` by `{ userId }` (drops money *received* via intra‑bank transfer — those rows carry the **sender's** userId) and printed an unreliable per‑row `walletBalance` snapshot with **no opening/closing at all** | Rewritten: anchor to the user's current wallet balance (live VFD, synced fallback) → pull every COMPLETED movement for their **account number** from the period start → roll back through post‑period rows for the closing balance → walk in‑period rows backwards for a per‑line running balance and the opening balance. Adds a credits/debits/net summary. | backend |
+| 4 | Escrow chat "not working"; WebSocket front‑end ↔ back‑end not connecting; images show the **URL, not the image** | (a) sockets pointed at the Vercel `/api` proxy, which doesn't forward WS upgrades; from an `https://` page `ws://` is mixed‑content‑blocked. (b) **No multer** anywhere — `POST /chat/upload` always returned "No file uploaded" (admin could never attach; the user app only worked because it uploads straight to Cloudinary). (c) REST `sendMessage` hard‑coded `attachments: []`. (d) attachments with a missing/bare `type` made the UI fall through to rendering the raw link. | Clients: strip trailing `/api`, upgrade `http→https`, `websocket`+`polling` transports, reconnection, surface `connect_error`. Backend: multer disk‑storage middleware on both `/chat/upload` routes; REST handler now reads `attachments` from the body; persist `name`/`size`; **normalise every attachment's `type` on write and read** (infer MIME from the URL extension). Frontends: resolve image/video by MIME **or** extension, render inline in admin too, `<img onError>` → link fallback. **REST fallback**: if the socket is down the user app now sends via `POST /chat/:id/message` instead of dropping the message. | backend, web‑v2, admin |
+| 5 | (folded into #4) admin real‑time worker updates | Same `/api`‑proxy / transport issue as the chat socket | Same client fixes applied to `websocket-provider.tsx` + `socketService.ts` | admin |
+
+**Still blocked on the user (unchanged from Round 1):** real WebSocket delivery
+needs the backend on **HTTPS**. Until then the chat REST fallback (#4) keeps
+messaging working; live typing indicators and instant delivery stay degraded.
+
+**User action for #4 (chat attachments) to work on the new backend:** set
+`CLOUDINARY_CLOUD_NAME` / `CLOUDINARY_API_KEY` / `CLOUDINARY_API_SECRET` on
+`pf-staging` (copy from the old env), and on the Vercel projects
+`NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME` + `NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET`.
+
+**Migration to run once (#1):** `NODE_ENV=dev ts-node scripts/fix-loan-percentage.ts`
+(dry run) then `--apply`.
+
+---
+
 ## 0. How the Mono flow works today (so the bugs make sense)
 
 ### 0.1 Components

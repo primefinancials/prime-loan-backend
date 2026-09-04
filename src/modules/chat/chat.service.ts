@@ -55,13 +55,45 @@ export class ChatService {
     }
 
     /**
+     * Normalise an inbound attachment so the stored record always carries a
+     * usable `type`. Clients occasionally send an attachment with a missing or
+     * bare type ("image" instead of "image/png"), which then makes the chat UI
+     * fall back to rendering the raw URL. Infer a MIME type from the file
+     * extension when needed.
+     */
+    static normaliseAttachment(att: any): { type: string; url: string; name?: string; size?: number } {
+        // Legacy rows / odd clients sometimes store the attachment as a bare URL string.
+        if (typeof att === 'string') att = { url: att };
+        const url: string = String(att?.url || '');
+        let type: string = String(att?.type || '').toLowerCase();
+
+        const ext = (url.split('?')[0].split('#')[0].split('.').pop() || '').toLowerCase();
+        const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'heif'];
+        const videoExts = ['mp4', 'mov', 'webm', 'avi', 'mkv', 'm4v'];
+
+        if (!type || type === 'file' || type === 'raw' || type === 'auto') {
+            if (imageExts.includes(ext)) type = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+            else if (videoExts.includes(ext)) type = `video/${ext}`;
+            else if (ext === 'pdf') type = 'application/pdf';
+            else type = 'application/octet-stream';
+        } else if (type === 'image' || type === 'video') {
+            // bare kind -> pair with the extension when we can
+            type = ext ? `${type}/${type === 'image' && ext === 'jpg' ? 'jpeg' : ext}` : `${type}/*`;
+        } else if (type === 'pdf') {
+            type = 'application/pdf';
+        }
+
+        return { type, url, name: att?.name || undefined, size: typeof att?.size === 'number' ? att.size : undefined };
+    }
+
+    /**
      * Send a Message
      */
     static async sendMessage(params: {
         escrowId: string,
         senderId: string,
         content: string,
-        attachments?: { type: 'image' | 'pdf' | 'video', url: string }[]
+        attachments?: { type?: string, url: string, name?: string, size?: number }[]
     }) {
         console.log(`[ChatService] Sending message for escrow ${params.escrowId} from ${params.senderId}`);
         const room = await this.getOrCreateRoom(params.escrowId, params.senderId);
@@ -83,11 +115,15 @@ export class ChatService {
         }
         // ------------------------------------
 
+        const attachments = (params.attachments || [])
+            .filter((a) => a && a.url)
+            .map((a) => this.normaliseAttachment(a));
+
         const message = await ChatMessage.create({
             roomId: room._id,
             senderId: params.senderId,
             content: params.content,
-            attachments: params.attachments || [],
+            attachments,
             readBy: [params.senderId]
         });
 
@@ -159,7 +195,7 @@ export class ChatService {
                     email: sender.email
                 } : null,
                 content: msg.content,
-                attachments: msg.attachments,
+                attachments: (msg.attachments || []).map((a: any) => ChatService.normaliseAttachment(a)),
                 readBy: msg.readBy,
                 createdAt: msg.createdAt
             };
