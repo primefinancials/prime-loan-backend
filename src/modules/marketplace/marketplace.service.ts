@@ -213,10 +213,11 @@ export class MarketplaceService {
         const deliveryRate = totalSales > 0 ? ((completedOrders / totalSales) * 100).toFixed(2) : '0';
 
         // Linked products (active + draft, not deleted)
-        const products = await Product.find({ vendorId }).lean()
+        const rawProducts = await Product.find({ vendorId }).lean()
             .sort({ createdAt: -1 })
             .limit(50)
             .select('_id name price status stock images category');
+        const products = await this.attachProductStats(rawProducts);
 
         return {
             ...vendor,
@@ -246,9 +247,46 @@ export class MarketplaceService {
        PRODUCT MANAGEMENT
     ========================================= */
 
-    /* =========================================
-       PRODUCT MANAGEMENT
-    ========================================= */
+    /**
+     * Attach { unitsSold, revenue } to each product from completed/in-flight
+     * orders. Shared by getVendorDetails and getProductsByVendor so the admin
+     * "Sold / Revenue" figures aren't always zero.
+     */
+    private static async attachProductStats(products: any[]) {
+        if (!products.length) return products;
+        const productIds = products.map((p) => p._id.toString());
+
+        const stats = await Order.aggregate([
+            {
+                $match: {
+                    status: { $in: [OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DELIVERED] },
+                    "items.productId": { $in: productIds }
+                }
+            },
+            { $unwind: "$items" },
+            { $match: { "items.productId": { $in: productIds } } },
+            {
+                $group: {
+                    _id: "$items.productId",
+                    unitsSold: { $sum: "$items.quantity" },
+                    revenue: { $sum: { $multiply: ["$items.quantity", "$items.price"] } }
+                }
+            }
+        ]);
+
+        const statsMap = stats.reduce((acc, curr) => {
+            acc[curr._id] = curr;
+            return acc;
+        }, {} as any);
+
+        return products.map((product) => ({
+            ...product,
+            stats: {
+                unitsSold: statsMap[product._id.toString()]?.unitsSold || 0,
+                revenue: statsMap[product._id.toString()]?.revenue || 0
+            }
+        }));
+    }
 
     /**
      * Create Product
@@ -499,45 +537,20 @@ export class MarketplaceService {
             Product.countDocuments({ vendorId })
         ]);
 
-        // Aggregate product stats from orders
-        const productIds = products.map(p => p._id.toString());
-
-        const stats = await Order.aggregate([
-            {
-                $match: {
-                    status: { $in: [OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.SHIPPED, OrderStatus.DELIVERED] },
-                    "items.productId": { $in: productIds }
-                }
-            },
-            { $unwind: "$items" },
-            {
-                $match: {
-                    "items.productId": { $in: productIds }
-                }
-            },
-            {
-                $group: {
-                    _id: "$items.productId",
-                    unitsSold: { $sum: "$items.quantity" },
-                    revenue: { $sum: { $multiply: ["$items.quantity", "$items.price"] } }
-                }
-            }
-        ]);
-
-        const statsMap = stats.reduce((acc, curr) => {
-            acc[curr._id] = curr;
-            return acc;
-        }, {} as any);
-
-        const data = products.map(product => ({
-            ...product,
-            stats: {
-                unitsSold: statsMap[product._id.toString()]?.unitsSold || 0,
-                revenue: statsMap[product._id.toString()]?.revenue || 0
-            }
-        }));
-
+        const data = await this.attachProductStats(products);
         return { data, total, page, pages: Math.ceil(total / limit) };
+    }
+
+    /**
+     * A vendor's OWN products (any status), resolved from their user session -
+     * no vendorId lookup needed on the client. This is what the vendor-facing
+     * "My Products" page should call; it must NOT be confused with the public
+     * listProducts() feed (which only shows ACTIVE products across ALL vendors).
+     */
+    static async getMyProducts(userId: string, page = 1, limit = 50) {
+        const vendor = await Vendor.findOne({ userId });
+        if (!vendor) throw new UnauthorizedError('Vendor profile not found');
+        return this.getProductsByVendor(String(vendor._id), page, limit);
     }
 
     /**

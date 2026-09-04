@@ -11,6 +11,8 @@ export interface IEscrowItem {
     image?: string;
     description?: string;
     productId?: string;
+    color?: string;
+    size?: string;
 }
 
 export interface IEscrowTransaction extends Document {
@@ -49,7 +51,9 @@ const EscrowItemSchema = new Schema({
     price: { type: Number, required: true },
     image: { type: String },
     description: { type: String },
-    productId: { type: String }
+    productId: { type: String },
+    color: { type: String },
+    size: { type: String }
 }, { _id: false });
 
 const EscrowTransactionSchema = new Schema<IEscrowTransaction>({
