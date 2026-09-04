@@ -1,0 +1,118 @@
+name: Deploy backend (Elastic Beanstalk)
+
+# staging-v2 -> pf-staging   |   v2 -> pf-prod
+# Both environments live in the "new" AWS account (018088156887, eu-west-1).
+# The instance compiles TypeScript itself via .platform/hooks, so the bundle
+# is just the committed source (git archive), same as `eb deploy`.
+
+on:
+  push:
+    branches: [staging-v2, v2]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.github/**'
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Environment to deploy
+        required: true
+        type: choice
+        options: [pf-staging, pf-prod]
+
+concurrency:
+  group: eb-deploy-${{ github.event.inputs.target || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Skips (not fails) until the AWS credentials are added as repo secrets.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.BACKEND_DEPLOY_ENABLED == 'true' }}
+    # `production` gates v2 / pf-prod deploys — add required reviewers to that
+    # GitHub Environment (Settings > Environments) to make prod releases
+    # manual-approve.
+    environment: ${{ (github.ref_name == 'v2' || github.event.inputs.target == 'pf-prod') && 'production' || 'staging' }}
+    env:
+      AWS_REGION: eu-west-1
+      APP_NAME: prime-finance-backend
+      S3_BUCKET: elasticbeanstalk-eu-west-1-018088156887
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve target
+        id: cfg
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV_NAME="${{ github.event.inputs.target }}"
+          elif [ "${{ github.ref_name }}" = "v2" ]; then
+            ENV_NAME="pf-prod"
+          else
+            ENV_NAME="pf-staging"
+          fi
+          VERSION="gh-$(date -u +%Y%m%d-%H%M%S)-${GITHUB_SHA::7}"
+          echo "env_name=$ENV_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION"   >> "$GITHUB_OUTPUT"
+          echo "::notice::Deploying ${GITHUB_SHA::7} (${GITHUB_REF_NAME}) -> $ENV_NAME as $VERSION"
+
+      - name: Build source bundle
+        run: |
+          git archive --format=zip -o deploy.zip HEAD
+          echo "bundle: $(du -h deploy.zip | cut -f1)"
+          unzip -l deploy.zip | tail -1
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Upload bundle to S3
+        run: |
+          aws s3 cp deploy.zip \
+            "s3://${S3_BUCKET}/${APP_NAME}/${{ steps.cfg.outputs.version }}.zip"
+
+      - name: Create application version
+        run: |
+          aws elasticbeanstalk create-application-version \
+            --application-name "$APP_NAME" \
+            --version-label "${{ steps.cfg.outputs.version }}" \
+            --description "$(echo "${GITHUB_REF_NAME}@${GITHUB_SHA::7} by ${GITHUB_ACTOR}" | cut -c1-190)" \
+            --source-bundle S3Bucket="$S3_BUCKET",S3Key="${APP_NAME}/${{ steps.cfg.outputs.version }}.zip" \
+            --no-auto-create-application
+
+      - name: Deploy to ${{ steps.cfg.outputs.env_name }}
+        run: |
+          aws elasticbeanstalk update-environment \
+            --environment-name "${{ steps.cfg.outputs.env_name }}" \
+            --version-label "${{ steps.cfg.outputs.version }}"
+
+      - name: Wait for environment to stabilise
+        run: |
+          aws elasticbeanstalk wait environment-updated \
+            --environment-name "${{ steps.cfg.outputs.env_name }}"
+
+      - name: Report status
+        run: |
+          read -r STATUS HEALTH VERSION <<< "$(aws elasticbeanstalk describe-environments \
+            --environment-names '${{ steps.cfg.outputs.env_name }}' \
+            --query 'Environments[0].[Status,Health,VersionLabel]' --output text)"
+          CNAME=$(aws elasticbeanstalk describe-environments \
+            --environment-names '${{ steps.cfg.outputs.env_name }}' \
+            --query 'Environments[0].CNAME' --output text)
+          echo "status=$STATUS health=$HEALTH version=$VERSION"
+          if [ "$HEALTH" != "Green" ] && [ "$HEALTH" != "Ok" ]; then
+            echo "::warning::Environment health is $HEALTH after deploy"
+          fi
+          for i in $(seq 1 12); do
+            CODE=$(curl -s -o /dev/null -m 10 -w '%{http_code}' "http://$CNAME/health" || true)
+            echo "health check $i -> $CODE"
+            [ "$CODE" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "::error::/health never returned 200"
+          exit 1
