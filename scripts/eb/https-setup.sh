@@ -1,31 +1,33 @@
 #!/bin/bash
-# Shared TLS setup for the EB backend. Called by the prebuild + predeploy hooks
-# (and their confighook mirrors). Idempotent. No-ops unless API_DOMAIN is set.
+# Shared TLS setup for the EB backend. Idempotent. No-ops unless API_DOMAIN is set.
 #
 # Env (EB environment properties):
 #   API_DOMAIN         required to enable TLS, e.g. api-staging.primefinance.live
 #                      (must have an A record -> this instance's Elastic IP)
 #   LETSENCRYPT_EMAIL  optional, defaults to info@primefinance.live
 #
-# Phase 1 (prebuild): install certbot, self-signed fallback cert, acme webroot.
-# Phase 2 (predeploy): write/remove the nginx 80+443 vhost for API_DOMAIN.
+# Phases:
+#   prebuild : install certbot + a self-signed fallback cert + the ACME webroot.
+#   vhost    : (re)write the nginx 80+443 server block for API_DOMAIN.
+#              MUST run in postdeploy - EB rebuilds /etc/nginx from
+#              /var/proxy/staging/nginx between predeploy and start, which wipes
+#              anything a predeploy hook drops into /etc/nginx/conf.d.
 set -euo pipefail
 
-PHASE="${1:-all}"
+PHASE="${1:-vhost}"
 get_cfg() { /opt/elasticbeanstalk/bin/get-config environment -k "$1" 2>/dev/null || true; }
 
 API_DOMAIN="$(get_cfg API_DOMAIN)"
-LE_EMAIL="$(get_cfg LETSENCRYPT_EMAIL)"; LE_EMAIL="${LE_EMAIL:-info@primefinance.live}"
 
 NGINX_VHOST=/etc/nginx/conf.d/https.conf
 
 if [ -z "${API_DOMAIN}" ]; then
   echo "[https] API_DOMAIN not set - backend stays HTTP-only"
-  [ -f "$NGINX_VHOST" ] && rm -f "$NGINX_VHOST" && echo "[https] removed stale $NGINX_VHOST"
+  [ -f "$NGINX_VHOST" ] && rm -f "$NGINX_VHOST" && systemctl reload nginx 2>/dev/null || true
   exit 0
 fi
 
-if [ "$PHASE" = "prebuild" ] || [ "$PHASE" = "all" ]; then
+if [ "$PHASE" = "prebuild" ]; then
   echo "[https] prebuild for ${API_DOMAIN}"
   command -v certbot >/dev/null 2>&1 || dnf install -y certbot
   mkdir -p /var/www/letsencrypt/.well-known/acme-challenge /etc/nginx/ssl
@@ -43,11 +45,16 @@ if [ "$PHASE" = "prebuild" ] || [ "$PHASE" = "all" ]; then
     ln -sf /etc/nginx/ssl/selfsigned.crt /etc/nginx/ssl/current.crt
     ln -sf /etc/nginx/ssl/selfsigned.key /etc/nginx/ssl/current.key
   fi
+  echo "[https] prebuild done"
+  exit 0
 fi
 
-if [ "$PHASE" = "predeploy" ] || [ "$PHASE" = "all" ]; then
-  echo "[https] writing nginx vhost for ${API_DOMAIN}"
-  cat > "$NGINX_VHOST" <<NGINX
+# ---- vhost (default) ----
+echo "[https] writing nginx vhost for ${API_DOMAIN}"
+mkdir -p /var/www/letsencrypt/.well-known/acme-challenge
+chown -R nginx:nginx /var/www/letsencrypt 2>/dev/null || true
+
+cat > "$NGINX_VHOST" <<NGINX
 # Managed by scripts/eb/https-setup.sh - do not edit by hand.
 map \$http_upgrade \$prime_connection_upgrade {
     default upgrade;
@@ -58,15 +65,20 @@ server {
     listen 80;
     server_name ${API_DOMAIN};
 
-    # ACME HTTP-01 challenge (certbot --webroot)
-    location /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    # ACME HTTP-01 challenge (certbot --webroot). Must win over the EB default
+    # server block, which proxies everything to the app.
+    location ^~ /.well-known/acme-challenge/ {
+        root /var/www/letsencrypt;
+        default_type "text/plain";
+        try_files \$uri =404;
+    }
 
-    # everything else -> https
     location / { return 301 https://\$host\$request_uri; }
 }
 
 server {
     listen 443 ssl;
+    http2 on;
     server_name ${API_DOMAIN};
 
     ssl_certificate     /etc/nginx/ssl/current.crt;
@@ -96,6 +108,13 @@ server {
     }
 }
 NGINX
-fi
 
-echo "[https] ${PHASE} done"
+if nginx -t 2>/dev/null; then
+  systemctl reload nginx 2>/dev/null || systemctl restart nginx
+  echo "[https] vhost active (port 443 up on $( [ -f /etc/letsencrypt/live/${API_DOMAIN}/fullchain.pem ] && echo 'LE cert' || echo 'self-signed' ))"
+else
+  echo "[https] nginx config test FAILED - reverting vhost" >&2
+  rm -f "$NGINX_VHOST"
+  nginx -t && systemctl reload nginx || true
+  exit 1
+fi
