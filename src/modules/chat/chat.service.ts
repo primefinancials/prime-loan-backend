@@ -62,6 +62,8 @@ export class ChatService {
      * extension when needed.
      */
     static normaliseAttachment(att: any): { type: string; url: string; name?: string; size?: number } {
+        // Legacy rows / odd clients sometimes store the attachment as a bare URL string.
+        if (typeof att === 'string') att = { url: att };
         const url: string = String(att?.url || '');
         let type: string = String(att?.type || '').toLowerCase();
 
