@@ -383,6 +383,16 @@ router.put("/settings/voice-call-provider", verifyJwtRest(), async (req: any, re
 ============================= */
 
 import { TestIntegrationsController } from "../modules/admin/test-integrations.controller";
+import { MessagingController } from "../modules/admin/messaging.controller";
+
+/* =============================
+   MESSAGING (manual call / SMS - any phone number, single or bulk)
+============================= */
+router.post("/messaging/call", verifyJwtRest(), MessagingController.sendCall as any);
+router.post("/messaging/sms", verifyJwtRest(), MessagingController.sendSms as any);
+router.post("/messaging/bulk", verifyJwtRest(), MessagingController.startBulk as any);
+router.get("/messaging/bulk", verifyJwtRest(), MessagingController.listBulkJobs as any);
+router.get("/messaging/bulk/:id", verifyJwtRest(), MessagingController.getBulkJob as any);
 
 router.post("/test-integrations/voice-call", verifyJwtRest(), TestIntegrationsController.testVoiceCall as any);
 router.post("/test-integrations/sms", verifyJwtRest(), TestIntegrationsController.testSms as any);
