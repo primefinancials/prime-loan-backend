@@ -277,7 +277,10 @@ export class LoanService {
     // Fetch dynamic loan interest and fee
     const settings = await SettingsService.getSettings();
     const interestConfig = settings.loan?.interest;
-    const interestRate = interestConfig ? (interestConfig.percentage ? (interestConfig.value / 100) : interestConfig.value) : 0;
+    // Store the interest RATE as the human number (e.g. 10 for "10%"), NOT the
+    // fraction 0.1 - the admin renders `${loan.percentage}%` and the wizard
+    // showed "200%" because it was fed the interest amount.
+    const interestRate = interestConfig ? Number(interestConfig.value || 0) : 0;
 
     // Build and persist loan record
     // Destructure to exclude fields that should only be set during disbursement
