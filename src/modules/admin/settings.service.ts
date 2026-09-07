@@ -135,6 +135,7 @@ export class SettingsService {
     if (settings.autoDebit && !settings.autoDebit.bankLinkingProvider) {
       settings.autoDebit.bankLinkingProvider = 'mono';
       if (!settings.autoDebit.mandateMaxAmount) settings.autoDebit.mandateMaxAmount = 5000000;
+      settings.markModified('autoDebit');
       await settings.save();
     }
 
