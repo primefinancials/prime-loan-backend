@@ -26,13 +26,14 @@ import { AutoDebitLog } from '../../modules/loans/auto-debit-log.model';
 import { AutoDebitService } from '../../modules/loans/auto-debit.service';
 import { MonoProvider } from '../../shared/providers/mono.provider';
 import { mapMonoMandateStatus, extractDebitReferences } from '../../shared/providers/mono.status';
+import { findMonoDebitOutcome } from '../../shared/utils/cross-env';
 import pino from 'pino';
 
 const logger = pino({ name: 'mono-reconcile-cron' });
 const WK = 'mono-reconcile';
 
 const ORPHAN_INITIATING_MIN = 30;      // cancel abandoned initiations older than this
-const DEBIT_GRACE_MIN = 25;            // don't chase a debit until it's had time to settle
+const DEBIT_GRACE_MIN = 10;            // don't chase a debit until it's had time to settle (Mono webhooks normally arrive within ~1 min)
 const DEBIT_STALE_HOURS = 24;          // give up on an unmatched pending debit after this
 const ACTIVE_RECHECK_MIN = 360;        // re-verify a locally-'active' Mono mandate at most every 6h
 
@@ -115,27 +116,51 @@ export class MonoReconcileCron {
       }
 
       // ── 3. Pending debits ────────────────────────────────────────────
+      // Also picks up `successful` logs that were never reconciled to the loan
+      // (e.g. the sibling env marked the shared log successful but the loan it
+      // belongs to is ours to settle) and short-circuits straight to reconcile.
       const graceCutoff = new Date(Date.now() - DEBIT_GRACE_MIN * 60000);
       const pendingLogs = await AutoDebitLog.find({
         provider: 'mono',
-        status: { $in: ['pending', 'processing'] },
         createdAt: { $lt: graceCutoff },
+        $or: [
+          { status: { $in: ['pending', 'processing'] } },
+          { status: 'successful', reconciledAt: { $exists: false } },
+        ],
       }).limit(200);
 
       const provider = new MonoProvider();
 
       for (const log of pendingLogs) {
         try {
+          // Already confirmed successful, just never written to the loan.
+          if (log.status === 'successful') {
+            await AutoDebitService.reconcile(log._id as any);
+            debitsSettled++;
+            continue;
+          }
+
           const mandateId = log.mandateId || log.token;
           if (!mandateId) continue;
 
-          const debits = await provider.getMandateDebits(mandateId);
           const ourRefs = [log.reference, log.providerReference, log.sessionId].filter(Boolean) as string[];
 
-          const match = debits.find((d: any) => {
+          const debits = await provider.getMandateDebits(mandateId);
+          let match = debits.find((d: any) => {
             const dRefs = extractDebitReferences(d);
             return dRefs.some((r) => ourRefs.includes(r));
           });
+
+          // getMandateDebits is best-effort (the endpoint 404s on some Mono
+          // apps). Fall back to the webhook_events store - INCLUDING the other
+          // environment's, because Mono has one webhook URL and a debit this env
+          // started can be confirmed on the sibling env's endpoint.
+          if (!match) {
+            const { outcome, data } = await findMonoDebitOutcome(ourRefs);
+            if (outcome === 'successful' || outcome === 'failed') {
+              match = { ...data, status: outcome, response_code: outcome === 'successful' ? '00' : (data?.response_code || '51'), success: outcome === 'successful' };
+            }
+          }
 
           if (match) {
             const st = String(match.status || '').toLowerCase();

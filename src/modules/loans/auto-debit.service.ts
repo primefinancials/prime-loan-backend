@@ -24,6 +24,7 @@ import { AutoDebitLog } from './auto-debit-log.model';
 import { LoanService } from './loan.service';
 import { MonoProvider } from '../../shared/providers/mono.provider';
 import { mapMonoMandateStatus, LocalMandateStatus } from '../../shared/providers/mono.status';
+import { loanEnv } from '../../shared/utils/cross-env';
 import { WorkerLogService } from '../worker-logs/worker-log.service';
 
 const logger = pino({ name: 'auto-debit-service' });
@@ -215,6 +216,46 @@ export class AutoDebitService {
         attempts: [{ method: recent.type as any, provider: recent.provider, status: recent.status === 'successful' ? 'settled' : 'pending',
           reference: recent.reference, message: `A ${recent.status} debit for this loan already exists (${recent.reference})` }],
       };
+    }
+
+    // Exponential backoff on repeated FAILURES. Without this the 5-min penalty
+    // cron re-attempts every tick once the 10-min guard above lapses, which
+    // hammers the provider (Mono then rate-limits the mandate for days) and
+    // spams AutoDebitLog. `params.methodId` / admin (`source: 'admin'`) charges
+    // are deliberate and bypass the backoff.
+    if (params.source !== 'admin') {
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const recentFailures = await AutoDebitLog.find({
+        loanId: String(params.loanId),
+        status: 'failed',
+        createdAt: { $gte: dayAgo },
+      }).sort({ createdAt: -1 }).limit(12).lean();
+
+      if (recentFailures.length) {
+        const last = recentFailures[0];
+        const lastAt = new Date(last.createdAt).getTime();
+
+        // Honour an explicit provider "rate-limited ... until YYYY-MM-DD".
+        const until = String(last.errorMessage || '').match(/until\s+(\d{4}-\d{2}-\d{2})/i);
+        if (until) {
+          const untilTs = new Date(`${until[1]}T23:59:59Z`).getTime();
+          if (Date.now() < untilTs) {
+            return {
+              ok: false, loanId: params.loanId, amount: 0, accepted: false,
+              attempts: [{ method: 'bank', status: 'skipped', message: `Provider rate-limited this mandate until ${until[1]} - not retrying` }],
+            };
+          }
+        }
+
+        // 1 fail → wait 15m, 2 → 45m, 3 → 2h, 4 → 6h, 5+ → 12h.
+        const waitMin = [15, 45, 120, 360, 720][Math.min(recentFailures.length - 1, 4)];
+        if (Date.now() - lastAt < waitMin * 60 * 1000) {
+          return {
+            ok: false, loanId: params.loanId, amount: 0, accepted: false,
+            attempts: [{ method: 'bank', status: 'skipped', message: `Backing off after ${recentFailures.length} failed debit(s); next retry in ~${waitMin}m` }],
+          };
+        }
+      }
     }
 
     const amount = Math.min(Number(params.amount) > 0 ? Number(params.amount) : outstanding, outstanding);
@@ -435,6 +476,18 @@ export class AutoDebitService {
     if (!log || log.status !== 'successful' || !log.loanId) return;
     if (log.reconciledAt) {
       logger.info({ reference: log.reference }, 'AutoDebit already reconciled - skip');
+      return;
+    }
+    // AutoDebitLog is shared across staging/prod but `loans` is not. If this log
+    // points at a loan owned by the other environment, that environment's
+    // webhook / reconcile cron will settle it - do nothing here.
+    const env = await loanEnv(String(log.loanId));
+    if (env === 'sibling') {
+      logger.info({ reference: log.reference, loanId: log.loanId }, 'AutoDebit reconcile - loan owned by sibling env, skipping');
+      return;
+    }
+    if (env === 'missing') {
+      logger.warn({ reference: log.reference, loanId: log.loanId }, 'AutoDebit reconcile - loan not found in either env');
       return;
     }
     try {
