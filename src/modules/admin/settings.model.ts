@@ -456,7 +456,11 @@ const SettingsSchema = new Schema<ISettings>(
       maxDebitAttempts: { type: Number, default: 3 },
       minDebitAmount: { type: Number, default: 100 },
       mandateMaxAmount: { type: Number, default: 5000000 },
-      bankLinkingProvider: { type: String, enum: ['flutterwave', 'mono', 'monnify'], default: 'flutterwave' }
+      // Mono is the supported bank auto-debit path. Flutterwave's direct-debit
+      // (debit_ng_account) only works for a small allow-list of banks and
+      // returns "This bank is not allowed for this payment options" for the
+      // rest, so it must never be the default.
+      bankLinkingProvider: { type: String, enum: ['flutterwave', 'mono', 'monnify'], default: 'mono' }
     },
 
     voiceCallProvider: {

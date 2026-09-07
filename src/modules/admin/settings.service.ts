@@ -122,8 +122,19 @@ export class SettingsService {
         bankEnabled: true,
         maxDebitAttempts: 3,
         minDebitAmount: 100,
-        bankLinkingProvider: 'flutterwave'
+        mandateMaxAmount: 5000000,
+        bankLinkingProvider: 'mono'
       };
+      await settings.save();
+    }
+
+    // Heal an older settings doc that predates `bankLinkingProvider`: an
+    // undefined value makes the front-end fall back to Flutterwave direct-debit,
+    // which only supports a handful of banks ("This bank is not allowed for this
+    // payment options"). Mono is the supported path.
+    if (settings.autoDebit && !settings.autoDebit.bankLinkingProvider) {
+      settings.autoDebit.bankLinkingProvider = 'mono';
+      if (!settings.autoDebit.mandateMaxAmount) settings.autoDebit.mandateMaxAmount = 5000000;
       await settings.save();
     }
 
