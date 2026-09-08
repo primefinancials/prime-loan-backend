@@ -1,32 +1,46 @@
 import nodemailer from "nodemailer";
 import twilio from "twilio";
+import { Resend } from "resend";
+import pino from "pino";
 import { User } from "../users/user.interface";
 import { SettingsService } from "../admin/settings.service";
 import { getVoiceProvider } from "../../shared/providers/voice-call.provider";
+
+const emailLogger = pino({ name: "email" });
 
 /* ----------- Providers Initialization ----------- */
 const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
   ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
   : null;
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,             // smtp.mailgun.org
+// Primary transport: Resend (HTTPS API - no SMTP ports, works from Elastic
+// Beanstalk without egress config). The sender domain must be verified in the
+// Resend dashboard. Falls back to SMTP/nodemailer when RESEND_API_KEY is unset.
+const resendClient = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
+
+const EMAIL_FROM = process.env.EMAIL_FROM || "Prime Finance <info@primefinance.live>";
+
+const smtpTransporter = nodemailer.createTransport({
+  host: process.env.EMAIL_HOST,
   port: Number(process.env.EMAIL_PORT_NUMBER) || 587,
-  secure: false,                            // Mailgun uses STARTTLS on port 587
+  secure: false,
   auth: {
-    user: process.env.EMAIL_USERNAME,       // postmaster@primefinance.live
-    pass: process.env.EMAIL_PASSWORD,       // Mailgun SMTP password
+    user: process.env.EMAIL_USERNAME,
+    pass: process.env.EMAIL_PASSWORD,
   },
 });
 
 export class NotificationService {
   private static async sendEmail(to: string, subject: string, html: string) {
-    await transporter.sendMail({
-      from: `Prime Loan <${`info@primefinance.live`}>`,
-      to,
-      subject,
-      html,
-    });
+    if (resendClient) {
+      const { error } = await resendClient.emails.send({ from: EMAIL_FROM, to, subject, html });
+      if (error) {
+        emailLogger.error({ to, subject, error: error.message || error }, "Resend send failed");
+        throw new Error(`Resend: ${error.message || JSON.stringify(error)}`);
+      }
+      return;
+    }
+    await smtpTransporter.sendMail({ from: EMAIL_FROM, to, subject, html });
   }
 
   /* ----------- Broadcasting Providers ----------- */
@@ -53,14 +67,29 @@ export class NotificationService {
   }
 
   static async sendBulkEmail(toAddresses: string[], subject: string, message: string) {
-    try {
-      const promises = toAddresses.map(email =>
-        this.sendEmail(email, subject, this.template(subject, `<p>${message}</p>`))
-      );
-      await Promise.allSettled(promises);
-    } catch (error) {
-      console.error("Bulk Email Error:", error);
+    const html = this.template(subject, `<p>${message}</p>`);
+    const recipients = [...new Set(toAddresses.filter(Boolean))];
+
+    // Resend: use the batch endpoint (up to 100 per call) so a large broadcast
+    // doesn't trip the per-second rate limit with a burst of single sends.
+    if (resendClient) {
+      for (let i = 0; i < recipients.length; i += 100) {
+        const chunk = recipients.slice(i, i + 100).map((to) => ({ from: EMAIL_FROM, to, subject, html }));
+        try {
+          const { error } = await resendClient.batch.send(chunk);
+          if (error) emailLogger.error({ error: error.message || error, count: chunk.length }, "Resend batch send failed");
+        } catch (err: any) {
+          emailLogger.error({ err: err.message, count: chunk.length }, "Resend batch send threw");
+        }
+      }
+      return;
     }
+
+    const results = await Promise.allSettled(
+      recipients.map((email) => this.sendEmail(email, subject, html))
+    );
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed) emailLogger.warn({ failed, total: recipients.length }, "Bulk email: some sends failed");
   }
 
   /* ----------- Shared Template Wrapper ----------- */
@@ -151,6 +180,35 @@ export class NotificationService {
       "Loan Application Received",
       this.template("Loan Application", body)
     );
+  }
+
+  /* ----------- KYC / Tier Upgrade ----------- */
+  static async sendKycSubmitted(user: User, targetTier: number) {
+    const name = user?.user_metadata?.first_name || "there";
+    const body = `
+      <p>Hi <strong>${name}</strong>,</p>
+      <p>We've received your request to upgrade to <strong>Tier ${targetTier}</strong> and your documents are now under review.</p>
+      <p>This usually takes a few hours. We'll email you as soon as it's been processed.</p>`;
+    return this.sendEmail(user.email, "KYC Upgrade Received – Prime Finance", this.template("KYC Upgrade Received", body));
+  }
+
+  static async sendKycApproved(user: User, newTier: number) {
+    const name = user?.user_metadata?.first_name || "there";
+    const body = `
+      <p>Hi <strong>${name}</strong>,</p>
+      <p>Good news — your account has been upgraded to <strong>Tier ${newTier}</strong>. Your new transaction and loan limits are active immediately.</p>
+      <p>Thank you for verifying your identity with Prime Finance.</p>`;
+    return this.sendEmail(user.email, "Your KYC Upgrade Was Approved – Prime Finance", this.template("KYC Upgrade Approved", body));
+  }
+
+  static async sendKycRejected(user: User, reason: string) {
+    const name = user?.user_metadata?.first_name || "there";
+    const body = `
+      <p>Hi <strong>${name}</strong>,</p>
+      <p>We couldn't approve your recent KYC upgrade request for the following reason:</p>
+      <p style="padding:12px;background:#fef2f2;border-left:3px solid #dc2626;color:#991b1b;">${reason}</p>
+      <p>You can submit a new request with corrected details at any time from the app.</p>`;
+    return this.sendEmail(user.email, "Action Needed: KYC Upgrade – Prime Finance", this.template("KYC Upgrade Update", body));
   }
 
   static async sendWelcomeEmail(to: string, firstName: string) {

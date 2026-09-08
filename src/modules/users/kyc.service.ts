@@ -1,17 +1,22 @@
 /**
  * KYC Service - VFD Account Tier Upgrade System
  *
- * Changes vs previous version:
- *  1. getCurrentTier now also calls vfdProvider.getKYCStatus() to enrich the response
- *     with the live VFD KYC status (verified/pending/rejected), document list, and tier.
- *  2. submitUpgradeRequest now calls vfdProvider.upgradeAccountTier() after uploading docs,
- *     so the request is also registered on VFD's side, not just locally.
- *  3. Added getKYCStatusForAdmin() — same as getCurrentTier but enriched for admin views,
- *     includes user metadata (name, email) alongside VFD status.
- *  4. createClientAccount helpers: NIN-only (Tier 1) and BVN+NIN (Tier 3) creation wrappers.
+ * Flow (production):
+ *  1. User submits documents (base64) + BVN/NIN/address for a target tier.
+ *     Documents are stored in Cloudinary; a local KYCUpgradeRequest(pending)
+ *     is created. NO fatal external call - VFD's KYC document API is not
+ *     available on our BaaS plan, so a VFD hiccup must never block the request.
+ *  2. Admin reviews the request + documents, then approves or rejects.
+ *  3. On approve: we attempt the real VFD tier move (`/client/tiers/individual`
+ *     with BVN+NIN+address - the same endpoint that creates Tier-3 accounts at
+ *     signup), persist the new tier on the user, and email them. The VFD call
+ *     is best-effort: the tier is authoritative locally (it drives our own
+ *     limits) and the admin can retry the VFD sync.
  */
 import { KYCUpgradeRequest } from './kyc.model';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
+import { NotificationService } from '../notifications/notification.service';
+import cloudinary from '../../config/cloudinary';
 import User from './user.model';
 import { NotFoundError, BadRequestError } from '../../exceptions';
 import pino from 'pino';
@@ -30,69 +35,56 @@ export interface TierUpgradeRequestParams {
   documents: KYCDocumentUploadParams[];
   address?: string;
   phoneNumber?: string;
+  bvn?: string;
+  nin?: string;
 }
+
+const withTimeout = <T>(p: Promise<T>, ms: number): Promise<T> =>
+  Promise.race([p, new Promise<T>((_, r) => setTimeout(() => r(new Error('timeout')), ms))]);
 
 export class KYCService {
   private static vfdProvider = new VfdProvider();
 
   /* ─────────────────────────────────────────────
-   * PUBLIC: Get current tier + live VFD KYC status
+   * Current tier + KYC status
    * ───────────────────────────────────────────── */
 
-  /**
-   * Returns tier info merged with live VFD KYC status.
-   * Used by both user-facing and admin-facing endpoints.
-   */
   static async getCurrentTier(userId: string) {
     const user = await User.findById(userId);
     if (!user) throw new NotFoundError('User not found');
 
     const accountNo = user.user_metadata?.accountNo;
-
-    // 1. Try to fetch live tier + KYC status from VFD
-    let vfdTierData: any = null;
+    // Local tier is authoritative for OUR limits. A flaky VFD call must never
+    // silently drop a user back to Tier 1.
+    let currentTier = Number((user.user_metadata as any)?.vfdTier) || 1;
     let vfdKycStatus: any = null;
 
     if (accountNo) {
       try {
         const [tierRes, kycRes] = await Promise.allSettled([
-          this.vfdProvider.getAccountTier(accountNo),
-          this.vfdProvider.getKYCStatus(accountNo),
+          withTimeout(this.vfdProvider.getAccountTier(accountNo), 4000),
+          withTimeout(this.vfdProvider.getKYCStatus(accountNo), 4000),
         ]);
-
-        if (tierRes.status === 'fulfilled' && tierRes.value?.data) {
-          vfdTierData = tierRes.value.data;
-        }
-        if (kycRes.status === 'fulfilled' && kycRes.value?.data) {
-          vfdKycStatus = kycRes.value.data;
-        }
-      } catch (err: any) {
-        logger.warn({ userId, error: err.message }, 'Could not fetch VFD tier/KYC data — using local fallback');
+        const vfdTier = Number(
+          (tierRes.status === 'fulfilled' && (tierRes.value as any)?.data?.currentTier) ||
+          (kycRes.status === 'fulfilled' && (kycRes.value as any)?.data?.currentTier) ||
+          0
+        );
+        if (vfdTier > currentTier) currentTier = vfdTier; // only ever upgrade
+        if (kycRes.status === 'fulfilled') vfdKycStatus = (kycRes.value as any)?.data ?? null;
+      } catch {
+        /* best effort */
       }
     }
 
-    // 2. Resolve current tier (VFD is source of truth; fallback to local metadata)
-    const currentTier = Number(
-      vfdTierData?.currentTier ??
-      vfdKycStatus?.currentTier ??
-      (user.user_metadata as any)?.vfdTier ??
-      1
-    );
-
-    // 3. Fetch local pending upgrade requests
-    const pendingRequest = await KYCUpgradeRequest.findOne({
-      userId,
-      status: 'pending',
-    }).sort({ submittedAt: -1 });
+    const pendingRequest = await KYCUpgradeRequest.findOne({ userId, status: 'pending' }).sort({ submittedAt: -1 });
 
     return {
       accountNo,
       currentTier,
       tierLimits: this.getTierLimits(currentTier),
-      // Live VFD KYC status
-      vfdKycStatus: vfdKycStatus?.kycStatus ?? 'unknown',
+      vfdKycStatus: vfdKycStatus?.kycStatus ?? (currentTier >= 3 ? 'verified' : 'unknown'),
       vfdDocuments: vfdKycStatus?.documents ?? [],
-      // Local pending upgrade (if any)
       pendingUpgrade: pendingRequest
         ? {
           requestId: pendingRequest._id,
@@ -105,17 +97,26 @@ export class KYCService {
     };
   }
 
-  /**
-   * Admin-facing: same as getCurrentTier but includes user identity details
-   */
+  /** Admin-facing: current tier + user identity + the latest request's documents. */
   static async getKYCStatusForAdmin(userId: string) {
     const tierInfo = await this.getCurrentTier(userId);
     const user = await User.findById(userId).select(
-      'email user_metadata.first_name user_metadata.surname user_metadata.phone user_metadata.accountNo'
+      'email user_metadata.first_name user_metadata.surname user_metadata.phone user_metadata.accountNo user_metadata.bvn user_metadata.nin'
     );
+    const latest = await KYCUpgradeRequest.findOne({ userId }).sort({ submittedAt: -1 });
 
     return {
       ...tierInfo,
+      documents: latest?.documents ?? [],
+      latestRequest: latest
+        ? {
+          requestId: latest._id,
+          requestedTier: latest.requestedTier,
+          status: latest.status,
+          submittedAt: latest.submittedAt,
+          rejectionReason: latest.rejectionReason,
+        }
+        : null,
       user: user
         ? {
           email: user.email,
@@ -123,13 +124,15 @@ export class KYCService {
           surname: user.user_metadata?.surname,
           phone: user.user_metadata?.phone,
           accountNo: user.user_metadata?.accountNo,
+          bvn: user.user_metadata?.bvn ? `***${String(user.user_metadata.bvn).slice(-4)}` : null,
+          nin: user.user_metadata?.nin ? `***${String(user.user_metadata.nin).slice(-4)}` : null,
         }
         : null,
     };
   }
 
   /* ─────────────────────────────────────────────
-   * SUBMIT UPGRADE REQUEST
+   * Submit upgrade request
    * ───────────────────────────────────────────── */
 
   static async submitUpgradeRequest(params: TierUpgradeRequestParams) {
@@ -137,183 +140,253 @@ export class KYCService {
     if (!user) throw new NotFoundError('User not found');
 
     const accountNo = user.user_metadata?.accountNo;
-    if (!accountNo) throw new BadRequestError('User does not have a VFD account number');
+    if (!accountNo) throw new BadRequestError('Your account is still being set up. Please try again shortly.');
 
-    // Verify current tier
-    const currentTierInfo = await this.getCurrentTier(params.userId);
-    if (currentTierInfo.currentTier >= params.targetTier) {
-      throw new BadRequestError(
-        `Account is already at tier ${currentTierInfo.currentTier}. Cannot upgrade to a lower or equal tier.`
-      );
+    if (![2, 3].includes(params.targetTier)) throw new BadRequestError('Target tier must be 2 or 3');
+
+    const tierInfo = await this.getCurrentTier(params.userId);
+    if (tierInfo.currentTier >= params.targetTier) {
+      throw new BadRequestError(`Your account is already at tier ${tierInfo.currentTier}.`);
     }
 
-    if (![2, 3].includes(params.targetTier)) {
-      throw new BadRequestError('Target tier must be 2 or 3');
-    }
+    if (!params.documents?.length) throw new BadRequestError('At least one document is required');
 
-    if (!params.documents || params.documents.length === 0) {
-      throw new BadRequestError('At least one KYC document is required for tier upgrade');
-    }
-
-    // Check for existing pending upgrade
     const existing = await KYCUpgradeRequest.findOne({ userId: params.userId, status: 'pending' });
-    if (existing) {
-      throw new BadRequestError(
-        'You already have a pending tier upgrade request. Please wait for it to be reviewed.'
-      );
-    }
+    if (existing) throw new BadRequestError('You already have a pending upgrade request under review.');
 
-    // Upload documents to VFD KYC API
-    const uploadedDocs: Array<{ type: string; reference: string; status: string }> = [];
-    const docReferences: string[] = [];
-
+    // Store each document in Cloudinary (accepts a data: URI directly).
+    const documents: any[] = [];
     for (const doc of params.documents) {
       try {
-        const uploadResult = await this.vfdProvider.uploadKYCDocument({
-          accountNo,
-          documentType: doc.documentType,
-          base64Document: doc.base64Document,
-          documentNumber: doc.documentNumber,
+        const payload = doc.base64Document.startsWith('data:')
+          ? doc.base64Document
+          : `data:image/jpeg;base64,${doc.base64Document}`;
+        const uploaded = await cloudinary.uploader.upload(payload, {
+          folder: `prime-finance/kyc/${params.userId}`,
+          resource_type: 'image',
         });
-
-        const reference = uploadResult?.data?.reference || `doc_${Date.now()}_${doc.documentType}`;
-        uploadedDocs.push({
+        documents.push({
           type: doc.documentType,
-          reference,
+          reference: uploaded.public_id,
+          url: uploaded.secure_url,
+          number: doc.documentNumber,
           status: 'uploaded',
+          uploadedAt: new Date(),
         });
-        docReferences.push(reference);
-      } catch (uploadErr: any) {
-        logger.error(
-          { userId: params.userId, docType: doc.documentType, error: uploadErr.message },
-          'Failed to upload KYC document to VFD'
-        );
-        throw new Error(`Failed to upload ${doc.documentType}: ${uploadErr.message}`);
+      } catch (err: any) {
+        logger.error({ userId: params.userId, docType: doc.documentType, err: err.message }, 'KYC document upload failed');
+        throw new BadRequestError(`Could not upload your ${doc.documentType.replace('_', ' ').toLowerCase()}. Please try a clearer photo.`);
       }
     }
 
-    // Notify VFD of the tier upgrade request
-    let vfdUpgradeRef: string | undefined;
-    try {
-      const vfdResult = await this.vfdProvider.upgradeAccountTier({
-        accountNo,
-        targetTier: params.targetTier,
-        documentReferences: docReferences,
-        address: params.address || user.user_metadata?.address,
-        phone: params.phoneNumber || user.user_metadata?.phone,
-      });
-      vfdUpgradeRef = vfdResult?.data?.requestId;
-    } catch (vfdErr: any) {
-      // Non-fatal: log and continue — the local record still tracks the request
-      logger.warn(
-        { userId: params.userId, error: vfdErr.message },
-        'VFD tier upgrade notification failed (non-fatal). Local record created.'
-      );
-    }
+    // The user may supply BVN / NIN as a typed document number in the docs list.
+    const docNumber = (t: string) => params.documents.find((d) => d.documentType === t && d.documentNumber)?.documentNumber;
+    const bvn = params.bvn || docNumber('BVN') || user.user_metadata?.bvn;
+    const nin = params.nin || docNumber('NIN') || user.user_metadata?.nin;
+    const address = params.address || user.user_metadata?.address;
 
-    // Create upgrade request record in our DB
-    const upgradeRequest = await KYCUpgradeRequest.create({
+    const request = await KYCUpgradeRequest.create({
       userId: params.userId,
-      currentTier: currentTierInfo.currentTier,
+      currentTier: tierInfo.currentTier,
       requestedTier: params.targetTier,
       status: 'pending',
-      documents: uploadedDocs,
-      address: params.address || user.user_metadata?.address,
+      documents,
+      address,
       phone: params.phoneNumber || user.user_metadata?.phone,
+      bvn,
+      nin,
       submittedAt: new Date(),
-      meta: {
-        accountNo,
-        vfdUpgradeRef,
-      },
+      meta: { accountNo },
     });
 
-    logger.info(
-      { userId: params.userId, targetTier: params.targetTier, requestId: upgradeRequest._id },
-      'KYC upgrade request submitted'
-    );
+    // Keep any freshly supplied BVN/NIN/address on the profile so the approval
+    // step has what it needs for the VFD call.
+    let dirty = false;
+    if (params.bvn && !user.user_metadata?.bvn) { (user.user_metadata as any).bvn = params.bvn; dirty = true; }
+    if (params.nin && !user.user_metadata?.nin) { (user.user_metadata as any).nin = params.nin; dirty = true; }
+    if (params.address && !user.user_metadata?.address) { (user.user_metadata as any).address = params.address; dirty = true; }
+    if (dirty) await user.save();
+
+    try {
+      await NotificationService.sendKycSubmitted(user as any, params.targetTier);
+    } catch (err: any) {
+      logger.warn({ userId: params.userId, err: err.message }, 'KYC submitted email failed (non-fatal)');
+    }
+    logger.info({ userId: params.userId, targetTier: params.targetTier, requestId: request._id }, 'KYC upgrade request submitted');
 
     return {
-      requestId: upgradeRequest._id,
+      requestId: request._id,
       status: 'pending',
-      currentTier: currentTierInfo.currentTier,
+      currentTier: tierInfo.currentTier,
       requestedTier: params.targetTier,
-      message:
-        'Upgrade request submitted. Documents are under review. Processing takes up to 24 hours.',
+      message: 'Upgrade request submitted. Your documents are under review - this usually takes a few hours.',
     };
   }
 
   /* ─────────────────────────────────────────────
-   * GET UPGRADE STATUS (user-facing)
+   * User: upgrade status
    * ───────────────────────────────────────────── */
 
   static async getUpgradeStatus(userId: string, requestId?: string) {
     const query: any = { userId };
     if (requestId) query._id = requestId;
-
-    const requests = await KYCUpgradeRequest.find(query)
-      .sort({ submittedAt: -1 })
-      .limit(10);
-
-    if (!requests || requests.length === 0) {
-      return { requests: [], message: 'No upgrade requests found' };
-    }
+    const requests = await KYCUpgradeRequest.find(query).sort({ submittedAt: -1 }).limit(10);
+    if (!requests.length) return { requests: [], latestStatus: null, message: 'No upgrade requests found' };
 
     return {
-      requests: requests.map((req) => ({
-        requestId: req._id,
-        currentTier: req.currentTier,
-        requestedTier: req.requestedTier,
-        status: req.status,
-        submittedAt: req.submittedAt,
-        approvedAt: req.approvedAt,
-        rejectionReason: req.rejectionReason,
-        documents: req.documents,
+      requests: requests.map((r) => ({
+        requestId: r._id,
+        currentTier: r.currentTier,
+        requestedTier: r.requestedTier,
+        status: r.status,
+        submittedAt: r.submittedAt,
+        approvedAt: r.approvedAt,
+        rejectionReason: r.rejectionReason,
+        documents: r.documents.map((d) => ({ type: d.type, status: d.status })),
       })),
       latestStatus: requests[0].status,
     };
   }
 
   /* ─────────────────────────────────────────────
-   * ADMIN: Approve / Reject
+   * Admin: list, approve, reject
    * ───────────────────────────────────────────── */
 
-  static async approveUpgrade(requestId: string, adminId: string) {
-    const request = await KYCUpgradeRequest.findByIdAndUpdate(
-      requestId,
-      { status: 'approved', approvedAt: new Date(), approvedBy: adminId },
-      { new: true }
-    );
+  static async listRequests(opts: { status?: string; page?: number; limit?: number }) {
+    const page = Math.max(1, Number(opts.page) || 1);
+    const limit = Math.min(100, Number(opts.limit) || 20);
+    const filter: any = {};
+    if (opts.status && opts.status !== 'all') filter.status = opts.status;
 
+    const [rows, total] = await Promise.all([
+      KYCUpgradeRequest.find(filter).sort({ submittedAt: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      KYCUpgradeRequest.countDocuments(filter),
+    ]);
+
+    const userIds = [...new Set(rows.map((r) => String(r.userId)))];
+    const users = await User.find({ _id: { $in: userIds } })
+      .select('email user_metadata.first_name user_metadata.surname user_metadata.phone user_metadata.accountNo')
+      .lean();
+    const byId = new Map(users.map((u) => [String(u._id), u]));
+
+    return {
+      requests: rows.map((r) => {
+        const u = byId.get(String(r.userId));
+        // Shaped like a populated `userId` so the admin UI (built for
+        // .populate('userId', ...)) keeps working, with a flat `user` too.
+        const userObj = u
+          ? {
+            _id: u._id,
+            email: u.email,
+            user_metadata: {
+              first_name: u.user_metadata?.first_name,
+              surname: u.user_metadata?.surname,
+              phone: u.user_metadata?.phone,
+              accountNo: u.user_metadata?.accountNo,
+            },
+          }
+          : { _id: r.userId };
+        return {
+          _id: r._id,
+          userId: userObj,
+          currentTier: r.currentTier,
+          requestedTier: r.requestedTier,
+          status: r.status,
+          submittedAt: r.submittedAt,
+          approvedAt: (r as any).approvedAt,
+          rejectedAt: (r as any).rejectedAt,
+          rejectionReason: r.rejectionReason,
+          address: r.address,
+          phone: r.phone,
+          documents: r.documents,
+          meta: r.meta,
+          user: userObj,
+        };
+      }),
+      pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+    };
+  }
+
+  static async approveUpgrade(requestId: string, adminId: string) {
+    const request = await KYCUpgradeRequest.findById(requestId);
     if (!request) throw new NotFoundError('Upgrade request not found');
+    if (request.status !== 'pending') throw new BadRequestError(`Request is already ${request.status}`);
 
     const user = await User.findById(request.userId);
-    if (user) {
-      (user.user_metadata as any).vfdTier = request.requestedTier;
-      await user.save();
+    if (!user) throw new NotFoundError('User not found');
+
+    const accountNo = user.user_metadata?.accountNo || request.meta?.accountNo;
+    const bvn = request.bvn || user.user_metadata?.bvn;
+    const nin = request.nin || user.user_metadata?.nin;
+    const address = request.address || user.user_metadata?.address;
+    const dob = user.user_metadata?.dateOfBirth;
+
+    // Best-effort real VFD move. `/client/tiers/individual` (BVN+NIN+address) is
+    // the endpoint VFD documents for placing an account at Tier 3.
+    let vfdSync: any = { attempted: false };
+    if (request.requestedTier === 3 && bvn && nin && address && dob) {
+      vfdSync = { attempted: true };
+      try {
+        const res: any = await withTimeout(
+          this.vfdProvider.createClientWithBVNNIN({ bvn, nin, address, dateOfBirth: dob }),
+          20000
+        );
+        vfdSync.ok = String(res?.status) === '00' || !!res?.data?.accountNo;
+        vfdSync.response = res?.message || res?.status;
+      } catch (err: any) {
+        vfdSync.ok = false;
+        vfdSync.error = err?.message;
+        logger.warn({ requestId, accountNo, err: err?.message }, 'VFD tier upgrade sync failed - approving locally, admin can retry');
+      }
     }
 
-    logger.info(
-      { requestId, adminId, userId: request.userId, newTier: request.requestedTier },
-      'Tier upgrade approved'
-    );
-    return request;
+    request.status = 'approved';
+    request.approvedAt = new Date();
+    request.approvedBy = adminId as any;
+    request.meta = { ...(request.meta || {}), accountNo, vfdSync };
+    request.markModified('meta');
+    await request.save();
+
+    (user.user_metadata as any).vfdTier = request.requestedTier;
+    if (bvn && !user.user_metadata?.bvn) (user.user_metadata as any).bvn = bvn;
+    if (nin && !user.user_metadata?.nin) (user.user_metadata as any).nin = nin;
+    await user.save();
+
+    try {
+      await NotificationService.sendKycApproved(user as any, request.requestedTier);
+    } catch (err: any) {
+      logger.warn({ requestId, err: err.message }, 'KYC approval email failed (non-fatal)');
+    }
+
+    logger.info({ requestId, adminId, userId: request.userId, newTier: request.requestedTier, vfdSync }, 'Tier upgrade approved');
+    return { ...request.toObject(), vfdSync };
   }
 
   static async rejectUpgrade(requestId: string, adminId: string, reason: string) {
-    const request = await KYCUpgradeRequest.findByIdAndUpdate(
-      requestId,
-      { status: 'rejected', rejectionReason: reason, rejectedAt: new Date(), rejectedBy: adminId },
-      { new: true }
-    );
-
+    if (!reason?.trim()) throw new BadRequestError('A rejection reason is required');
+    const request = await KYCUpgradeRequest.findById(requestId);
     if (!request) throw new NotFoundError('Upgrade request not found');
+    if (request.status !== 'pending') throw new BadRequestError(`Request is already ${request.status}`);
+
+    request.status = 'rejected';
+    request.rejectionReason = reason;
+    (request as any).rejectedAt = new Date();
+    (request as any).rejectedBy = adminId as any;
+    await request.save();
+
+    try {
+      const user = await User.findById(request.userId);
+      if (user) await NotificationService.sendKycRejected(user as any, reason);
+    } catch (err: any) {
+      logger.warn({ requestId, err: err.message }, 'KYC rejection email failed (non-fatal)');
+    }
 
     logger.info({ requestId, adminId, userId: request.userId, reason }, 'Tier upgrade rejected');
     return request;
   }
 
   /* ─────────────────────────────────────────────
-   * HELPERS
+   * Helpers
    * ───────────────────────────────────────────── */
 
   static getTierLimits(tier: number) {
@@ -343,7 +416,6 @@ export class KYCService {
         features: ['transfers', 'bill_payments', 'savings', 'escrow', 'marketplace'],
       },
     };
-
     return tierLimits[tier] || tierLimits[1];
   }
 }

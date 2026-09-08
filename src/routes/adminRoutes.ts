@@ -180,50 +180,48 @@ router.put("/charge-settings", verifyJwtRest(), async (req, res, next) => {
 /* =============================
    KYC & TIER UPGRADES (Fix #6.1)
 ============================= */
-router.get("/kyc/pending-upgrades", verifyJwtRest(), async (req, res, next) => {
+const adminActorId = (req: any) =>
+  String(req.admin?._id || req.admin?.id || (req as any).user?._id || "admin-system");
+
+router.get("/kyc/pending-upgrades", verifyJwtRest(), async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const { KYCUpgradeRequest } = await import("../modules/users/kyc.model");
-    const [requests, total] = await Promise.all([
-      KYCUpgradeRequest.find({ status: "pending" })
-        .populate("userId", "username email")
-        .sort({ submittedAt: -1 })
-        .skip(((Number(page) || 1) - 1) * Number(limit))
-        .limit(Number(limit)),
-      KYCUpgradeRequest.countDocuments({ status: "pending" })
-    ]);
-    res.json({
-      success: true,
-      data: {
-        requests,
-        pagination: { total, page: Number(page) || 1, limit: Number(limit), pages: Math.ceil(total / Number(limit)) }
-      }
-    });
+    const { KYCService } = await import("../modules/users/kyc.service");
+    const { page, limit, status } = req.query as any;
+    const data = await KYCService.listRequests({ page, limit, status: status || "pending" });
+    res.json({ success: true, data });
   } catch (err: any) {
     res.status(500).json({ success: false, message: err.message });
   }
 });
 
-router.post("/kyc/:requestId/approve", verifyJwtRest(), async (req, res, next) => {
+router.get("/kyc/user/:userId([0-9a-fA-F]{24})", verifyJwtRest(), async (req, res) => {
   try {
     const { KYCService } = await import("../modules/users/kyc.service");
-    const adminId = (req as any).user?._id;
-    const result = await KYCService.approveUpgrade(req.params.requestId, adminId);
-    res.json({ success: true, message: "Tier upgrade approved", data: result });
+    const data = await KYCService.getKYCStatusForAdmin(req.params.userId);
+    res.json({ success: true, data });
   } catch (err: any) {
-    res.status(400).json({ success: false, message: err.message });
+    res.status(err.statusCode || 500).json({ success: false, message: err.message });
   }
 });
 
-router.post("/kyc/:requestId/reject", verifyJwtRest(), async (req, res, next) => {
+router.post("/kyc/:requestId([0-9a-fA-F]{24})/approve", verifyJwtRest(), async (req, res) => {
   try {
     const { KYCService } = await import("../modules/users/kyc.service");
-    const adminId = (req as any).user?._id;
+    const result = await KYCService.approveUpgrade(req.params.requestId, adminActorId(req));
+    res.json({ success: true, message: "Tier upgrade approved", data: result });
+  } catch (err: any) {
+    res.status(err.statusCode || 400).json({ success: false, message: err.message });
+  }
+});
+
+router.post("/kyc/:requestId([0-9a-fA-F]{24})/reject", verifyJwtRest(), async (req, res) => {
+  try {
+    const { KYCService } = await import("../modules/users/kyc.service");
     const { reason } = req.body;
-    const result = await KYCService.rejectUpgrade(req.params.requestId, adminId, reason);
+    const result = await KYCService.rejectUpgrade(req.params.requestId, adminActorId(req), reason);
     res.json({ success: true, message: "Tier upgrade rejected", data: result });
   } catch (err: any) {
-    res.status(400).json({ success: false, message: err.message });
+    res.status(err.statusCode || 400).json({ success: false, message: err.message });
   }
 });
 

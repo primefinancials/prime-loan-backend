@@ -12,10 +12,15 @@ export interface IKYCUpgradeRequest extends mongoose.Document {
   documents: Array<{
     type: 'NIN' | 'DRIVER_LICENSE' | 'PASSPORT' | 'BVN' | 'UTILITY_BILL' | 'ID_CARD';
     reference: string;
+    url?: string;               // Cloudinary URL of the uploaded document
+    number?: string;            // the document number the user typed (NIN/BVN etc.)
     status: 'uploaded' | 'verified' | 'failed';
+    uploadedAt?: Date;
   }>;
   address?: string;
   phone?: string;
+  bvn?: string;
+  nin?: string;
   submittedAt: Date;
   approvedAt?: Date;
   approvedBy?: mongoose.Types.ObjectId;
@@ -63,16 +68,21 @@ const KYCUpgradeRequestSchema = new mongoose.Schema(
           required: true
         },
         reference: { type: String, required: true },
+        url: { type: String },
+        number: { type: String },
         status: {
           type: String,
           enum: ['uploaded', 'verified', 'failed'],
           default: 'uploaded'
         },
+        uploadedAt: { type: Date, default: Date.now },
         _id: false
       }
     ],
     address: String,
     phone: String,
+    bvn: String,
+    nin: String,
     submittedAt: {
       type: Date,
       default: Date.now,
@@ -89,11 +99,9 @@ const KYCUpgradeRequestSchema = new mongoose.Schema(
       ref: 'User'
     },
     rejectionReason: String,
+    // Free-form: accountNo, vfdUpgradeRef, vfd sync notes, etc.
     meta: {
-      type: {
-        accountNo: { type: String, required: true },
-        _id: false
-      },
+      type: mongoose.Schema.Types.Mixed,
       default: {}
     }
   },
