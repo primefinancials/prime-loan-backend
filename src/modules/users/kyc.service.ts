@@ -13,6 +13,7 @@
  *     is best-effort: the tier is authoritative locally (it drives our own
  *     limits) and the admin can retry the VFD sync.
  */
+import mongoose from 'mongoose';
 import { KYCUpgradeRequest } from './kyc.model';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
 import { NotificationService } from '../notifications/notification.service';
@@ -342,8 +343,8 @@ export class KYCService {
 
     request.status = 'approved';
     request.approvedAt = new Date();
-    request.approvedBy = adminId as any;
-    request.meta = { ...(request.meta || {}), accountNo, vfdSync };
+    if (mongoose.Types.ObjectId.isValid(adminId)) request.approvedBy = adminId as any;
+    request.meta = { ...(request.meta || {}), accountNo, vfdSync, approvedByLabel: adminId };
     request.markModified('meta');
     await request.save();
 
@@ -371,7 +372,9 @@ export class KYCService {
     request.status = 'rejected';
     request.rejectionReason = reason;
     (request as any).rejectedAt = new Date();
-    (request as any).rejectedBy = adminId as any;
+    if (mongoose.Types.ObjectId.isValid(adminId)) (request as any).rejectedBy = adminId as any;
+    request.meta = { ...(request.meta || {}), rejectedByLabel: adminId };
+    request.markModified('meta');
     await request.save();
 
     try {
