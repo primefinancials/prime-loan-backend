@@ -77,6 +77,7 @@ export interface User extends Document {
     ladderIndex?: number;
     creditScore?: number;
     accountNo?: string;
+    vfdTier?: number;
     address?: string;
     wallet?: string;
     pin?: string;
@@ -134,6 +135,7 @@ export interface CREATEUSER {
     email_verified?: boolean;
     phone_verified?: boolean;
     accountNo?: string;
+    vfdTier?: number;
     address?: string;
     pin?: string;
     profile_photo?: string;
@@ -167,6 +169,7 @@ export interface UPDATEUSER {
     ladderIndex?: number;
     creditScore?: number;
     accountNo?: string;
+    vfdTier?: number;
     address?: string;
     pin?: string;
     profile_photo?: string;

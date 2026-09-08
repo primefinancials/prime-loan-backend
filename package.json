@@ -67,6 +67,7 @@
         "pdfmake": "^0.3.7",
         "pino": "^9.9.0",
         "redis": "^5.8.2",
+        "resend": "^4.8.0",
         "sharp": "^0.34.3",
         "socket.io": "^4.8.3",
         "swagger-jsdoc": "^6.2.8",

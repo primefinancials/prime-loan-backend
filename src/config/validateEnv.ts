@@ -34,6 +34,7 @@ const IMPORTANT = [
   'BASE_URL',
   'AUTH_URL',
   'CLOUDINARY_CLOUD_NAME',
+  'RESEND_API_KEY',
 ];
 
 export function validateEnv(): void {

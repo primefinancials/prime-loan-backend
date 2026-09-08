@@ -56,6 +56,7 @@ const userSchema = new Schema<User>(
       phone_verified: { type: Boolean, required: false },
       accountNo: { type: String, required: false },
       address: { type: String, required: false },
+      vfdTier: { type: Number, required: false, default: 1 }, // KYC / VFD account tier (1-3)
       pin: { type: String, required: false },
       file: { type: String, required: false },
       profile_photo: { type: String, required: false },
