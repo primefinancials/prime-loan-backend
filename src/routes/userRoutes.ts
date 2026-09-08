@@ -584,14 +584,14 @@ router.post("/kyc/submit-upgrade", verifyJwtRest(), async (req: any, res: any, n
     const { KYCService } = await import("../modules/users/kyc.service");
     const userId = req.user?._id;
     if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
-    const { targetTier, documents, address, phoneNumber } = req.body;
+    const { targetTier, documents, address, phoneNumber, bvn, nin } = req.body;
     if (!targetTier || ![2, 3].includes(targetTier)) {
       return res.status(400).json({ success: false, message: "Invalid target tier (must be 2 or 3)" });
     }
     if (!documents || !Array.isArray(documents) || documents.length === 0) {
       return res.status(400).json({ success: false, message: "At least one document is required" });
     }
-    const result = await KYCService.submitUpgradeRequest({ userId, targetTier, documents, address, phoneNumber });
+    const result = await KYCService.submitUpgradeRequest({ userId, targetTier, documents, address, phoneNumber, bvn, nin });
     res.json({ success: true, message: "Upgrade request submitted", data: result });
   } catch (err: any) {
     res.status(400).json({ success: false, message: err.message });
