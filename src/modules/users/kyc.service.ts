@@ -26,7 +26,15 @@ const logger = pino({ name: 'kyc-service' });
 
 export interface KYCDocumentUploadParams {
   documentType: 'NIN' | 'DRIVER_LICENSE' | 'PASSPORT' | 'BVN' | 'UTILITY_BILL' | 'ID_CARD';
-  base64Document: string;
+  /** Preferred path: the client uploads straight to Cloudinary (like loan docs
+   *  and chat attachments already do) and sends us just the resulting URL -
+   *  keeps this endpoint's JSON body tiny regardless of photo size. */
+  url?: string;
+  publicId?: string;
+  /** Legacy/fallback path: a raw base64 (or data: URI) image, uploaded to
+   *  Cloudinary server-side. Still supported, but every real photo is several
+   *  MB once base64-encoded, so callers should prefer `url` above. */
+  base64Document?: string;
   documentNumber?: string;
 }
 
@@ -155,9 +163,26 @@ export class KYCService {
     const existing = await KYCUpgradeRequest.findOne({ userId: params.userId, status: 'pending' });
     if (existing) throw new BadRequestError('You already have a pending upgrade request under review.');
 
-    // Store each document in Cloudinary (accepts a data: URI directly).
+    // Each document is either already hosted (the client uploaded straight to
+    // Cloudinary - the fast path, keeps this request's body tiny no matter the
+    // photo size) or a base64/data-URI payload we upload server-side (legacy
+    // fallback - slower and bound by the JSON body size limit).
     const documents: any[] = [];
     for (const doc of params.documents) {
+      if (doc.url) {
+        documents.push({
+          type: doc.documentType,
+          reference: doc.publicId,
+          url: doc.url,
+          number: doc.documentNumber,
+          status: 'uploaded',
+          uploadedAt: new Date(),
+        });
+        continue;
+      }
+      if (!doc.base64Document) {
+        throw new BadRequestError(`No file received for ${doc.documentType.replace('_', ' ').toLowerCase()}.`);
+      }
       try {
         const payload = doc.base64Document.startsWith('data:')
           ? doc.base64Document
@@ -308,6 +333,70 @@ export class KYCService {
     };
   }
 
+  /**
+   * Best-effort real VFD move. `/client/tiers/individual` (BVN+NIN+address) is
+   * the endpoint VFD documents for placing an account at Tier 3 - the SAME one
+   * signup uses, so it's known-good on our BaaS plan (unlike the dedicated KYC
+   * document/tier-upgrade endpoints, which 404/aren't on our plan). Tier 2 has
+   * no equivalent known-good endpoint, so it's tracked locally only - callers
+   * should treat `attempted:false, reason:'tier2_no_vfd_endpoint'` as expected,
+   * not a failure.
+   */
+  private static async performVfdSync(request: any, user: any) {
+    const accountNo = user.user_metadata?.accountNo || request.meta?.accountNo;
+    const bvn = request.bvn || user.user_metadata?.bvn;
+    const nin = request.nin || user.user_metadata?.nin;
+    const address = request.address || user.user_metadata?.address;
+    const dob = user.user_metadata?.dateOfBirth;
+
+    if (request.requestedTier !== 3) {
+      return { attempted: false, reason: 'tier2_no_vfd_endpoint' };
+    }
+    const missing = [
+      !bvn && 'BVN', !nin && 'NIN', !address && 'address', !dob && 'date of birth',
+    ].filter(Boolean);
+    if (missing.length) {
+      return { attempted: false, reason: `missing_fields`, missing };
+    }
+
+    const vfdSync: any = { attempted: true, at: new Date() };
+    try {
+      const res: any = await withTimeout(
+        this.vfdProvider.createClientWithBVNNIN({ bvn, nin, address, dateOfBirth: dob }),
+        20000
+      );
+      vfdSync.ok = String(res?.status) === '00' || !!res?.data?.accountNo;
+      vfdSync.response = res?.message || res?.status;
+    } catch (err: any) {
+      vfdSync.ok = false;
+      vfdSync.error = err?.message;
+      logger.warn({ requestId: request._id, accountNo, err: err?.message }, 'VFD tier upgrade sync failed - admin can retry');
+    }
+    return vfdSync;
+  }
+
+  /**
+   * Re-attempt the VFD move for an already-approved request whose sync failed
+   * or was never attempted (e.g. BVN/NIN/address were added after approval).
+   * Never changes the request's local approval status - that's already final.
+   */
+  static async retryVfdSync(requestId: string) {
+    const request = await KYCUpgradeRequest.findById(requestId);
+    if (!request) throw new NotFoundError('Upgrade request not found');
+    if (request.status !== 'approved') throw new BadRequestError('Only an approved request can be re-synced with VFD');
+
+    const user = await User.findById(request.userId);
+    if (!user) throw new NotFoundError('User not found');
+
+    const vfdSync = await this.performVfdSync(request, user);
+    request.meta = { ...(request.meta || {}), vfdSync };
+    request.markModified('meta');
+    await request.save();
+
+    logger.info({ requestId, vfdSync }, 'KYC VFD sync retried');
+    return { ...request.toObject(), vfdSync };
+  }
+
   static async approveUpgrade(requestId: string, adminId: string) {
     const request = await KYCUpgradeRequest.findById(requestId);
     if (!request) throw new NotFoundError('Upgrade request not found');
@@ -319,27 +408,8 @@ export class KYCService {
     const accountNo = user.user_metadata?.accountNo || request.meta?.accountNo;
     const bvn = request.bvn || user.user_metadata?.bvn;
     const nin = request.nin || user.user_metadata?.nin;
-    const address = request.address || user.user_metadata?.address;
-    const dob = user.user_metadata?.dateOfBirth;
 
-    // Best-effort real VFD move. `/client/tiers/individual` (BVN+NIN+address) is
-    // the endpoint VFD documents for placing an account at Tier 3.
-    let vfdSync: any = { attempted: false };
-    if (request.requestedTier === 3 && bvn && nin && address && dob) {
-      vfdSync = { attempted: true };
-      try {
-        const res: any = await withTimeout(
-          this.vfdProvider.createClientWithBVNNIN({ bvn, nin, address, dateOfBirth: dob }),
-          20000
-        );
-        vfdSync.ok = String(res?.status) === '00' || !!res?.data?.accountNo;
-        vfdSync.response = res?.message || res?.status;
-      } catch (err: any) {
-        vfdSync.ok = false;
-        vfdSync.error = err?.message;
-        logger.warn({ requestId, accountNo, err: err?.message }, 'VFD tier upgrade sync failed - approving locally, admin can retry');
-      }
-    }
+    const vfdSync = await this.performVfdSync(request, user);
 
     request.status = 'approved';
     request.approvedAt = new Date();

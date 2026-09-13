@@ -1227,9 +1227,15 @@ export class LoanService {
     };
 
     // 🧠 Helper: sum valid payments
+    // BUG FIX: this checked `action === "overdue_fee"`, a string nothing in the
+    // codebase ever writes - penalties are recorded with `action: 'penalty'`
+    // (penaltiesCron.ts / test-integrations.controller.ts). So this filter was
+    // a no-op: penalty amounts were being counted as real repayments here,
+    // inflating repaidAmount/repaidingAmount and realizedProfit, while
+    // sumPenalties() below always returned 0.
     const sumRepayments = (repayments: any[] = []) =>
       repayments.reduce((acc, p) => {
-        if (p.action === "overdue_fee") return acc; // ignore penalties
+        if (p.action === "penalty") return acc; // ignore penalties - not a repayment
         const val = Number(p.amount);
         return acc + (isNaN(val) ? 0 : val);
       }, 0);
@@ -1237,7 +1243,7 @@ export class LoanService {
     // 🧠 Helper: sum penalties
     const sumPenalties = (repayments: any[] = []) =>
       repayments.reduce((acc, p) => {
-        if (p.action === "overdue_fee") {
+        if (p.action === "penalty") {
           const val = Number(p.amount);
           return acc + (isNaN(val) ? 0 : val);
         }
@@ -1335,29 +1341,45 @@ export class LoanService {
     search?: string
   ) {
     const now = new Date();
+    // Calendar-day boundary (server-local, matches getAdminLoanStats' use of
+    // `.toDateString()`), NOT just "before this exact instant" - a loan whose
+    // repayment_date passed earlier TODAY is "due", not "overdue", until the
+    // day rolls over.
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const filter: any = {};
 
     console.log({ category, page, limit, search });
 
     switch (category) {
       case "active":
+        // Not yet due: repayment_date is still in the future. Without this,
+        // "active" silently included every due-today/overdue loan too.
         filter.status = { $in: ["accepted", "processing", "pending"] };
         filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
+        filter.$expr = { $gt: [{ $toDate: "$repayment_date" }, now] };
         break;
 
       case "due":
+        // Due TODAY: past its repayment timestamp, but not before today.
+        // BUG FIX: this used to be `repayment_date <= now` - the same
+        // condition (minus the boundary instant) as "overdue" below, so
+        // "Due" and "Overdue" returned almost the identical set of loans.
         filter.status = "accepted";
         filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
         filter.$expr = {
-          $lte: [{ $toDate: "$repayment_date" }, now],
+          $and: [
+            { $lte: [{ $toDate: "$repayment_date" }, now] },
+            { $gte: [{ $toDate: "$repayment_date" }, startOfToday] },
+          ],
         };
         break;
 
       case "overdue":
+        // Repayment date fell on a day strictly before today.
         filter.status = "accepted";
         filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
         filter.$expr = {
-          $lt: [{ $toDate: "$repayment_date" }, now],
+          $lt: [{ $toDate: "$repayment_date" }, startOfToday],
         };
         break;
 
