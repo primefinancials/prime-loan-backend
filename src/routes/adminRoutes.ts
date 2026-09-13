@@ -225,6 +225,18 @@ router.post("/kyc/:requestId([0-9a-fA-F]{24})/reject", verifyJwtRest(), async (r
   }
 });
 
+// Re-attempt the VFD tier move for an already-approved request whose sync
+// failed (or wasn't attempted, e.g. Tier 2 or missing fields at approval time).
+router.post("/kyc/:requestId([0-9a-fA-F]{24})/retry-vfd-sync", verifyJwtRest(), async (req, res) => {
+  try {
+    const { KYCService } = await import("../modules/users/kyc.service");
+    const result = await KYCService.retryVfdSync(req.params.requestId);
+    res.json({ success: true, message: "VFD sync re-attempted", data: result });
+  } catch (err: any) {
+    res.status(err.statusCode || 400).json({ success: false, message: err.message });
+  }
+});
+
 /* =============================
    WORKER MANAGEMENT
 ============================= */
