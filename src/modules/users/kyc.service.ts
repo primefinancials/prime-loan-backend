@@ -20,6 +20,7 @@ import { NotificationService } from '../notifications/notification.service';
 import cloudinary from '../../config/cloudinary';
 import User from './user.model';
 import { NotFoundError, BadRequestError } from '../../exceptions';
+import { getMailsByPermission } from '../../shared/utils/checkPermission';
 import pino from 'pino';
 
 const logger = pino({ name: 'kyc-service' });
@@ -237,6 +238,13 @@ export class KYCService {
       await NotificationService.sendKycSubmitted(user as any, params.targetTier);
     } catch (err: any) {
       logger.warn({ userId: params.userId, err: err.message }, 'KYC submitted email failed (non-fatal)');
+    }
+
+    try {
+      const admins = await getMailsByPermission('manage_users');
+      await NotificationService.sendKycSubmittedAdmin(user as any, params.targetTier, String(request._id), admins);
+    } catch (err: any) {
+      logger.warn({ userId: params.userId, err: err.message }, 'KYC submitted admin email failed (non-fatal)');
     }
     logger.info({ userId: params.userId, targetTier: params.targetTier, requestId: request._id }, 'KYC upgrade request submitted');
 
