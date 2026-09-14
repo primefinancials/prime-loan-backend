@@ -54,7 +54,17 @@ export class TransferController {
 
       const userAccount = await TransferController.vfdProvider.getAccountInfo(fromAccount);
 
-      const result: any = toBank != "999999" ? await TransferService.initiateTransfer({
+      // BUG FIX: this used to skip initiateTransfer/completeTransfer entirely
+      // for intra (Prime-to-Prime, toBank==="999999") transfers - real money
+      // still moved via VFD below, but the SENDER never got a local Transfer
+      // record for it at all (their own receipt/history for a P2P send was
+      // simply missing), and the receiver's only record came from the
+      // wallet-alert webhook, which stored the SENDER's name in a field
+      // (`beneficiaryName`) that means "the receiving party's name"
+      // everywhere else - so a receiver's receipt showed their own name in
+      // the Sender slot. Now every transfer type gets a proper sender-side
+      // record via the same path.
+      const result: any = await TransferService.initiateTransfer({
         fromAccount,
         userId: userId as any,
         toAccount,
@@ -65,7 +75,7 @@ export class TransferController {
         remark,
         idempotencyKey,
         walletBalance: String(userAccount.data.accountBalance),
-      }) : {};
+      });
 
       const transferReq: TransferRequest = {
         uniqueSenderAccountId: toBank == "999999" ? fromSavingsId : "",
@@ -83,14 +93,14 @@ export class TransferController {
         amount: Number(amount),
         remark: `${remark} trxn` || "",
         transferType,
-        reference: toBank != "999999" ? result.reference : UuidService.generate(),
+        reference: result.reference,
       };
 
       try {
         const providerResp = await TransferController.vfdProvider.transfer(transferReq);
 
         if (providerResp.status === "00") {
-          toBank != "999999" && await TransferService.completeTransfer(result.reference, "transfer");
+          await TransferService.completeTransfer(result.reference, "transfer");
 
           await TransferController.profitService.recordRealizedProfit({
             amount: profit,
@@ -105,10 +115,10 @@ export class TransferController {
           });
         }
 
-        toBank != "999999" && await TransferService.failTransfer(result.reference);
+        await TransferService.failTransfer(result.reference);
         throw new APIError(409, providerResp.message);
       } catch (error: any) {
-        toBank != "999999" && await TransferService.failTransfer(result.reference);
+        await TransferService.failTransfer(result.reference);
         console.log({ error, data: error?.response?.data?.data, message: error?.response?.data?.message }, "Transfer Provider Error");
         throw new APIError(409, error?.response?.data?.message || error.message);
       }

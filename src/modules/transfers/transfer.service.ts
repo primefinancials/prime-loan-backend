@@ -26,6 +26,10 @@ export interface InitiateTransferRequest {
   bankCode?: string;
   remark?: string;
   beneficiaryName: string;
+  /** The sending party's real name. Defaults to the fromAccount user's own
+   *  profile name when omitted (resolved from `fromAccount` below), so most
+   *  callers never need to pass this explicitly. */
+  senderName?: string;
   walletBalance: string;
   meta?: object;
   naration?: string;
@@ -121,6 +125,10 @@ export class TransferService {
             transferType: request.transferType,
             status: 'PENDING',
             beneficiaryName: request.beneficiaryName,
+            senderName:
+              request.senderName ||
+              (user ? `${user.user_metadata?.first_name || ""} ${user.user_metadata?.surname || ""}`.trim() : "") ||
+              undefined,
             reference,
             idempotencyKey: request.idempotencyKey ? `${type}:${request.idempotencyKey}` : undefined,
             remark: request.remark,
@@ -478,6 +486,23 @@ export class TransferService {
     const user = await User.findOne({ "user_metadata.accountNo": body.account_number });
     if (!user) return null;
 
+    // Intra-bank (Prime-to-Prime) credits are already fully accounted for by
+    // the SENDER's own initiateTransfer -> completeTransfer flow (which credits
+    // the receiver's ledger + syncs their wallet balance + sends the credit
+    // alert - see completeTransfer's `transferType === 'intra'` branch). This
+    // webhook only needs to handle genuinely EXTERNAL incoming credits, where
+    // no local sender-side record can exist. Recording here too would: (a)
+    // duplicate the transfer in the receiver's history (transfers() matches by
+    // account number, so it would return both records for one real transfer),
+    // and (b) store the sender's name in `beneficiaryName` - a field that
+    // everywhere else means "the receiving party's name" - which is exactly
+    // why a receiver's own receipt for money sent by another Prime user used
+    // to show their OWN name in the "Sender" field.
+    if (body.originator_bank === "999999") {
+      logger.info({ account: body.account_number, reference: body.reference }, 'Intra wallet-alert skipped - already recorded by the sender-side transfer');
+      return null;
+    }
+
     const userAccountRes = await TransferService.vfdProvider.getAccountInfo(user.user_metadata.accountNo || "");
     if (!userAccountRes.data) return null;
 
@@ -513,7 +538,11 @@ export class TransferService {
       remark: body.originator_narration,
       bankCode: body.originator_bank,
       providerRef: body.session_id,
-      beneficiaryName: body.originator_account_name
+      // This webhook only runs for genuinely external credits now (intra is
+      // skipped above), so `user` (the receiver) is unambiguously the
+      // receiving party and body.originator_* is unambiguously the sender.
+      senderName: body.originator_account_name,
+      beneficiaryName: `${user.user_metadata?.first_name || ""} ${user.user_metadata?.surname || ""}`.trim() || undefined,
     });
 
     await User.findOneAndUpdate(
