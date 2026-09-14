@@ -58,7 +58,10 @@ export interface Transfer extends Document {
   transferType: 'intra' | 'inter';
   status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'MANUAL_REVIEW';
   providerRef?: string;
+  /** The RECEIVING party's name (whoever toAccount is). */
   beneficiaryName?: string;
+  /** The SENDING party's name (whoever fromAccount is). */
+  senderName?: string;
   bankCode?: string;
   reference: string;
   remark?: string;
