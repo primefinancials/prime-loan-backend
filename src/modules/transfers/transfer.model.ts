@@ -36,7 +36,17 @@ const TransferSchema = new Schema<ITransfer>({
   transferType: { type: String, enum: ['intra', 'inter'], required: true },
   status: { type: String, enum: ['PENDING', 'COMPLETED', 'FAILED', 'MANUAL_REVIEW'], required: true, index: true },
   providerRef: { type: String },
+  // `beneficiaryName` is the RECEIVING party's name (whoever `toAccount` is) -
+  // always, regardless of who is viewing the record. `senderName` is the
+  // SENDING party's name (whoever `fromAccount` is). Both are resolved once
+  // at write time so a receipt never has to guess a name from "am I the
+  // sender" - that guess broke down for the wallet-credit webhook path, which
+  // used to store the actual sender's name INTO beneficiaryName (since from
+  // its own point of view the beneficiary - the receiving user - was always
+  // "me" and didn't need naming), so a receiver reading their own record via
+  // beneficiaryName got their own name back instead of the real sender's.
   beneficiaryName: { type: String },
+  senderName: { type: String },
   bankCode: { type: String },
   reference: { type: String, required: true, unique: true },
   remark: { type: String },
