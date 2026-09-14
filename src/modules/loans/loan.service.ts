@@ -1169,9 +1169,18 @@ export class LoanService {
   */
   static async getAdminLoanStats() {
     const now = new Date();
-
-    // ⚙️ Cache loan profit config once (avoid N+1)
-    const loanProfitConfigs = await SettingsService.getProfitConfig("loan");
+    // Day-boundary comparisons (active/due/overdue) must agree with the admin
+    // frontend's own copy of this logic (utils/loanBadge.tsx `convertBadge`),
+    // which runs in the ADMIN'S BROWSER using its local clock/timezone. Two
+    // independent "is this the same calendar day" checks - one in UTC on the
+    // server, one in whatever timezone the browser is in - disagree for any
+    // loan whose repayment_date falls in the sliver of the day that's "today"
+    // in one zone and "yesterday"/"tomorrow" in the other (e.g. a loan due at
+    // 00:15 UTC is already "tomorrow" server-side while still "today" for an
+    // admin in Lagos, WAT/UTC+1). Nigeria has no DST, so a fixed +1h shift
+    // before comparing calendar days keeps both sides looking at the same day.
+    const toWatDateString = (d: Date) => new Date(d.getTime() + 60 * 60 * 1000).toDateString();
+    const nowWat = toWatDateString(now);
 
     // 📊 Only fetch required fields
     const loans = await Loan.find(
@@ -1214,17 +1223,6 @@ export class LoanService {
 
     let expectedProfit = 0;
     let realizedProfit = 0;
-
-    // 🧠 Helper: compute expected profit once per loan
-    const computeExpectedProfit = (amount: number): number => {
-      let total = 0;
-      for (const config of loanProfitConfigs) {
-        if (amount < config.minAmount || amount > config.maxAmount) continue;
-        if (config.type === "percentage") total += (config.amount) * amount;
-        else total += config.amount || 0;
-      }
-      return total;
-    };
 
     // 🧠 Helper: sum valid payments
     // BUG FIX: this checked `action === "overdue_fee"`, a string nothing in the
@@ -1279,7 +1277,7 @@ export class LoanService {
           if (dueDate > now) {
             stats.activeLoans++;
             stats.activeAmount += outstanding;
-          } else if (dueDate.toDateString() === now.toDateString()) {
+          } else if (toWatDateString(dueDate) === nowWat) {
             stats.dueLoans++;
             stats.dueAmount += outstanding;
           } else {
@@ -1289,35 +1287,45 @@ export class LoanService {
         }
       }
 
+      const sum = sumRepayments(loan.repayment_history);
+
       // ✅ Repaid loans
       if (loan.loan_payment_status === "complete" && loan.status === "accepted") {
         stats.repaidLoans++;
-        const sum = sumRepayments(loan.repayment_history);
-        const penalties = sumPenalties(loan.repayment_history);
         stats.repaidAmount += sum;
-        realizedProfit += sum - amount;
-        expectedProfit += computeExpectedProfit(amount) + penalties;
       }
-
-      const sum = sumRepayments(loan.repayment_history);
 
       // ✅ In-progress loans
       if (loan.loan_payment_status === "in-progress" && sum > 0 && loan.status === "accepted") {
         stats.repaidingLoans++;
-        const penalties = sumPenalties(loan.repayment_history);
         stats.repaidingAmount += sum;
-        if (sum > amount) realizedProfit += sum - amount;
-        expectedProfit += computeExpectedProfit(amount) + penalties;
       }
 
       // ✅ Not started
-      if (
-        loan.status === "accepted" &&
-        loan.loan_payment_status === "not-started"
-      ) {
+      if (loan.status === "accepted" && loan.loan_payment_status === "not-started") {
         stats.notStarted++;
-        expectedProfit += computeExpectedProfit(amount);
-        expectedProfit += sumPenalties(loan.repayment_history);
+      }
+
+      // ✅ Profit: derived directly from the loan's own real numbers, not a
+      // generic/disconnected fee schedule. BUG FIX: this used to only count a
+      // configured "profitRange" service-charge bracket (often near-zero or
+      // misconfigured for real loan amounts) as the loan's ENTIRE expected
+      // profit - the loan's actual interest was never included at all.
+      // `repayment_amount` is set at disbursement as
+      // `amount + serviceFee + interest` (loan.service.ts disburseLoan), so
+      // `repayment_amount - amount` IS the service fee + percentage interest
+      // together. Penalties accrue separately onto `outstanding` (not
+      // `repayment_amount`), so they're added on top. Once total cash actually
+      // collected (`sum`, real repayments only - penalty accrual entries are
+      // balance increases, not money in) exceeds the original principal, the
+      // excess is profit already realized; whatever expected profit is left
+      // over is unrealized.
+      if (loan.status === "accepted") {
+        const penalties = sumPenalties(loan.repayment_history);
+        const loanExpectedProfit = Math.max(0, (loan.repayment_amount || 0) - amount) + penalties;
+        const loanRealizedProfit = Math.max(0, sum - amount);
+        expectedProfit += loanExpectedProfit;
+        realizedProfit += loanRealizedProfit;
       }
     }
 
@@ -1341,11 +1349,17 @@ export class LoanService {
     search?: string
   ) {
     const now = new Date();
-    // Calendar-day boundary (server-local, matches getAdminLoanStats' use of
-    // `.toDateString()`), NOT just "before this exact instant" - a loan whose
-    // repayment_date passed earlier TODAY is "due", not "overdue", until the
-    // day rolls over.
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    // Calendar-day boundary in WAT (Africa/Lagos, UTC+1, no DST) - NOT just
+    // "before this exact instant", and NOT the server's raw UTC day either. A
+    // loan whose repayment_date passed earlier TODAY is "due", not "overdue",
+    // until the day rolls over - and "today" has to mean the same thing here
+    // as it does in the admin UI's own copy of this logic
+    // (utils/loanBadge.tsx `convertBadge`, evaluated in the admin's browser),
+    // or a loan can show "due" per-row while not being counted as due in this
+    // filter (or the stats card), purely because the server (UTC) and the
+    // browser (WAT) land on different calendar days for the same instant.
+    const watShifted = new Date(now.getTime() + 60 * 60 * 1000);
+    const startOfToday = new Date(Date.UTC(watShifted.getUTCFullYear(), watShifted.getUTCMonth(), watShifted.getUTCDate()) - 60 * 60 * 1000);
     const filter: any = {};
 
     console.log({ category, page, limit, search });

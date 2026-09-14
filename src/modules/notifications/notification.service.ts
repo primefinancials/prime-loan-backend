@@ -201,6 +201,15 @@ export class NotificationService {
     return this.sendEmail(user.email, "Your KYC Upgrade Was Approved – Prime Finance", this.template("KYC Upgrade Approved", body));
   }
 
+  static async sendKycSubmittedAdmin(user: User, targetTier: number, requestId: string, admins: string) {
+    const body = `
+      <p><strong>${user.user_metadata?.first_name || ""} ${user.user_metadata?.surname || ""}</strong> (${user.email}) has submitted a KYC upgrade request.</p>
+      <p><strong>Requested Tier:</strong> Tier ${targetTier}</p>
+      <p><strong>Request ID:</strong> ${requestId}</p>
+      <p>Review it in the admin dashboard's KYC Management page.</p>`;
+    return this.sendEmail(admins, "New KYC Upgrade Request – Prime Finance", this.template("KYC Upgrade Submitted", body));
+  }
+
   static async sendKycRejected(user: User, reason: string) {
     const name = user?.user_metadata?.first_name || "there";
     const body = `
