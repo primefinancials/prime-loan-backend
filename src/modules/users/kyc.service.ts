@@ -342,6 +342,26 @@ export class KYCService {
   }
 
   /**
+   * Status counts across ALL requests, independent of whatever status filter
+   * the admin list view currently has selected - the list view's own stats
+   * row used to just count the currently-loaded page, so switching to the
+   * "Pending" filter made it look like nothing had ever been approved or
+   * rejected (they were still there, just filtered out of view).
+   */
+  static async getStatusCounts() {
+    const rows = await KYCUpgradeRequest.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]);
+    const counts: Record<string, number> = { pending: 0, approved: 0, rejected: 0, expired: 0 };
+    let total = 0;
+    for (const r of rows) {
+      counts[r._id as string] = r.count;
+      total += r.count;
+    }
+    return { ...counts, total };
+  }
+
+  /**
    * Best-effort real VFD move. `/client/tiers/individual` (BVN+NIN+address) is
    * the endpoint VFD documents for placing an account at Tier 3 - the SAME one
    * signup uses, so it's known-good on our BaaS plan (unlike the dedicated KYC
