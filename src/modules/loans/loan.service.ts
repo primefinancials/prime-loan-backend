@@ -234,31 +234,68 @@ export class LoanService {
     const user = await User.findOne({ _id: params.userId });
     if (!user || Array.isArray(user) || !user._id) throw new NotFoundError("User not found");
 
-    // prevent duplicate active loans for requester
-    const existingActive = await Loan.find({
-      userId: params.userId,
+    // Shared "does this loan currently count as active" filter - reused below
+    // for every guarantor cross-check so "active" means the same thing
+    // everywhere. Once a loan is repaid (payment_status flips to "complete"
+    // and/or status leaves this set) none of the guarantor restrictions
+    // apply to it anymore.
+    const activeLoanFilter = {
       loan_payment_status: { $in: ["in-progress", "not-started"] },
-      status: { $in: ["pending", "processing", "accepted"] }
-    });
+      status: { $in: ["pending", "processing", "accepted"] },
+    };
+
+    // prevent duplicate active loans for requester
+    const existingActive = await Loan.find({ userId: params.userId, ...activeLoanFilter });
 
     if (existingActive && existingActive.length > 0) {
       throw new ConflictError("Duplicate loan attempt. Wait for current loan decision or repay the existing one.");
     }
 
-    // Check guarantors - they cannot have active loans (if provided)
+    // A guarantor cannot be used twice on the same application
+    if (
+      params.guarantor_1_phone &&
+      params.guarantor_2_phone &&
+      params.guarantor_1_phone === params.guarantor_2_phone
+    ) {
+      throw new BadRequestError("Guarantor 1 and Guarantor 2 cannot be the same phone number.");
+    }
+
+    // The applicant cannot take a new loan while they're already guaranteeing
+    // someone else's active loan
+    const applicantPhone = params.phone || user.user_metadata?.phone;
+    if (applicantPhone) {
+      const guaranteeingElsewhere = await Loan.findOne({
+        ...activeLoanFilter,
+        $or: [{ guarantor_1_phone: applicantPhone }, { guarantor_2_phone: applicantPhone }],
+      });
+      if (guaranteeingElsewhere) {
+        throw new BadRequestError(
+          "You are currently a guarantor for another active loan and cannot take a loan until it is repaid."
+        );
+      }
+    }
+
+    // Check guarantors (if provided): they cannot have an active loan of
+    // their own, and cannot already be guaranteeing another active loan
     const guarantorPhones = [params.guarantor_1_phone, params.guarantor_2_phone].filter(Boolean) as string[];
     for (const phone of guarantorPhones) {
       const gUser = await User.findOne({ "user_metadata.phone": phone });
       if (gUser && !Array.isArray(gUser) && gUser._id) {
-        const gActive = await Loan.findOne({
-          userId: gUser._id,
-          loan_payment_status: { $in: ["in-progress", "not-started"] },
-          status: { $in: ["pending", "processing", "accepted"] }
-        });
+        const gActive = await Loan.findOne({ userId: gUser._id, ...activeLoanFilter });
 
         if (gActive) {
           throw new BadRequestError(`Guarantor (${phone}) has an active loan and cannot be used.`);
         }
+      }
+
+      const alreadyGuaranteeing = await Loan.findOne({
+        ...activeLoanFilter,
+        $or: [{ guarantor_1_phone: phone }, { guarantor_2_phone: phone }],
+      });
+      if (alreadyGuaranteeing) {
+        throw new BadRequestError(
+          `Guarantor (${phone}) is already guaranteeing another active loan and cannot be used again until that loan is repaid.`
+        );
       }
     }
 
