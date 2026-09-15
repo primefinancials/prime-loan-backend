@@ -194,6 +194,16 @@ router.get("/kyc/pending-upgrades", verifyJwtRest(), async (req, res) => {
   }
 });
 
+router.get("/kyc/status-counts", verifyJwtRest(), async (req, res) => {
+  try {
+    const { KYCService } = await import("../modules/users/kyc.service");
+    const data = await KYCService.getStatusCounts();
+    res.json({ success: true, data });
+  } catch (err: any) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 router.get("/kyc/user/:userId([0-9a-fA-F]{24})", verifyJwtRest(), async (req, res) => {
   try {
     const { KYCService } = await import("../modules/users/kyc.service");
