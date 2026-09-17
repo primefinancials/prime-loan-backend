@@ -1306,20 +1306,33 @@ export class LoanService {
       }
 
       // ✅ Loan states
+      // Only disbursed ("accepted") loans have a live repayment clock - a
+      // "pending"/"processing" loan hasn't been given to the user yet, so it
+      // can't be "due" or "overdue" no matter what its repayment_date says.
+      // This must match utils/loanBadge.tsx's `convertBadge` on the admin
+      // frontend, which only computes due/active/overdue inside its
+      // `status === "accepted"` branch - counting other statuses here made
+      // the stat card disagree with what the per-row badges actually show.
       if (
-        ["accepted", "processing", "pending"].includes(loan.status) &&
+        loan.status === "accepted" &&
         ["in-progress", "not-started"].includes(loan.loan_payment_status)
       ) {
         if (dueDate) {
-          if (dueDate > now) {
-            stats.activeLoans++;
-            stats.activeAmount += outstanding;
-          } else if (toWatDateString(dueDate) === nowWat) {
+          // Check "due today" (same WAT calendar day) BEFORE "active" - a
+          // loan due later today (e.g. 11pm) must still count as due, not
+          // active, exactly like `convertBadge`'s `isDue` check does. The
+          // previous `dueDate > now` instant check ran first and pulled
+          // same-day-but-not-yet-due-by-the-clock loans into "active"
+          // instead, undercounting "Due" versus what the per-row list showed.
+          if (toWatDateString(dueDate) === nowWat) {
             stats.dueLoans++;
             stats.dueAmount += outstanding;
-          } else {
+          } else if (dueDate < now) {
             stats.overdueLoans++;
             stats.overdueAmount += outstanding;
+          } else {
+            stats.activeLoans++;
+            stats.activeAmount += outstanding;
           }
         }
       }
@@ -1397,30 +1410,38 @@ export class LoanService {
     // browser (WAT) land on different calendar days for the same instant.
     const watShifted = new Date(now.getTime() + 60 * 60 * 1000);
     const startOfToday = new Date(Date.UTC(watShifted.getUTCFullYear(), watShifted.getUTCMonth(), watShifted.getUTCDate()) - 60 * 60 * 1000);
+    // Exclusive upper bound of "today" (WAT) - a loan due at 11pm today must
+    // still count as "due", not "active", exactly like the admin frontend's
+    // `convertBadge` (whose `isDue` only checks the calendar day, never the
+    // exact hour). The old "active" filter used `repayment_date > now`
+    // (an instant check) which pulled same-day-but-not-yet-due-by-the-clock
+    // loans into "active" instead of "due", undercounting "Due" versus what
+    // the per-row list/badges showed for the very same loans.
+    const endOfToday = new Date(startOfToday.getTime() + 24 * 60 * 60 * 1000);
     const filter: any = {};
 
     console.log({ category, page, limit, search });
 
     switch (category) {
       case "active":
-        // Not yet due: repayment_date is still in the future. Without this,
-        // "active" silently included every due-today/overdue loan too.
-        filter.status = { $in: ["accepted", "processing", "pending"] };
+        // Only a loan due on some later WAT calendar day - matches
+        // convertBadge, which only ever computes due/active/overdue for
+        // status "accepted" (a pending/processing loan hasn't been
+        // disbursed yet, so it has no live repayment clock to be "active" on).
+        filter.status = "accepted";
         filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
-        filter.$expr = { $gt: [{ $toDate: "$repayment_date" }, now] };
+        filter.$expr = { $gte: [{ $toDate: "$repayment_date" }, endOfToday] };
         break;
 
       case "due":
-        // Due TODAY: past its repayment timestamp, but not before today.
-        // BUG FIX: this used to be `repayment_date <= now` - the same
-        // condition (minus the boundary instant) as "overdue" below, so
-        // "Due" and "Overdue" returned almost the identical set of loans.
+        // Due TODAY: falls anywhere within today's WAT calendar day,
+        // regardless of what hour it is right now.
         filter.status = "accepted";
         filter.loan_payment_status = { $in: ["in-progress", "not-started"] };
         filter.$expr = {
           $and: [
-            { $lte: [{ $toDate: "$repayment_date" }, now] },
             { $gte: [{ $toDate: "$repayment_date" }, startOfToday] },
+            { $lt: [{ $toDate: "$repayment_date" }, endOfToday] },
           ],
         };
         break;

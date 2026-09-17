@@ -281,14 +281,16 @@ export class LoanPenaltiesCron {
     try {
       await DatabaseService.withTransaction(session, async () => {
         const settings = await SettingsService.getSettings();
-        const chargeConfig = settings.chargeConfiguration || {
-          enabled: true,
-          type: 'PERCENTAGE',
-          percentageValue: 1,
-          calculationBase: 'PRINCIPAL_PLUS_INTEREST_AND_FEES',
-        };
-
-        if (!chargeConfig.enabled) return 0;
+        // BUG FIX: this used to read `settings.chargeConfiguration`, a
+        // separate settings namespace that no admin UI has ever written to -
+        // the admin's "Defaulter's Penalty" screen (Settings.tsx) saves to
+        // `settings.loan.penalty` instead. So no matter what the admin set
+        // there, this function kept computing off chargeConfiguration's
+        // hardcoded default (percentageValue: 1), i.e. a permanent 1%.
+        // `settings.loan.penalty` is the one config the admin can actually
+        // change: `percentage: true` means `dailyRate` is a percent, `false`
+        // means it's a fixed Naira amount per day.
+        const penaltyConfig = settings.loan?.penalty || { dailyRate: penaltyRate * 100, percentage: true, gracePeriod: 1 };
 
         const today = new Date();
         const lastPenaltyDate = loan.lastInterestAdded
@@ -299,18 +301,13 @@ export class LoanPenaltiesCron {
         const daysSinceLastPenalty = Math.floor(diffTime / (1000 * 60 * 60 * 24));
         if (daysSinceLastPenalty <= 0) return 0;
 
-        let chargeBase = loan.amount;
-        if (chargeConfig.calculationBase === 'PRINCIPAL_PLUS_INTEREST_AND_FEES') {
-          const interest = loan.interest || 0;
-          const fees = (loan.serviceFee || 0) + (loan.processingFee || 0) + (loan.otherFees || 0);
-          chargeBase = loan.amount + interest + fees;
-        }
+        const chargeBase = loan.amount;
+        const dailyRate = Number(penaltyConfig.dailyRate) || 0;
 
-        if (chargeConfig.type === 'FIXED_AMOUNT') {
-          appliedPenalty = Math.floor((chargeConfig.fixedAmountValue || 0) * daysSinceLastPenalty);
+        if (penaltyConfig.percentage) {
+          appliedPenalty = Math.floor(chargeBase * (dailyRate / 100)) * daysSinceLastPenalty;
         } else {
-          const rate = chargeConfig.percentageValue || penaltyRate;
-          appliedPenalty = Math.floor(chargeBase * (rate / 100)) * daysSinceLastPenalty;
+          appliedPenalty = Math.floor(dailyRate) * daysSinceLastPenalty;
         }
 
         const traceId = UuidService.generateTraceId();

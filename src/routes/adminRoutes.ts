@@ -447,6 +447,7 @@ router.get("/users/:userId([0-9a-fA-F]{24})/payment-methods", verifyJwtRest(), A
 router.post("/users/:userId([0-9a-fA-F]{24})/payment-methods/:id([0-9a-fA-F]{24})/cancel", verifyJwtRest(), AdminAutoDebitController.cancelMethod as any);
 router.get("/loans/:loanId([0-9a-fA-F]{24})/auto-debit/preview", verifyJwtRest(), AdminAutoDebitController.preview as any);
 router.post("/loans/:loanId([0-9a-fA-F]{24})/auto-debit/charge", verifyJwtRest(), idempotencyMiddleware() as any, AdminAutoDebitController.charge as any);
+router.post("/loans/:loanId([0-9a-fA-F]{24})/repay-wallet", verifyJwtRest(), idempotencyMiddleware() as any, AdminAutoDebitController.repayFromWallet as any);
 router.post("/loans/:loanId([0-9a-fA-F]{24})/auto-debit/refresh-mandate", verifyJwtRest(), AdminAutoDebitController.refreshMandate as any);
 router.get("/loans/:loanId([0-9a-fA-F]{24})/bank-balance", verifyJwtRest(), AdminAutoDebitController.bankBalance as any);
 /* =============================

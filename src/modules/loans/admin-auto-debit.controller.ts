@@ -198,6 +198,56 @@ export class AdminAutoDebitController {
     }
   }
 
+  /**
+   * POST /backoffice/loans/:loanId/repay-wallet   body: { amount? }
+   *
+   * Deducts straight from the user's own Prime/VFD wallet balance - the same
+   * `LoanService.repayLoan` path the loan-penalties cron already uses for its
+   * wallet-deduction step, just exposed to the admin. Before this, the admin
+   * loan modal's only "collect payment" button was auto-debit/charge, which
+   * always went through Mono/external methods (card -> bank -> fintech
+   * wallet) even when the user already had enough in their Prime wallet to
+   * cover it - this is the missing "deduct from wallet instead" option.
+   */
+  static async repayFromWallet(req: Request, res: Response, next: NextFunction) {
+    try {
+      requireManage(req);
+      const { loanId } = req.params;
+      const { amount } = req.body || {};
+
+      const Loan = (await import('./loan.model')).default;
+      const loan = await Loan.findById(loanId).lean();
+      if (!loan) return res.status(404).json({ status: 'failed', message: 'Loan not found' });
+
+      const { LoanService } = await import('./loan.service');
+      const repayAmount = amount ? Number(amount) : Number((loan as any).outstanding || 0);
+
+      const result = await LoanService.repayLoan({
+        loanId,
+        userId: String((loan as any).userId),
+        amount: repayAmount,
+        idempotencyKey: (req as any).idempotencyKey || `admin-wallet-repay-${loanId}-${Date.now()}`,
+      } as any);
+
+      await WorkerLogService.log('auto-debit', 'info',
+        `Admin wallet repayment on loan ${loanId}: ₦${result.repayAmount}`,
+        { adminId: adminId(req), loanId, amount: result.repayAmount });
+
+      return res.status(200).json({
+        status: 'success',
+        message: result.repayAmount > 0
+          ? `₦${result.repayAmount.toLocaleString()} deducted from the user's wallet`
+          : (result.providerResponse as any)?.alreadyPaid
+            ? 'Loan is already fully paid'
+            : 'No amount was deducted',
+        data: result,
+      });
+    } catch (err: any) {
+      logger.error({ error: err.message }, 'Admin wallet repayment failed');
+      return res.status(err.statusCode || 500).json({ status: 'failed', message: err.message });
+    }
+  }
+
   /** POST /backoffice/loans/:loanId/auto-debit/refresh-mandate */
   static async refreshMandate(req: Request, res: Response, next: NextFunction) {
     try {
