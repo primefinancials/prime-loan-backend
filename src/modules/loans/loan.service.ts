@@ -344,22 +344,26 @@ export class LoanService {
 
     const created = await Loan.create(loanPayload);
 
-    // Notify (best-effort)
+    // Notify (best-effort). Separate try blocks: a failed customer email must
+    // not stop the admins from hearing about a loan waiting for approval.
     try {
-      await NotificationService.sendLoanApplicationUser(user, created)
+      await NotificationService.sendLoanApplicationUser(user, created);
+    } catch (err: any) {
+      logger.warn({ loanId: created._id, err: err?.message }, "Loan application email to customer failed (non-fatal)");
+    }
 
+    try {
       const admins = await getMailsByPermission("manage_loans");
-
       await NotificationService.sendLoanApplicationAdmin(
         user,
-        `New Loan Created From User: ${user.user_metadata.first_name}`,
-        `A new loan has been created by ${user.user_metadata.first_name} ${user.user_metadata.surname}.\n\nDetails:\n- Amount: ${params.amount}\n- Category: ${params.category}\n- Duration: ${params.duration}\n\nLoanId: ${created._id}`,
+        `New Loan Application: ${user.user_metadata.first_name} ${user.user_metadata.surname || ""} - NGN ${Number(params.amount).toLocaleString()}`,
+        `${user.user_metadata.first_name} ${user.user_metadata.surname || ""} has applied for a loan and it is waiting for review and approval on the admin dashboard.`,
         admins,
         created
-      )
-    } catch (err) {
-      /* non-fatal */
-      console.warn("Loan notification failed (non-fatal):", err);
+      );
+      logger.info({ loanId: created._id, admins }, "Admin notified of new loan application");
+    } catch (err: any) {
+      logger.error({ loanId: created._id, err: err?.message }, "Admin loan application notification failed");
     }
 
     // save idempotent response if key provided

@@ -97,8 +97,11 @@ export class TestIntegrationsController {
 
   /**
    * POST /backoffice/test-integrations/penalty
-   * body: { loanId }
-   * Applies 1% penalty to a specific loan (test only)
+   * body: { loanId, type?: 'percentage' | 'fixed', value?: number }
+   *
+   * Manually applies ONE penalty charge to an active, overdue loan. Rate and
+   * type default to the admin's configured loan penalty (settings.loan.penalty)
+   * and can be overridden per charge.
    */
   static async testPenalty(req: Request, res: Response, next: NextFunction) {
     try {
@@ -109,32 +112,96 @@ export class TestIntegrationsController {
       const loan = await LoanModel.findById(loanId);
       if (!loan) return res.status(404).json({ status: 'failed', message: 'Loan not found' });
 
-      const penaltyRate = 0.01; // 1%
-      const penaltyAmount = Math.floor(Number(loan.amount) * penaltyRate);
+      // Only an active loan that is already overdue can be penalised.
+      if (loan.status !== 'accepted') {
+        return res.status(400).json({ status: 'failed', message: `Loan is ${loan.status}, not an active loan` });
+      }
+      if (loan.loan_payment_status === 'complete' || Number(loan.outstanding) <= 0) {
+        return res.status(400).json({ status: 'failed', message: 'Loan is already fully repaid' });
+      }
+      // Same WAT calendar-day rule as the admin badges and loan stats: due
+      // today is "due", only a strictly earlier day is "overdue".
+      const watDay = (d: Date) => new Date(d.getTime() + 60 * 60 * 1000).toISOString().slice(0, 10);
+      if (!loan.repayment_date || watDay(new Date(loan.repayment_date)) >= watDay(new Date())) {
+        return res.status(400).json({ status: 'failed', message: 'Loan is not overdue yet. A penalty can only be applied after the due date has passed.' });
+      }
+
+      const { SettingsService } = await import('../../modules/admin/settings.service');
+      const settings = await SettingsService.getSettings();
+      const configured = settings.loan?.penalty;
+
+      const type: 'percentage' | 'fixed' =
+        req.body.type === 'percentage' || req.body.type === 'fixed'
+          ? req.body.type
+          : (configured?.percentage === false ? 'fixed' : 'percentage');
+      const value = req.body.value !== undefined && req.body.value !== '' ? Number(req.body.value) : Number(configured?.dailyRate);
+
+      if (!Number.isFinite(value) || value <= 0) {
+        return res.status(400).json({ status: 'failed', message: 'Penalty value must be greater than zero' });
+      }
+      if (type === 'percentage' && value > 100) {
+        return res.status(400).json({ status: 'failed', message: 'Penalty percentage cannot exceed 100%' });
+      }
+
+      const penaltyAmount = type === 'percentage'
+        ? Math.floor(Number(loan.amount) * (value / 100))
+        : Math.floor(value);
+      if (penaltyAmount <= 0) {
+        return res.status(400).json({ status: 'failed', message: 'That rate works out to less than N1 on this loan' });
+      }
+
       const previousOutstanding = Number(loan.outstanding);
+      const { DatabaseService } = await import('../../shared/db');
+      const { LedgerService } = await import('../../modules/ledger/LedgerService');
+      const { UuidService } = await import('../../shared/utils/uuid');
+      const adminId = String((req as any).admin?._id || (req as any).user?._id || 'admin-system');
 
-      // Apply penalty
-      loan.outstanding = previousOutstanding + penaltyAmount;
-      loan.lastInterestAdded = new Date().toISOString();
-      loan.repayment_history = [
-        ...(loan.repayment_history || []),
-        {
-          amount: penaltyAmount,
-          outstanding: loan.outstanding,
-          action: 'penalty',
-          date: new Date().toISOString(),
-        },
-      ];
-      await loan.save();
+      const session = await DatabaseService.startSession();
+      try {
+        await DatabaseService.withTransaction(session, async () => {
+          // Book it exactly like the daily penalty job does, so admin-applied
+          // penalties show up in platform revenue too.
+          await LedgerService.createDoubleEntry(
+            UuidService.generateTraceId(),
+            `user_wallet:${loan.userId}`,
+            'platform_revenue',
+            penaltyAmount,
+            'loan',
+            {
+              userId: loan.userId,
+              subtype: 'penalty',
+              session,
+              meta: { loanId: loan._id, type, value, manual: true, adminId },
+            }
+          );
 
-      logger.info({ loanId, penaltyAmount, newOutstanding: loan.outstanding }, 'Admin test penalty applied');
+          loan.outstanding = previousOutstanding + penaltyAmount;
+          // Also counts as today's penalty, so the daily job doesn't charge again today.
+          loan.lastInterestAdded = new Date().toISOString();
+          loan.repayment_history = [
+            ...(loan.repayment_history || []),
+            {
+              amount: penaltyAmount,
+              outstanding: loan.outstanding,
+              action: 'penalty',
+              date: new Date().toISOString(),
+            },
+          ];
+          await loan.save({ session });
+        });
+      } finally {
+        await session.endSession();
+      }
+
+      const rateLabel = type === 'percentage' ? `${value}% of principal` : `N${value.toLocaleString()} fixed`;
+      logger.info({ loanId, adminId, type, value, penaltyAmount, newOutstanding: loan.outstanding }, 'Admin manual penalty applied');
 
       return res.status(200).json({
         status: 'success',
         data: {
           loanId,
           loanAmount: loan.amount,
-          penaltyRate: '1%',
+          penalty: rateLabel,
           penaltyAmount,
           previousOutstanding,
           newOutstanding: loan.outstanding,
@@ -142,7 +209,7 @@ export class TestIntegrationsController {
         },
       });
     } catch (err: any) {
-      logger.error({ error: err.message }, 'Test penalty failed');
+      logger.error({ error: err.message }, 'Manual penalty failed');
       return res.status(500).json({ status: 'failed', message: err.message });
     }
   }
