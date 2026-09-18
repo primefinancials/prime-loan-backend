@@ -36,11 +36,12 @@ export class NotificationService {
       // Admin alerts arrive as one comma-joined string (getMailsByPermission);
       // Resend rejects that as a single malformed address, so split it.
       const recipients = to.split(",").map((a) => a.trim()).filter(Boolean);
-      const { error } = await resendClient.emails.send({ from: EMAIL_FROM, to: recipients, subject, html });
+      const { data, error } = await resendClient.emails.send({ from: EMAIL_FROM, to: recipients, subject, html });
       if (error) {
         emailLogger.error({ to, subject, error: error.message || error }, "Resend send failed");
         throw new Error(`Resend: ${error.message || JSON.stringify(error)}`);
       }
+      emailLogger.info({ to: recipients, subject, id: data?.id }, "Resend email sent");
       return;
     }
     await smtpTransporter.sendMail({ from: EMAIL_FROM, to, subject, html });
