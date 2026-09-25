@@ -316,7 +316,13 @@ export class VfdProvider {
    * DOB format: DD-MMM-YYYY (e.g. 15-Jan-1990)
    */
   async createClientWithNIN(req: { nin: string; dateOfBirth: string }) {
-    const url = `/client/individual?nin=${req.nin}&dateOfBirth=${req.dateOfBirth}`;
+    // BUG FIX: this used to POST to /client/individual with query params.
+    // Per VFD's documentation that path is the BVN *consent* flow, which
+    // expects a JSON body (firstname, lastname, dob, phone, bvn) and leaves
+    // the account on PND until consent completes. Creating an account from
+    // NIN + date of birth is the Tier 1 variant of /client/tiers/individual.
+    const params = new URLSearchParams({ nin: req.nin, dateOfBirth: req.dateOfBirth });
+    const url = `/client/tiers/individual?${params.toString()}`;
     return this.request<CreateClientResponse>({ method: "POST", url, data: {} });
   }
 
