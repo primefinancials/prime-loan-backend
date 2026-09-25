@@ -361,7 +361,12 @@ export class TransferController {
       const events = inPeriod.map((t) => {
         const amt = signed(t);
         const isCredit = amt > 0;
-        const counterparty = t.beneficiaryName || (isCredit ? t.fromAccount : t.toAccount) || "Unknown";
+        // The other party depends on direction: for money received it is the
+        // SENDER, for money sent it is the beneficiary. This used to read
+        // beneficiaryName for both, so every credit line on a statement was
+        // labelled "Received from <the customer's own name>".
+        const counterparty =
+          (isCredit ? t.senderName || t.fromAccount : t.beneficiaryName || t.toAccount) || "Unknown";
         return {
           date: new Date(t.createdAt),
           type: isCredit ? "CREDIT" : amt < 0 ? "DEBIT" : "INFO",
