@@ -67,10 +67,15 @@ export class LoanPenaltiesCron {
     const penaltyRate = settings.loan?.penalty?.percentage ? (settings.loan?.penalty?.dailyRate || 1) / 100 : (settings.loan?.penalty?.dailyRate || 10);
 
     const today = new Date();
-    const todayISO = today.toISOString().split('T')[0];
+    // Day keys in WAT (UTC+1, no DST), so "overdue", "due today" and "due
+    // tomorrow" mean the same thing here as they do to the borrower and in
+    // the admin dashboard. Plain toISOString() reads the UTC day and gets
+    // these wrong for the first hour of every Nigerian day.
+    const watISO = (d: Date) => new Date(d.getTime() + 60 * 60 * 1000).toISOString().split('T')[0];
+    const todayISO = watISO(today);
     const tomorrow = new Date(today);
     tomorrow.setDate(today.getDate() + 1);
-    const tomorrowISO = tomorrow.toISOString().split('T')[0];
+    const tomorrowISO = watISO(tomorrow);
 
     try {
       const loans = await Loan.find({
@@ -91,7 +96,7 @@ export class LoanPenaltiesCron {
 
       for (const loan of loans) {
         try {
-          const repaymentDateISO = new Date(loan.repayment_date).toISOString().split('T')[0];
+          const repaymentDateISO = watISO(new Date(loan.repayment_date));
           const user = await UserService.getUser(loan.userId);
           if (!user || Array.isArray(user)) continue;
 
@@ -292,13 +297,24 @@ export class LoanPenaltiesCron {
         // means it's a fixed Naira amount per day.
         const penaltyConfig = settings.loan?.penalty || { dailyRate: penaltyRate * 100, percentage: true, gracePeriod: 1 };
 
-        const today = new Date();
-        const lastPenaltyDate = loan.lastInterestAdded
-          ? new Date(loan.lastInterestAdded)
-          : new Date(loan.repayment_date);
+        // Penalties accrue per CALENDAR DAY in WAT, not per rolling 24 hours.
+        // BUG FIX: this used to measure whole 24h blocks from the due
+        // timestamp, so a loan due at 14:12 was not penalised until 14:12 the
+        // NEXT day - up to a full day late, and long enough for a borrower to
+        // repay first and never be charged. Now the first penalty is due as
+        // soon as the calendar day rolls over in WAT, which is also how the
+        // loan is shown as "overdue" everywhere else in the platform.
+        const watDayNumber = (d: Date) =>
+          Math.floor((d.getTime() + 60 * 60 * 1000) / (1000 * 60 * 60 * 24));
 
-        const diffTime = today.getTime() - lastPenaltyDate.getTime();
-        const daysSinceLastPenalty = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        const todayDay = watDayNumber(new Date());
+        // Charge from the last day already charged, or from the due date
+        // itself for the first penalty (the due day is not penalised).
+        const lastChargedDay = watDayNumber(
+          loan.lastInterestAdded ? new Date(loan.lastInterestAdded) : new Date(loan.repayment_date)
+        );
+
+        const daysSinceLastPenalty = todayDay - lastChargedDay;
         if (daysSinceLastPenalty <= 0) return 0;
 
         const chargeBase = loan.amount;
