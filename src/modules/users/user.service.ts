@@ -132,59 +132,57 @@ export class UserService {
         // ===============================
         const vfdProvider = UserService.vfdProvider;
 
-        let vfdResponse;
+        let vfdResponse: any;
         let currentTier = 1;
 
-        try {
-            // Strategy 1: BVN + NIN + Address → Tier 3
-            if (bvn && nin && address) {
-                const res = await vfdProvider.createClientWithBVNNIN({
-                    bvn,
-                    nin,
-                    address,
-                    dateOfBirth: dob,
-                });
+        // Each strategy gets its own guard. BUG FIX: all three used to sit in
+        // one try block, so the moment the Tier 3 call threw (a 401, a network
+        // blip, anything) execution jumped straight to the catch and the two
+        // fallbacks never ran at all - the "fallback" only ever worked when
+        // the call succeeded but returned no account number.
+        const attemptErrors: string[] = [];
 
+        const attempt = async (label: string, fn: () => Promise<any>, tier: number) => {
+            if (vfdResponse) return;
+            try {
+                const res = await fn();
                 if (res?.data?.accountNo) {
                     vfdResponse = res;
-                    currentTier = Number(res.data.currentTier ?? 3);
+                    currentTier = Number(res.data.currentTier ?? tier);
+                } else {
+                    attemptErrors.push(`${label}: ${res?.message || "no account number returned"}`);
                 }
+            } catch (err: any) {
+                // Surface VFD's own message ("Unauthorized to use: Contact
+                // Admin", "Invalid BVN", ...) rather than axios's generic one.
+                const vfdMessage = err?.response?.data?.message || err?.message || "unknown error";
+                attemptErrors.push(`${label}: ${vfdMessage}`);
             }
+        };
 
-            // Strategy 2: NIN only → Tier 1 (fallback if previous failed)
-            if (!vfdResponse && nin) {
-                const res = await vfdProvider.createClientWithNIN({
-                    nin,
-                    dateOfBirth: dob,
-                });
+        // Strategy 1: BVN + NIN + Address -> Tier 3
+        if (bvn && nin && address) {
+            await attempt("tier3(bvn+nin+address)", () => vfdProvider.createClientWithBVNNIN({
+                bvn, nin, address, dateOfBirth: dob,
+            }), 3);
+        }
 
-                if (res?.data?.accountNo) {
-                    vfdResponse = res;
-                    currentTier = 1;
-                }
-            }
+        // Strategy 2: NIN only -> Tier 1
+        if (nin) {
+            await attempt("tier1(nin)", () => vfdProvider.createClientWithNIN({
+                nin, dateOfBirth: dob,
+            }), 1);
+        }
 
-            // Strategy 3: BVN only → Tier 1 legacy fallback
-            if (!vfdResponse && bvn) {
-                const res = await vfdProvider.createClient({
-                    bvn,
-                    dob,
-                });
+        // Strategy 3: BVN only -> Tier 1 legacy fallback
+        if (bvn) {
+            await attempt("tier1(bvn)", () => vfdProvider.createClient({ bvn, dob }), 1);
+        }
 
-                if (res?.data?.accountNo) {
-                    vfdResponse = res;
-                    currentTier = 1;
-                }
-            }
-
-            if (!vfdResponse?.data?.accountNo) {
-                throw new BadRequestError(
-                    "Failed to create bank account. Please verify your BVN/NIN and date of birth."
-                );
-            }
-        } catch (err) {
+        if (!vfdResponse?.data?.accountNo) {
+            console.error(JSON.stringify({ msg: "VFD account creation failed", attemptErrors }));
             throw new BadRequestError(
-                "VFD account creation failed: " + (err as Error).message
+                `Failed to create bank account. ${attemptErrors.join(" | ")}`
             );
         }
 
