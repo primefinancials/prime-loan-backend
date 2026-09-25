@@ -14,6 +14,7 @@
  */
 import axios, { AxiosRequestConfig, AxiosError } from "axios";
 import https from "https";
+import pino from "pino";
 import { generateBearerToken, clearBearerToken } from "../utils/generateBearerToken";
 import { customerKey, customerSecret, baseUrl } from "../../config";
 
@@ -234,6 +235,8 @@ export interface VfdBillPayRequest {
 
 /* ---------- PROVIDER CLASS ---------- */
 
+const vfdLogger = pino({ name: "vfd-provider" });
+
 export class VfdProvider {
   private billsBaseUrl = "https://api-apps.vfdbank.systems/vtech-bills/api/v2/billspaymentstore/";
   private kycBaseUrl = "https://api-apps.vfdbank.systems/vtech-kyc/api/v2/kyc/";
@@ -272,6 +275,21 @@ export class VfdProvider {
         const retryConfig = { ...config, url: (config.url || "").replace(baseUrl, "") };
         return this.request<T>(retryConfig, true);
       }
+      // Log what VFD actually said. Axios's own message is only "Request
+      // failed with status code 401", which hides the provider's reason
+      // (e.g. an unsubscribed API product vs. a rejected token) and made
+      // these failures impossible to diagnose from the logs alone.
+      vfdLogger.error(
+        {
+          status: axiosError.response?.status,
+          method: (config.method || "get").toUpperCase(),
+          // Query strings carry BVN/NIN, so log the path only.
+          url: String(config.url || "").split("?")[0],
+          vfdResponse: axiosError.response?.data,
+          isRetry,
+        },
+        "VFD request failed"
+      );
       throw error;
     }
   }

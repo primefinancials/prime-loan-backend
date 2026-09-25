@@ -58,9 +58,20 @@ export const generateBearerToken = async (consumerKey: string, consumerSecret: s
 
       cachedToken = response?.data?.data?.access_token || response?.data?.access_token || "";
       tokenPromise = null;
-      
+
       if (!cachedToken) {
         console.warn("VFD Token generation returned an empty token!", response.data);
+      } else {
+        // Which auth host issued the token, so a token/base-URL environment
+        // mismatch (test token against the live API, or vice versa) is
+        // visible in the logs instead of surfacing as an opaque 401.
+        console.info(
+          JSON.stringify({
+            msg: "VFD token issued",
+            authUrl,
+            tokenLength: cachedToken.length,
+          })
+        );
       }
       
       return cachedToken as string;
