@@ -105,6 +105,7 @@ export class BillPaymentsPoller {
       const { PayBetaProvider } = await import('../../shared/providers/paybeta.provider');
       const { InfluencerService } = await import('../../modules/influencer/influencer.service');
       const payBeta = new PayBetaProvider();
+      const vfdProvider = new VfdProvider();
 
       await Promise.all(
         pendingPayments.map((payment) =>
@@ -122,11 +123,28 @@ export class BillPaymentsPoller {
                 return;
               }
 
-              const provider = payment.meta?.provider || 'flutterwave';
+              // BUG FIX: this defaulted to Flutterwave, but VFD is the active
+              // provider, so every VFD purchase was queried against the wrong
+              // API and could never resolve.
+              const provider = payment.meta?.provider || 'vfd';
               let isSuccess = false;
               let isFailed = false;
 
-              if (provider === 'paybeta') {
+              // Without a provider reference there is nothing to query. Leave
+              // it for the stale sweep rather than calling `/v3/bills/undefined`.
+              if (!payment.providerRef) {
+                await WorkerLogService.log('bill-payments-poller', 'warn',
+                  `Payment ${payment._id} has no provider reference - cannot query status`,
+                  { paymentId: payment._id });
+                return;
+              }
+
+              if (provider === 'vfd') {
+                const vfdResp: any = await vfdProvider.queryTransaction(payment.providerRef);
+                const txStatus = String(vfdResp?.data?.transactionStatus || vfdResp?.data?.status || '').toLowerCase();
+                isSuccess = vfdResp?.status === '00' && (txStatus === '00' || txStatus.includes('success'));
+                isFailed = txStatus.includes('fail') || txStatus.includes('revers');
+              } else if (provider === 'paybeta') {
                 const pbResp = await payBeta.queryTransaction(payment.providerRef || "");
                 isSuccess = pbResp.status === 'successful';
                 isFailed = pbResp.status === 'failed';
@@ -144,7 +162,7 @@ export class BillPaymentsPoller {
                     payment.processedAt = new Date();
                     await payment.save({ session });
 
-                    await LedgerService.updateStatus(payment.traceId, 'COMPLETED', session);
+                    await LedgerService.updateStatusByTraceId(payment.traceId, 'COMPLETED', session);
 
                     // Trigger Commission on SUCCESSFUL resolution
                     try {
@@ -161,6 +179,17 @@ export class BillPaymentsPoller {
 
                     logger.info({ billPaymentId: payment._id }, 'Bill payment resolved as COMPLETED via poller');
                   });
+
+                  // Settle the wallet debit too. Without this the bill showed
+                  // COMPLETED while its transfer row sat on PENDING forever,
+                  // which is what made the two histories disagree.
+                  try {
+                    const { Transfer } = await import('../../modules/transfers/transfer.model');
+                    const debit = await Transfer.findOne({ traceId: payment.traceId, status: 'PENDING' });
+                    if (debit) await TransferService.completeTransfer(debit.reference, 'bill-payment');
+                  } catch (tErr: any) {
+                    logger.warn({ billPaymentId: payment._id, error: tErr.message }, 'Could not settle wallet debit after poll');
+                  }
                 } finally {
                   await session.endSession();
                 }

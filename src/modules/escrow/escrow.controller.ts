@@ -11,7 +11,15 @@ export class EscrowController {
      */
     static async createP2P(req: ProtectedRequest, res: Response, next: NextFunction) {
         try {
-            const { sellerEmail, amount, description, expiryDays, referralCode } = req.body;
+            // BUG FIX: `items`, the buyer's uploaded media and the expected
+            // delivery date were not destructured here, so they were never
+            // forwarded to the service. Every P2P deal was saved with
+            // `items: []`, which is why the seller's detail screen showed
+            // "Items (0)" with no product name, quantity or photo.
+            const {
+                sellerEmail, amount, description, expiryDays, referralCode,
+                items, attachments, deliveryDate,
+            } = req.body;
             const userId = req.user!._id.toString();
 
             const escrow = await EscrowService.createEscrow({
@@ -20,6 +28,9 @@ export class EscrowController {
                 type: 'p2p',
                 amount,
                 description,
+                items,
+                attachments,
+                expectedDeliveryDate: deliveryDate,
                 inspectionPeriodDays: expiryDays,
                 referralCode,
             });

@@ -91,6 +91,30 @@ export class LedgerService {
   /**
    * Update ledger entry status
    */
+  /**
+   * Update every ledger entry sharing a trace id.
+   *
+   * `updateStatus` takes a ledger entry _id. Callers that had only a traceId
+   * (the transfers and bill-payment pollers) were passing the traceId into it,
+   * which cast-errors on an ObjectId field and aborted the surrounding
+   * transaction - silently rolling back the COMPLETED status they had just
+   * written.
+   */
+  static async updateStatusByTraceId(
+    traceId: string,
+    status: 'PENDING' | 'COMPLETED' | 'FAILED',
+    session?: mongoose.ClientSession
+  ): Promise<void> {
+    await LedgerEntry.updateMany(
+      { traceId },
+      {
+        status,
+        ...(status !== 'PENDING' ? { processedAt: new Date() } : {}),
+      },
+      { session }
+    );
+  }
+
   static async updateStatus(
     entryId: string,
     status: 'PENDING' | 'COMPLETED' | 'FAILED',

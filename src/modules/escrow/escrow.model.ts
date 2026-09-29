@@ -26,6 +26,13 @@ export interface IEscrowTransaction extends Document {
     status: EscrowStatus;
     description?: string;
     items: IEscrowItem[];
+    // Photos/videos the buyer uploaded when creating the deal. These used to
+    // be flattened into the description as markdown links, so the seller saw
+    // raw "[name](url)" text instead of the actual evidence of the item.
+    attachments?: { url: string; type?: string; name?: string }[];
+    // What the buyer asked for. Distinct from `deliveryDate`, which is only
+    // set later when the SELLER marks the goods as delivered.
+    expectedDeliveryDate?: Date;
     inviteEmail?: string;
     rejectionReason?: string;
     chatRoomId?: string;
@@ -74,6 +81,13 @@ const EscrowTransactionSchema = new Schema<IEscrowTransaction>({
 
     description: { type: String },
     items: [EscrowItemSchema],
+    attachments: [{
+        url: { type: String, required: true },
+        type: { type: String },
+        name: { type: String },
+        _id: false,
+    }],
+    expectedDeliveryDate: { type: Date },
 
     inviteEmail: { type: String },
     rejectionReason: { type: String },
