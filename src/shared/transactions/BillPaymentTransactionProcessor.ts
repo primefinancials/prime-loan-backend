@@ -45,6 +45,17 @@ export async function processTransaction({
     throw new Error("Invalid amount");
   }
 
+  // Which provider is actually configured, recorded on the payment so the
+  // poller asks the right one about it later.
+  let activeBillProvider = "vfd";
+  try {
+    const { SettingsService } = await import("../../modules/admin/settings.service");
+    const settings = await SettingsService.getSettings();
+    activeBillProvider = (settings as any)?.billPaymentProvider || "vfd";
+  } catch {
+    /* fall back to the documented default */
+  }
+
   const session = await DatabaseService.startSession();
 
   try {
@@ -61,7 +72,7 @@ export async function processTransaction({
             amount,
             status: "PENDING",
             referralCode,
-            meta: { originalAmount: amount },
+            meta: { originalAmount: amount, provider: activeBillProvider },
           },
         ],
         { session }
@@ -124,6 +135,21 @@ export async function processTransaction({
           providerStatus === "pending" ||
           providerStatus === "processing" ||
           providerStatus === "initiated";
+
+        // BUG FIX: providerRef was never written anywhere, so the poller's
+        // status query hit `/v3/bills/undefined` and could never resolve a
+        // pending purchase - it just aged into MANUAL_REVIEW after 24h. The
+        // active provider was never recorded either, so the poller always
+        // asked Flutterwave about payments that VFD had processed.
+        const resolvedProviderRef =
+          providerResponse?.reference ||
+          providerResponse?.data?.reference ||
+          providerResponse?.data?.flw_ref ||
+          providerResponse?.data?.tx_ref ||
+          providerResponse?.data?.transactionId ||
+          undefined;
+        if (resolvedProviderRef) billPayment.providerRef = String(resolvedProviderRef);
+        billPayment.meta = { ...billPayment.meta, provider: activeBillProvider };
 
         if (isSuccess) {
           // ✅ 4A. Provider confirmed success — persist COMPLETED status immediately

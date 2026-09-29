@@ -36,7 +36,27 @@ export class AdminTransferController {
       const fromAccountData = primeAccount.data;
       const transferType = bankCode === "999999" ? "intra" : "inter";
 
-      let ref = randomUUID();
+      // BUG FIX: this used to fire a bare VFD transfer with a random
+      // reference and no record at all, so company payouts never appeared in
+      // any transaction list, ledger or statement - and for intra transfers
+      // the receiving user got nothing either, because the wallet-alert
+      // webhook deliberately skips intra credits on the assumption the
+      // sending side recorded them.
+      const initResult = await TransferService.initiateTransfer({
+        fromAccount: fromAccountData.accountNo,
+        toAccount,
+        amount,
+        bankCode,
+        beneficiaryName: beneficiaryName || "Unknown",
+        senderName: fromAccountData.client,
+        remark: remark || "Company Transfer",
+        transferType,
+        walletBalance: fromAccountData.accountBalance,
+        userId: String(admin?._id || "admin-system"),
+        skipBalanceCheck: true,
+      }, "transfer");
+
+      const ref = initResult.reference;
 
       // 3. Execute VFD Transfer
       const transferReq = {
@@ -54,13 +74,23 @@ export class AdminTransferController {
         reference: ref
       };
 
-      const vfdResponse = await AdminTransferController.vfdProvider.transfer(transferReq);
-
-      if (vfdResponse.status === "00") {
-        return res.status(200).json({ status: "success", data: { reference: ref, vfd: vfdResponse.data } });
-      } else {
-        return res.status(400).json({ status: "failed", message: vfdResponse.message || "VFD Transfer failed", data: vfdResponse });
+      let vfdResponse;
+      try {
+        vfdResponse = await AdminTransferController.vfdProvider.transfer(transferReq);
+      } catch (err: any) {
+        await TransferService.failTransfer(ref);
+        throw err;
       }
+
+      // Settle the record either way. Leaving it untouched is what kept
+      // admin transfers sitting on PENDING forever.
+      if (vfdResponse.status === "00") {
+        await TransferService.completeTransfer(ref, "transfer");
+        return res.status(200).json({ status: "success", data: { reference: ref, vfd: vfdResponse.data } });
+      }
+
+      await TransferService.failTransfer(ref);
+      return res.status(400).json({ status: "failed", message: vfdResponse.message || "VFD Transfer failed", data: vfdResponse });
 
     } catch (error: any) {
       logger.error({ error: error.message }, "Company transfer failed");
@@ -126,13 +156,25 @@ export class AdminTransferController {
         reference: initResult.reference,
       };
 
-      const vfdResponse = await AdminTransferController.vfdProvider.transfer(transferReq);
-
-      if (vfdResponse.status === "00") {
-        return res.status(200).json({ status: "success", data: { reference: initResult.reference, vfd: vfdResponse.data } });
-      } else {
-        return res.status(400).json({ status: "failed", message: vfdResponse.message || "VFD Transfer failed", data: vfdResponse });
+      let vfdResponse;
+      try {
+        vfdResponse = await AdminTransferController.vfdProvider.transfer(transferReq);
+      } catch (err: any) {
+        // A thrown provider error left the record PENDING forever.
+        await TransferService.failTransfer(initResult.reference);
+        throw err;
       }
+
+      // BUG FIX: the pending record created above was never settled, so every
+      // admin-initiated transfer stayed on PENDING regardless of whether the
+      // money actually moved.
+      if (vfdResponse.status === "00") {
+        await TransferService.completeTransfer(initResult.reference, "transfer");
+        return res.status(200).json({ status: "success", data: { reference: initResult.reference, vfd: vfdResponse.data } });
+      }
+
+      await TransferService.failTransfer(initResult.reference);
+      return res.status(400).json({ status: "failed", message: vfdResponse.message || "VFD Transfer failed", data: vfdResponse });
 
     } catch (error: any) {
       logger.error({ error: error.message }, "User-delegated transfer failed");
