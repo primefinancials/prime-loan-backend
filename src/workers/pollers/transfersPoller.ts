@@ -131,6 +131,34 @@ export class TransfersPoller {
         const txStatus = providerStatus.data?.transactionStatus || providerStatus.data?.status || '';
         const mappedStatus = String(txStatus).toUpperCase();
 
+        // Always record what the provider last said, so a transfer sitting on
+        // PENDING can be explained ("still pending at VFD") instead of being
+        // an unexplained stuck row in the admin's transaction list.
+        transfer.meta = {
+          ...transfer.meta,
+          providerStatus: providerStatus.status,
+          providerMessage: providerStatus.message,
+          providerTransactionStatus: txStatus || null,
+          lastProviderCheckAt: new Date().toISOString(),
+        };
+
+        // The provider has no record of this reference. That means the
+        // transfer never actually reached VFD, so no money moved and it can
+        // be settled as failed once past a short grace period - rather than
+        // sitting PENDING for 24 hours before being parked in MANUAL_REVIEW.
+        const notFound = !callSuccess &&
+          /not\s*found|does\s*not\s*exist|no\s*record|invalid\s*(transaction|reference)/i.test(
+            `${providerStatus.message || ''} ${txStatus || ''}`
+          );
+        const NOT_FOUND_GRACE_MS = 15 * 60 * 1000;
+        if (notFound && Date.now() - new Date(transfer.createdAt).getTime() > NOT_FOUND_GRACE_MS) {
+          await WorkerLogService.log('transfers-poller', 'warn',
+            'Provider has no record of this transfer - settling as failed',
+            { transferId: transfer._id, reference: transfer.reference, providerMessage: providerStatus.message });
+          await this.refundTransfer(transfer, session);
+          return;
+        }
+
         // Optimization: Handle "Success at Provider" -> Complete
         if (callSuccess && (mappedStatus === '00' || mappedStatus === 'SUCCESS' || mappedStatus === 'SUCCESSFUL')) {
           // Transfer successful
@@ -141,7 +169,7 @@ export class TransfersPoller {
           await WorkerLogService.log('transfers-poller', 'info', 'Transfer completed', { transferId: transfer._id });
 
           // Complete ledger entries
-          await LedgerService.updateStatus(transfer.traceId, 'COMPLETED', session);
+          await LedgerService.updateStatusByTraceId(transfer.traceId, 'COMPLETED', session);
 
           // Create credit entry for beneficiary if intra-bank
           if (transfer.transferType === 'intra') {
@@ -158,8 +186,11 @@ export class TransfersPoller {
         } else if (providerStatus.status === 'FAILED' || providerStatus.status === 'failed' || mappedStatus === 'FAILED' || mappedStatus === 'ERROR') {
           // Transfer failed - refund user
           await this.refundTransfer(transfer, session);
+        } else {
+          // Genuinely still in flight at the provider. Keep it PENDING, but
+          // persist the provider's answer so it is visible why.
+          await transfer.save({ session });
         }
-        // If still pending, continue polling
       });
     } finally {
       await session.endSession();

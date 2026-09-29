@@ -27,6 +27,8 @@ export class EscrowService {
         amount: number;
         description: string;
         items?: any[];
+        attachments?: { url: string; type?: string; name?: string }[];
+        expectedDeliveryDate?: string | Date;
         inspectionPeriodDays?: number; // Days allowed for inspection after delivery
         referralCode?: string;
     }) {
@@ -77,6 +79,8 @@ export class EscrowService {
             totalAmount,
             description: params.description,
             items: params.items || [],
+            attachments: params.attachments || [],
+            expectedDeliveryDate: params.expectedDeliveryDate ? new Date(params.expectedDeliveryDate) : undefined,
             status: 'INITIALIZING',
             inviteEmail,
             inspectionPeriod,

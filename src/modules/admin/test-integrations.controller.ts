@@ -466,8 +466,23 @@ export class TestIntegrationsController {
         reference: initResult.reference || randomUUID(),
       };
 
-      const vfdResponse = await vfdProvider.transfer(transferReq);
+      let vfdResponse;
+      try {
+        vfdResponse = await vfdProvider.transfer(transferReq);
+      } catch (err: any) {
+        // Without this the record stayed PENDING forever on a provider error.
+        await TransferService.failTransfer(initResult.reference);
+        throw err;
+      }
       logger.info({ traceId: initResult.traceId, vfdStatus: vfdResponse.status }, 'VFD transfer completed');
+
+      // BUG FIX: the pending record was never settled here either, so admin
+      // transfers made from this screen sat on PENDING whatever the outcome.
+      if (vfdResponse.status === '00') {
+        await TransferService.completeTransfer(initResult.reference, 'transfer');
+      } else {
+        await TransferService.failTransfer(initResult.reference);
+      }
 
       return res.status(200).json({
         status: vfdResponse.status === '00' ? 'success' : 'failed',
