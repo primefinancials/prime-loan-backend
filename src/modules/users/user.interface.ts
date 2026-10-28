@@ -189,7 +189,7 @@ export interface UPDATEUSER {
 }
 
 export interface ActivityEvent {
-  type: "loan" | "savings" | "bill_payment" | "transfer";
+  type: "loan" | "savings" | "bill_payment" | "transfer" | "fee";
   id: string;
   amount?: number;
   status: string;

@@ -52,7 +52,14 @@ export class TransferController {
         });
       }
 
-      const userAccount = await TransferController.vfdProvider.getAccountInfo(fromAccount);
+      // PERF: this used to call VFD's getAccountInfo(fromAccount) here purely
+      // to pass `walletBalance` into initiateTransfer - but nothing ever reads
+      // that field. completeTransfer re-reads the real balance from VFD and
+      // writes it onto the record itself. So this was a network round trip to
+      // the bank, on every transfer, for a value that is thrown away. The
+      // balance gate above already trusts `req.user.user_metadata.wallet`, so
+      // the snapshot uses the same in-memory value.
+      const walletBalanceSnapshot = String(req.user?.user_metadata?.wallet ?? 0);
 
       // BUG FIX: this used to skip initiateTransfer/completeTransfer entirely
       // for intra (Prime-to-Prime, toBank==="999999") transfers - real money
@@ -74,7 +81,7 @@ export class TransferController {
         bankCode: toBank,
         remark,
         idempotencyKey,
-        walletBalance: String(userAccount.data.accountBalance),
+        walletBalance: walletBalanceSnapshot,
       });
 
       const transferReq: TransferRequest = {
@@ -102,12 +109,45 @@ export class TransferController {
         if (providerResp.status === "00") {
           await TransferService.completeTransfer(result.reference, "transfer");
 
-          await TransferController.profitService.recordRealizedProfit({
-            amount: profit,
-            source: "transaction",
-            userId: userId as any,
-            reference: UuidService.generate(),
-          });
+          // PERF: collecting our fee is a SECOND, complete VFD transfer -
+          // sweeping the fee from the user's account into Prime's - plus two
+          // more account lookups and its own set of DB writes. Awaiting it
+          // here meant the user sat watching a spinner while we moved our own
+          // money, long after their transfer had already settled. That is the
+          // single biggest reason transfers felt slow.
+          //
+          // The profit row is written synchronously (one insert, cheap) so
+          // the fee can never be lost, and the sweep itself is kicked off
+          // without blocking the response. If it fails, the profit stays
+          // unrealized and the profit-realization worker retries it - which
+          // is exactly what that worker already exists to do.
+          const feeReference = UuidService.generate();
+
+          if (profit > 0) {
+            await TransferController.profitService.recordProfit({
+              reference: feeReference,
+              userId: userId as any,
+              source: "transaction",
+              amount: profit,
+              type: "unrealized",
+            });
+
+            setImmediate(() => {
+              TransferController.profitService
+                .recordRealizedProfit({
+                  amount: profit,
+                  source: "transaction",
+                  userId: userId as any,
+                  reference: feeReference,
+                })
+                .catch((err: any) => {
+                  console.error(
+                    `Deferred fee collection failed for ${feeReference}; the profit-realization worker will retry it:`,
+                    err?.message || err
+                  );
+                });
+            });
+          }
 
           return res.status(200).json({
             status: "success",

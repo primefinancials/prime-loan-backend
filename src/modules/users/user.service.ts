@@ -739,13 +739,22 @@ export class UserService {
 
         // Transfers
         transfers.data.forEach((t) => {
+            // Platform fees are swept out of the user's account as real
+            // transfers, so without this they showed up in the user's own
+            // history as "Transfer of ₦25 to 1234567890" - an unexplained
+            // payment to an account number they have never seen. Give them
+            // their own type and their own wording.
+            const isFee = (t as any).category === 'fee';
+
             activity.push({
-                type: "transfer",
+                type: isFee ? "fee" : "transfer",
                 id: t._id as any,
                 amount: t.amount,
                 status: t.status,
                 date: new Date(t.createdAt),
-                description: `Transfer of ₦${t.amount} to ${t.toAccount}`,
+                description: isFee
+                    ? `${t.remark || 'Service fee'} of ₦${t.amount}`
+                    : `Transfer of ₦${t.amount} to ${t.toAccount}`,
                 isUser: t.fromAccount == user?.user_metadata.accountNo,
                 meta: { beneficiary: t.beneficiaryName }
             });

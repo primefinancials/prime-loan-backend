@@ -16,6 +16,7 @@ import { SettingsService } from '../admin/settings.service';
 import Loan from '../loans/loan.model';
 import { LoanService } from '../loans/loan.service';
 import pino from 'pino';
+import { applyWithholdingTax, TAX_PAYABLE_ACCOUNT } from "./withholding-tax";
 import { NotFoundError } from '../../exceptions';
 
 const logger = pino({ name: 'savings-service' });
@@ -667,9 +668,23 @@ export class SavingsService {
         }
 
         // Add Interest if Matured (Fixed)
+        //
+        // Interest on a matured fixed plan is subject to withholding tax,
+        // which comes off the interest only - the saver's principal is never
+        // touched by it. The same deduction is applied by the maturities
+        // worker, so a plan pays the same tax whether it is paid out
+        // automatically on its maturity date or withdrawn by hand afterwards.
+        let grossInterest = 0;
+        let withholdingTax = 0;
+        let netInterest = 0;
+
         if (plan.maturityDate && now >= plan.maturityDate) {
           const interest = Math.floor(plan.principal * (plan.interestRate || 0.1) * ((plan.durationDays || 21) / 365));
-          initialNetAmount = amount + interest;
+          const tax = applyWithholdingTax(interest, setting);
+          grossInterest = tax.grossInterest;
+          withholdingTax = tax.withholdingTax;
+          netInterest = tax.netInterest;
+          initialNetAmount = amount + netInterest;
         }
 
         // 1. Auto-deduct loan internally BEFORE VFD transfer
@@ -743,6 +758,14 @@ export class SavingsService {
           }, session);
         }
 
+        // Tax withheld is owed to the tax authority, not earned by the
+        // platform, so it is booked to tax_payable and kept out of revenue.
+        if (withholdingTax > 0) {
+          await LedgerService.createEntry({
+            traceId, userId: params.userId, account: TAX_PAYABLE_ACCOUNT, entryType: 'CREDIT', category: 'savings', subtype: 'withholding_tax', amount: withholdingTax, status: 'COMPLETED', meta: { planId: plan._id, reason: 'Withholding tax on fixed savings interest', grossInterest }
+          }, session);
+        }
+
         plan.principal -= amount;
         if (isEarlyWithdrawal || plan.principal <= 0) {
           plan.status = 'COMPLETED';
@@ -758,6 +781,8 @@ export class SavingsService {
           amount,
           penalty,
           netAmount: initialNetAmount,
+          grossInterest,
+          withholdingTax,
           initiated: new Date(),
           completed: new Date(),
           earlyWithdrawal: !!isEarlyWithdrawal,
@@ -766,6 +791,11 @@ export class SavingsService {
           transactionId: trxn?.reference
         });
 
+        if (grossInterest > 0) {
+          plan.interestEarned = netInterest;
+          plan.withholdingTax = (Number(plan.withholdingTax) || 0) + withholdingTax;
+        }
+
         await plan.save({ session });
 
         return {
@@ -773,6 +803,9 @@ export class SavingsService {
           transactionId: trxn?.reference,
           withdrawnAmount: amount,
           penalty,
+          grossInterest,
+          withholdingTax,
+          netInterest,
           deductAmount,
           initialNetAmount,
           amountDisbursed: amountToDisburse,
