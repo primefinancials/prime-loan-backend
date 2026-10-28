@@ -48,11 +48,25 @@ export interface TransferResult {
 export class TransferService {
   private static vfdProvider = new VfdProvider();
   /**
+   * Map the internal movement type onto the coarser category a customer sees
+   * in their own history. Anything not called out here is an ordinary
+   * transfer as far as the user is concerned.
+   */
+  private static categoryForType(type: string): string {
+    if (type === 'fee') return 'fee';
+    if (type === 'bill-payment') return 'bill-payment';
+    if (type.startsWith('savings')) return 'savings-withdrawal';
+    if (type.startsWith('loan')) return 'loan';
+    if (type.startsWith('escrow')) return 'escrow';
+    return 'transfer';
+  }
+
+  /**
    * Initiate transfer (pending debit entry)
    */
   static async initiateTransfer(
     request: InitiateTransferRequest,
-    type: "bill-payment" | "transfer" | "savings-deposit" | "savings-withdrawal" | "loan-disbursement" | "loan-repayment" | "escrow-funding" | "escrow-payout" | "escrow-resolution" = "transfer"
+    type: "bill-payment" | "transfer" | "fee" | "savings-deposit" | "savings-withdrawal" | "loan-disbursement" | "loan-repayment" | "escrow-funding" | "escrow-payout" | "escrow-resolution" = "transfer"
   ): Promise<TransferResult> {
     const traceId = UuidService.generateTraceId();
     const reference = `TXN_${UuidService.generate().substring(0, 8).toUpperCase()}`;
@@ -130,6 +144,7 @@ export class TransferService {
               (user ? `${user.user_metadata?.first_name || ""} ${user.user_metadata?.surname || ""}`.trim() : "") ||
               undefined,
             reference,
+            category: TransferService.categoryForType(type),
             idempotencyKey: request.idempotencyKey ? `${type}:${request.idempotencyKey}` : undefined,
             remark: request.remark,
             bankCode: request.bankCode,
@@ -142,7 +157,7 @@ export class TransferService {
 
           if (user) {
             // Create debit ledger entry ONLY for basic transfers to avoid double-entry with domain services
-            if (type === 'transfer') {
+            if (type === 'transfer' || type === 'fee') {
               await LedgerService.createEntry({
                 traceId,
                 userId: user._id as any,

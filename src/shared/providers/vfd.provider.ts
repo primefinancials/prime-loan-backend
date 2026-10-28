@@ -244,6 +244,23 @@ export class VfdProvider {
 
   constructor() { }
 
+  /**
+   * A burst of 401s should cause one re-authentication, not one per request.
+   * Without this, a few concurrent failures each throw away the token the
+   * previous one just fetched.
+   */
+  private static lastTokenFlushAt = 0;
+  private static readonly TOKEN_FLUSH_COOLDOWN_MS = 5000;
+
+  private static allowTokenFlush(): boolean {
+    const now = Date.now();
+    if (now - VfdProvider.lastTokenFlushAt < VfdProvider.TOKEN_FLUSH_COOLDOWN_MS) {
+      return false;
+    }
+    VfdProvider.lastTokenFlushAt = now;
+    return true;
+  }
+
   private async request<T>(config: AxiosRequestConfig, isRetry = false): Promise<T> {
     const accessToken = await generateBearerToken(customerKey, customerSecret);
 
@@ -270,7 +287,28 @@ export class VfdProvider {
       return response.data as T;
     } catch (error) {
       const axiosError = error as AxiosError;
-      if ((axiosError.response?.status === 401 || axiosError.response?.status === 403) && !isRetry) {
+      const status = axiosError.response?.status;
+
+      // PERF/CORRECTNESS: this used to clear the SHARED bearer token on any
+      // 401 or 403 and retry. VFD returns those for two very different
+      // reasons, and treating them alike was costly:
+      //
+      //   - the token is bad/expired  -> clearing it is right
+      //   - this account is not permitted to use that API product (VFD says
+      //     "Unauthorized to use: Contact Admin") -> the token is perfectly
+      //     good, and clearing it only forces a fresh auth round trip
+      //
+      // The tiered-KYC endpoints and the live-balance lookup return the second
+      // kind constantly, so one user loading their profile would wipe the
+      // token for everybody, and the next transfer had to re-authenticate
+      // before it could even start. Only flush on a genuine token failure.
+      const providerMessage = String(
+        (axiosError.response?.data as any)?.message ?? ""
+      );
+      const isPermissionProblem =
+        status === 403 || /unauthorized to use|contact admin|not subscribed/i.test(providerMessage);
+
+      if (status === 401 && !isPermissionProblem && !isRetry && VfdProvider.allowTokenFlush()) {
         clearBearerToken();
         const retryConfig = { ...config, url: (config.url || "").replace(baseUrl, "") };
         return this.request<T>(retryConfig, true);

@@ -72,6 +72,16 @@ export class SettingsService {
       });
     }
 
+    // Withholding tax on fixed-savings interest was added after launch, so
+    // settings documents written before then have no value for it. Fill in
+    // the default rather than leaving it undefined, otherwise the admin's
+    // savings screen renders an empty field and saving it back would write a
+    // zero rate.
+    if (settings.savings?.fixed && settings.savings.fixed.withholdingTaxRate === undefined) {
+      settings.savings.fixed.withholdingTaxRate = 10;
+      await settings.save();
+    }
+
     // Ensure nested objects exist for old documents (migration on read)
     if (!settings.savings || !settings.savings.fixed) {
       settings.savings = {
@@ -80,6 +90,7 @@ export class SettingsService {
           minDurationMonths: 3,
           interestRate: 10,
           penaltyRate: 5,
+          withholdingTaxRate: 10,
           earlyWithdrawal: { type: 'immediate', delayDays: 0 }
         },
         flexible: {

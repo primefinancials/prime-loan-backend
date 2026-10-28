@@ -33,6 +33,14 @@ export interface ISettings extends Document {
       minDurationMonths: number; // minimum months (e.g., 3)
       interestRate: number; // percentage (e.g., 10 for 10%)
       penaltyRate: number;  // percentage (e.g., 5 for 5%)
+      /**
+       * Withholding tax on interest earned, as a percentage (e.g., 10 for 10%).
+       * Deducted from the INTEREST only - never from the saver's principal -
+       * at the moment the plan pays out. Nigeria charges WHT on investment
+       * income, and the platform withholds it on the saver's behalf, so it is
+       * booked to `tax_payable` for remittance rather than to platform revenue.
+       */
+      withholdingTaxRate: number;
       earlyWithdrawal: {
         type: 'immediate' | 'delayed';
         delayDays: number;
@@ -214,6 +222,7 @@ const SettingsSchema = new Schema<ISettings>(
         minDurationMonths: { type: Number, default: 3 }, // 3 months minimum
         interestRate: { type: Number, default: 10 },
         penaltyRate: { type: Number, default: 5 },
+        withholdingTaxRate: { type: Number, default: 10 },
         earlyWithdrawal: {
           type: { type: String, enum: ['immediate', 'delayed'], default: 'immediate' },
           delayDays: { type: Number, default: 0 }

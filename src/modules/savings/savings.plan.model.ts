@@ -13,7 +13,9 @@ export interface ISavingsPlan extends Document {
   planType: 'LOCKED' | 'FLEXIBLE';
   subType?: 'STANDARD' | 'INSTANT';
   principal: number; // in kobo
-  interestEarned: number; // in kobo
+  interestEarned: number; // in kobo, net of withholding tax for fixed plans
+  /** Withholding tax deducted from this plan's interest at payout. */
+  withholdingTax?: number;
   targetAmount?: number; // in kobo
   durationDays?: number;
   durationMonths?: number; // For Fixed plans (alternative to days)
@@ -48,6 +50,10 @@ export interface ISavingsPlan extends Document {
     amount: number;
     penalty: number;
     netAmount: number;
+    /** Interest earned before withholding tax (fixed plans at maturity). */
+    grossInterest?: number;
+    /** Withholding tax deducted from grossInterest on this payout. */
+    withholdingTax?: number;
     scheduledDate?: Date;
     initiated: Date;
     completed?: Date | null;
@@ -75,6 +81,7 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
   subType: { type: String, enum: ['STANDARD', 'INSTANT'] },
   principal: { type: Number, required: true, default: 0 },
   interestEarned: { type: Number, default: 0 },
+  withholdingTax: { type: Number, default: 0 },
   targetAmount: { type: Number },
   durationDays: { type: Number },
   durationMonths: { type: Number }, // Fixed plans: duration in months
@@ -113,6 +120,8 @@ const SavingsPlanSchema = new Schema<ISavingsPlan>({
     amount: { type: Number, required: true },
     penalty: { type: Number, default: 0 },
     netAmount: { type: Number, required: true },
+    grossInterest: { type: Number, default: 0 },
+    withholdingTax: { type: Number, default: 0 },
     scheduledDate: { type: Date },
     initiated: { type: Date, default: Date.now },
     completed: { type: Date, default: null },

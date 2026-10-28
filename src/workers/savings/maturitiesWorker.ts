@@ -8,6 +8,7 @@ import { SavingsPlan } from '../../modules/savings/savings.plan.model';
 import { LedgerService } from '../../modules/ledger/LedgerService';
 import { DatabaseService } from '../../shared/db';
 import { UuidService } from '../../shared/utils/uuid';
+import { applyWithholdingTax, TAX_PAYABLE_ACCOUNT } from "../../modules/savings/withholding-tax";
 import { WorkerLogService } from '../../modules/worker-logs/worker-log.service';
 import { WorkerControlService } from '../../modules/workers/worker-control.service';
 import { VfdProvider } from '../../shared/providers/vfd.provider';
@@ -140,7 +141,20 @@ export class SavingsMaturitiesWorker {
 
       const annualRate = plan.interestRate || 0;
       const dailyRate = annualRate / 365;
-      const interestAmount = Math.floor(plan.principal * dailyRate * daysActive);
+      const grossInterest = Math.floor(plan.principal * dailyRate * daysActive);
+
+      // Fixed (LOCKED) savings interest carries withholding tax, deducted
+      // from the interest at payout. Flexible plans are not taxed, so the
+      // deduction is scoped to LOCKED plans only. Without this, a fixed plan
+      // left to mature on its own would pay out untaxed while an identical
+      // plan withdrawn by hand after maturity would be taxed.
+      const isFixed = plan.planType === 'LOCKED';
+      const tax = isFixed
+        ? applyWithholdingTax(grossInterest, settings)
+        : { grossInterest, withholdingTax: 0, netInterest: grossInterest, rate: 0 };
+
+      const interestAmount = tax.netInterest;
+      const withholdingTax = tax.withholdingTax;
       const totalAmount = plan.principal + interestAmount;
 
       if (totalAmount <= 0) {
@@ -254,9 +268,28 @@ export class SavingsMaturitiesWorker {
                 userId: plan.userId,
                 subtype: 'interest',
                 session,
-                meta: { planId: plan._id, principal: plan.principal, interestRate: plan.interestRate, daysActive }
+                meta: { planId: plan._id, principal: plan.principal, interestRate: plan.interestRate, daysActive, grossInterest, withholdingTax }
               }
             );
+
+            // Tax withheld is owed onward to the tax authority, so it moves
+            // from the interest pool into tax_payable instead of being paid
+            // to the saver or counted as platform revenue.
+            if (withholdingTax > 0) {
+              await LedgerService.createDoubleEntry(
+                traceId,
+                'interest_pool',
+                TAX_PAYABLE_ACCOUNT,
+                withholdingTax,
+                'savings',
+                {
+                  userId: plan.userId,
+                  subtype: 'withholding_tax',
+                  session,
+                  meta: { planId: plan._id, reason: 'Withholding tax on fixed savings interest', grossInterest }
+                }
+              );
+            }
 
             // Return principal to user
             await LedgerService.createDoubleEntry(
@@ -277,12 +310,15 @@ export class SavingsMaturitiesWorker {
             plan.status = 'COMPLETED';
             plan.completedAt = new Date();
             plan.interestEarned = interestAmount;
+            plan.withholdingTax = withholdingTax;
 
             if (!plan.withdrawalHistory) plan.withdrawalHistory = [];
             plan.withdrawalHistory.push({
               amount: plan.principal,
               penalty: 0,
               netAmount: totalAmount,
+              grossInterest,
+              withholdingTax,
               initiated: new Date(),
               completed: new Date(),
               earlyWithdrawal: false,
@@ -298,9 +334,11 @@ export class SavingsMaturitiesWorker {
               userId: plan.userId,
               principal: plan.principal,
               interestEarned: interestAmount,
+              grossInterest,
+              withholdingTax,
               traceId
             }, 'Phase 3 complete: Savings plan matured and fully processed');
-            await WorkerLogService.log('savings-maturities', 'info', 'Savings plan matured and processed', { planId: plan._id, interestEarned: interestAmount });
+            await WorkerLogService.log('savings-maturities', 'info', 'Savings plan matured and processed', { planId: plan._id, interestEarned: interestAmount, grossInterest, withholdingTax });
           } else {
             // Transfer failed, mark as FAILED and log error
             await TransferService.failTransfer(trxn.reference);
