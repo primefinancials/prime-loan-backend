@@ -49,6 +49,7 @@ const TransferSchema = new Schema<ITransfer>({
   senderName: { type: String },
   bankCode: { type: String },
   reference: { type: String, required: true, unique: true },
+  category: { type: String, default: 'transfer', index: true },
   remark: { type: String },
   naration: { type: String },
   processedAt: { type: Date },

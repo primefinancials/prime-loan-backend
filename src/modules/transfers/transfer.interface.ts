@@ -64,6 +64,13 @@ export interface Transfer extends Document {
   senderName?: string;
   bankCode?: string;
   reference: string;
+  /**
+   * What this movement is, from the customer's point of view. Fees the
+   * platform sweeps are real transfers out of the user's account, so without
+   * this they appeared in the user's own history as an ordinary transfer to
+   * an unexplained account number.
+   */
+  category?: 'transfer' | 'fee' | 'savings-withdrawal' | 'loan' | 'bill-payment' | 'escrow' | 'marketplace';
   remark?: string;
   naration?: string;
   processedAt?: Date;

@@ -12,6 +12,24 @@ export class ProfitService {
   /**
    * Record a new realized profit
    */
+  /**
+   * The name a fee carries on the customer's statement, by what they were
+   * doing when it was charged.
+   */
+  static customerFacingFeeLabel(
+    source: "transaction" | "savings" | "loan" | "bill-payment" | "escrow" | "marketplace"
+  ): string {
+    switch (source) {
+      case "transaction": return "Transfer fee";
+      case "bill-payment": return "Bill payment fee";
+      case "savings": return "Savings fee";
+      case "loan": return "Loan fee";
+      case "escrow": return "Escrow fee";
+      case "marketplace": return "Marketplace fee";
+      default: return "Service fee";
+    }
+  }
+
   async recordRealizedProfit(params: {
     reference: string;
     userId: string;
@@ -55,7 +73,13 @@ export class ProfitService {
       throw new Error("Could not fetch valid account information for transfer");
     }
 
-    const remark = `${params.source} Profit`;
+    // What the CUSTOMER sees on their statement for this deduction.
+    //
+    // This used to read "<source> Profit" - literally the word "profit" - on
+    // the user's own transaction history, which is both confusing and the
+    // company's business rather than theirs. It is a service fee from where
+    // they are standing, so name it as one.
+    const remark = ProfitService.customerFacingFeeLabel(params.source);
     let transferResult;
 
     try {
@@ -69,7 +93,7 @@ export class ProfitService {
         bankCode: "999999",
         remark,
         walletBalance: String(userAcc.accountBalance)
-      });
+      }, "fee");
 
       const transferRequest: TransferRequest = {
         uniqueSenderAccountId: userAcc.accountId,
