@@ -244,23 +244,6 @@ export class VfdProvider {
 
   constructor() { }
 
-  /**
-   * A burst of 401s should cause one re-authentication, not one per request.
-   * Without this, a few concurrent failures each throw away the token the
-   * previous one just fetched.
-   */
-  private static lastTokenFlushAt = 0;
-  private static readonly TOKEN_FLUSH_COOLDOWN_MS = 5000;
-
-  private static allowTokenFlush(): boolean {
-    const now = Date.now();
-    if (now - VfdProvider.lastTokenFlushAt < VfdProvider.TOKEN_FLUSH_COOLDOWN_MS) {
-      return false;
-    }
-    VfdProvider.lastTokenFlushAt = now;
-    return true;
-  }
-
   private async request<T>(config: AxiosRequestConfig, isRetry = false): Promise<T> {
     const accessToken = await generateBearerToken(customerKey, customerSecret);
 
@@ -288,31 +271,43 @@ export class VfdProvider {
     } catch (error) {
       const axiosError = error as AxiosError;
       const status = axiosError.response?.status;
-
-      // PERF/CORRECTNESS: this used to clear the SHARED bearer token on any
-      // 401 or 403 and retry. VFD returns those for two very different
-      // reasons, and treating them alike was costly:
-      //
-      //   - the token is bad/expired  -> clearing it is right
-      //   - this account is not permitted to use that API product (VFD says
-      //     "Unauthorized to use: Contact Admin") -> the token is perfectly
-      //     good, and clearing it only forces a fresh auth round trip
-      //
-      // The tiered-KYC endpoints and the live-balance lookup return the second
-      // kind constantly, so one user loading their profile would wipe the
-      // token for everybody, and the next transfer had to re-authenticate
-      // before it could even start. Only flush on a genuine token failure.
       const providerMessage = String(
         (axiosError.response?.data as any)?.message ?? ""
       );
-      const isPermissionProblem =
-        status === 403 || /unauthorized to use|contact admin|not subscribed/i.test(providerMessage);
 
-      if (status === 401 && !isPermissionProblem && !isRetry && VfdProvider.allowTokenFlush()) {
+      // VFD returns 401/403 for two different things, and the difference
+      // decides whether re-authenticating can help:
+      //
+      //   "Invalid wallet token"            -> the token is dead. Flush and
+      //                                        retry; this is the ONLY way
+      //                                        the process ever recovers.
+      //   "Unauthorized to use: Contact Admin" -> this account is not
+      //                                        subscribed to that API
+      //                                        product. The token is fine
+      //                                        and flushing it only costs a
+      //                                        pointless re-auth.
+      //
+      // Classify on the PROVIDER'S MESSAGE, never on the status code alone.
+      // An earlier version of this treated every 403 as a subscription
+      // problem, which meant that when the token expired the 403 it produced
+      // was never acted on - the process kept presenting the dead token and
+      // every VFD call failed for ~11 hours until it was restarted by hand.
+      // Anything not recognised as a subscription problem is therefore
+      // treated as a token problem, so an unfamiliar message fails safe
+      // towards recovery rather than towards a permanent outage.
+      const isSubscriptionProblem =
+        /unauthorized to use|contact admin|not subscribed|not permitted to use/i.test(providerMessage);
+
+      if ((status === 401 || status === 403) && !isSubscriptionProblem && !isRetry) {
+        vfdLogger.warn(
+          { status, vfdMessage: providerMessage },
+          "VFD rejected the bearer token; refreshing it and retrying once"
+        );
         clearBearerToken();
         const retryConfig = { ...config, url: (config.url || "").replace(baseUrl, "") };
         return this.request<T>(retryConfig, true);
       }
+
       // Log what VFD actually said. Axios's own message is only "Request
       // failed with status code 401", which hides the provider's reason
       // (e.g. an unsubscribed API product vs. a rejected token) and made
